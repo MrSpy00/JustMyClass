@@ -103,7 +103,7 @@ export class UpdateService {
   constructor(private storageService: StorageService) {
     this.status = {
       stage: 'idle',
-      currentVersion: app.getVersion(),
+      currentVersion: app?.getVersion ? app.getVersion() : '0.0.1',
       configured: true,
       feedUrl: `https://github.com/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases`,
     }
@@ -230,6 +230,14 @@ export class UpdateService {
    * Burada HEPSI KAPATILIR ve elle yonetilir. Aksi halde kullanici
    * uygulamayi kullanirken dosyalarının degistigini fark etmez.
    */
+  public isCustomGenericFeed(url: string | null | undefined): boolean {
+    if (!url) return false
+    const trimmed = url.trim().toLowerCase()
+    if (!trimmed) return false
+    if (trimmed.includes('github.com') || trimmed.includes('github (')) return false
+    return true
+  }
+
   private wire(): void {
     try {
       const u = autoUpdater as unknown as {
@@ -245,7 +253,8 @@ export class UpdateService {
       u.autoInstallOnAppQuit = true
       u.allowPrerelease = false
 
-      if (this.configuredUrl) {
+      const isCustom = this.isCustomGenericFeed(this.configuredUrl)
+      if (isCustom && this.configuredUrl) {
         u.setFeedURL({ provider: 'generic', url: this.configuredUrl })
       } else {
         u.setFeedURL({
@@ -257,10 +266,12 @@ export class UpdateService {
 
       if (!this.wired) {
         u.on('error', (err: Error) => {
-          this.patch({
-            stage: 'error',
-            error: this.explainUpdateError(err),
-          })
+          if (this.isCustomGenericFeed(this.configuredUrl)) {
+            this.patch({
+              stage: 'error',
+              error: this.explainUpdateError(err),
+            })
+          }
         })
 
         u.on('update-available', (info: UpdateInfo) => {
@@ -319,6 +330,9 @@ export class UpdateService {
       return 'Sunucu yanıt vermiyor. Yayın klasörü erişilebilir değil.'
     }
     if (raw.includes('404') || raw.includes('no published versions')) {
+      if (!this.isCustomGenericFeed(this.configuredUrl)) {
+        return 'Henüz yayınlanmış yeni bir sürüm bulunamadı veya uygulama en güncel sürümde.'
+      }
       return (
         'Sunucuda sürüm dosyası bulunamadı. `latest.yml` dosyası, sürüm ' +
         'klasörünün içinde olmalı ve dosya adı tam olarak `latest.yml` olmalı.'
@@ -346,8 +360,8 @@ export class UpdateService {
     this.lastCheckedAt = new Date().toISOString()
     this.patch({ stage: 'checking', error: undefined })
 
-    // 1. Özel yayın adresi tanımlıysa doğrudan autoUpdater ile kontrol et
-    if (this.configuredUrl) {
+    // 1. Özel generic yayın adresi tanımlıysa doğrudan autoUpdater ile kontrol et
+    if (this.isCustomGenericFeed(this.configuredUrl) && this.configuredUrl) {
       try {
         const u = autoUpdater as unknown as { checkForUpdates: () => Promise<unknown> }
         await u.checkForUpdates()
