@@ -54,6 +54,7 @@ interface CourseOverviewProps {
   isSyncing?: boolean
   onDownloadAttachment?: (att: Attachment) => void
   onPreviewAttachment?: (att: Attachment) => void
+  onInspectAttachment?: (att: Attachment) => void
 }
 
 type TabKey = 'assignments' | 'announcements' | 'materials' | 'people'
@@ -71,6 +72,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
   isSyncing = false,
   onDownloadAttachment,
   onPreviewAttachment,
+  onInspectAttachment,
 }) => {
   const { t, lang } = useI18n()
   const [activeTab, setActiveTab] = useState<TabKey>('assignments')
@@ -101,9 +103,9 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
       allAttachments.map(async att => {
         try {
           const res = await window.jmcAPI.checkDownloadedFile(att)
-          return { id: att.id, res }
+          return { id: att.id, driveId: att.driveFileId, res }
         } catch {
-          return { id: att.id, res: { exists: false } }
+          return { id: att.id, driveId: att.driveFileId, res: { exists: false } }
         }
       }),
     ).then(results => {
@@ -113,6 +115,9 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
         for (const item of results) {
           if (item.res.exists) {
             next[item.id] = item.res
+            if (item.driveId) {
+              next[item.driveId] = item.res
+            }
           }
         }
         return next
@@ -133,7 +138,11 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
       if (window.jmcAPI?.checkDownloadedFile) {
         const res = await window.jmcAPI.checkDownloadedFile(att)
         if (res.exists) {
-          setDownloadedStatusMap(prev => ({ ...prev, [att.id]: res }))
+          setDownloadedStatusMap(prev => ({
+            ...prev,
+            [att.id]: res,
+            ...(att.driveFileId ? { [att.driveFileId]: res } : {}),
+          }))
         }
       }
     } finally {
@@ -713,8 +722,19 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                     <span>Görüntüle</span>
                                   </button>
                                 )}
+                                {onInspectAttachment && (mat.driveFileId || mat.isLocalAvailable || mat.alternateLink) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onInspectAttachment(mat)}
+                                    title="Yapay Zekâ Asistanı ile İncele"
+                                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
+                                  >
+                                    <Sparkles className="h-3 w-3" />
+                                    <span className="hidden sm:inline">İncele</span>
+                                  </button>
+                                )}
                                 {(() => {
-                                  const status = downloadedStatusMap[mat.id]
+                                  const status = downloadedStatusMap[mat.id] || (mat.driveFileId ? downloadedStatusMap[mat.driveFileId] : undefined)
                                   const isDownloaded = Boolean(status?.exists || (mat.isLocalAvailable && (mat.downloadedPath || mat.localPath)))
                                   const targetPath = status?.filePath || mat.downloadedPath || mat.localPath
                                   const isDownloading = Boolean(downloadingIds[mat.id])
@@ -858,8 +878,19 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                     <span>Görüntüle</span>
                                   </button>
                                 )}
+                                {onInspectAttachment && (att.driveFileId || att.isLocalAvailable || att.alternateLink) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onInspectAttachment(att)}
+                                    title="Yapay Zekâ Asistanı ile İncele"
+                                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
+                                  >
+                                    <Sparkles className="h-3 w-3" />
+                                    <span className="hidden sm:inline">İncele</span>
+                                  </button>
+                                )}
                                 {(() => {
-                                  const status = downloadedStatusMap[att.id]
+                                  const status = downloadedStatusMap[att.id] || (att.driveFileId ? downloadedStatusMap[att.driveFileId] : undefined)
                                   const isDownloaded = Boolean(status?.exists || (att.isLocalAvailable && (att.downloadedPath || att.localPath)))
                                   const targetPath = status?.filePath || att.downloadedPath || att.localPath
                                   const isDownloading = Boolean(downloadingIds[att.id])

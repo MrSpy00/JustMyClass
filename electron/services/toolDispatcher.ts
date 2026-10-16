@@ -177,7 +177,7 @@ function parsePdfCMap(decompressedText: string): Map<string, string> {
 /**
  * PDF literal string içeriğindeki octal, UTF-16BE ve Türkçe karakterleri çözer.
  */
-function decodePdfLiteralString(raw: string): string {
+function decodePdfLiteralString(raw: string, cmap?: Map<string, string>): string {
   // UTF-16BE BOM kontrolü: \376\377 veya \xFE\xFF
   if (raw.startsWith('\xfe\xff') || raw.startsWith('\\376\\377')) {
     const clean = raw.replace(/^(\xfe\xff|\\376\\377)/, '')
@@ -237,6 +237,30 @@ function decodePdfLiteralString(raw: string): string {
     }
   }
 
+  // Eğer font ToUnicode CMap varsa, karakter kodlarını haritadan geçir
+  if (cmap && cmap.size > 0) {
+    let mapped = ''
+    let matchCount = 0
+    for (const b of byteList) {
+      const hex2 = b.toString(16).padStart(2, '0').toLowerCase()
+      const hex4 = b.toString(16).padStart(4, '0').toLowerCase()
+      if (cmap.has(hex2)) {
+        mapped += cmap.get(hex2)!
+        matchCount++
+      } else if (cmap.has(hex4)) {
+        mapped += cmap.get(hex4)!
+        matchCount++
+      } else if (b >= 32 && b <= 126) {
+        mapped += String.fromCharCode(b)
+      } else if (TURKISH_WIN1254_MAP[b]) {
+        mapped += TURKISH_WIN1254_MAP[b]
+      }
+    }
+    if (matchCount > 0 && mapped.trim().length > 0) {
+      return mapped
+    }
+  }
+
   // UTF-8 veya Windows-1254 (Türkçe) çözümlemesi
   const buf = Buffer.from(byteList)
   try {
@@ -263,10 +287,10 @@ function decodePdfLiteralString(raw: string): string {
  * Saf Node.js (harici bağımlılıksız) PDF metin çıkarıcısı.
  * FlateDecode akışlarını decompress eder, ToUnicode CMaps, hex dizileri (<...>),
  * literal stringler (...) ve Türkçe karakter kodlamalarını eksiksiz çözer.
+ * SADECE BT...ET arasındaki metin bloklarını işler; PostScript çizim operatörleri sızdırılmaz.
  */
 export function extractTextFromPdf(buf: Buffer): string {
   if (!buf || buf.length < 10) return ''
-  const textChunks: string[] = []
   const str = buf.toString('latin1')
 
   // 1) Tüm akışları aç ve ToUnicode haritalarını çıkar
@@ -312,91 +336,112 @@ export function extractTextFromPdf(buf: Buffer): string {
     }
   }
 
-  // 2) Metin operatörlerini ayıkla (Tj, TJ, ', ")
+  // 2) SADECE BT ... ET metin bloklarını tara (Grafik ve PostScript operatörleri filtrelenir)
+  const paragraphs: string[] = []
+
   for (const content of decompressedStreams) {
-    // (...) Tj
-    const tjRegex = /\(([\s\S]*?)\)\s*Tj/g
-    let tjMatch: RegExpExecArray | null
-    while ((tjMatch = tjRegex.exec(content)) !== null) {
-      const decoded = decodePdfLiteralString(tjMatch[1])
-      if (decoded.trim()) textChunks.push(decoded)
-    }
+    const btRegex = /\bBT\b([\s\S]*?)\bET\b/g
+    let btMatch: RegExpExecArray | null
 
-    // <hex> Tj
-    const hexTjRegex = /<([0-9a-fA-F]+)>\s*Tj/g
-    let hxMatch: RegExpExecArray | null
-    while ((hxMatch = hexTjRegex.exec(content)) !== null) {
-      const hex = hxMatch[1].toLowerCase()
-      if (globalCMap.has(hex)) {
-        textChunks.push(globalCMap.get(hex)!)
-      } else if (hex.length % 4 === 0) {
-        let uStr = ''
-        for (let i = 0; i < hex.length; i += 4) {
-          const chunk = hex.slice(i, i + 4)
-          uStr += globalCMap.get(chunk) || String.fromCharCode(parseInt(chunk, 16))
-        }
-        if (uStr.trim()) textChunks.push(uStr)
-      } else {
-        let uStr = ''
-        for (let i = 0; i < hex.length; i += 2) {
-          const byteVal = parseInt(hex.slice(i, i + 2), 16)
-          uStr += TURKISH_WIN1254_MAP[byteVal] || String.fromCharCode(byteVal)
-        }
-        if (uStr.trim()) textChunks.push(uStr)
-      }
-    }
+    while ((btMatch = btRegex.exec(content)) !== null) {
+      const textBlock = btMatch[1]
+      const currentBlockLines: string[] = []
 
-    // [...] TJ
-    const bigTjRegex = /\[([\s\S]*?)\]\s*TJ/g
-    let bigTjMatch: RegExpExecArray | null
-    while ((bigTjMatch = bigTjRegex.exec(content)) !== null) {
-      const inner = bigTjMatch[1]
-      const tokenRegex = /\(([\s\S]*?)\)|<([0-9a-fA-F]+)>/g
-      let tokMatch: RegExpExecArray | null
-      const lineTokens: string[] = []
-      while ((tokMatch = tokenRegex.exec(inner)) !== null) {
-        if (tokMatch[1] !== undefined) {
-          lineTokens.push(decodePdfLiteralString(tokMatch[1]))
-        } else if (tokMatch[2] !== undefined) {
-          const hex = tokMatch[2].toLowerCase()
-          if (globalCMap.has(hex)) {
-            lineTokens.push(globalCMap.get(hex)!)
-          } else if (hex.length % 4 === 0) {
-            let uStr = ''
-            for (let i = 0; i < hex.length; i += 4) {
-              const chunk = hex.slice(i, i + 4)
-              uStr += globalCMap.get(chunk) || String.fromCharCode(parseInt(chunk, 16))
+      // [...] TJ operatörleri
+      const tjBlockRegex = /\[([\s\S]*?)\]\s*TJ/g
+      let tjMatch: RegExpExecArray | null
+      while ((tjMatch = tjBlockRegex.exec(textBlock)) !== null) {
+        const inner = tjMatch[1]
+        const tokenRegex = /\(([^)]*(?:\\.[^)]*)*)\)|<([0-9a-fA-F]+)>/g
+        let tokMatch: RegExpExecArray | null
+        const parts: string[] = []
+        while ((tokMatch = tokenRegex.exec(inner)) !== null) {
+          if (tokMatch[1] !== undefined) {
+            parts.push(decodePdfLiteralString(tokMatch[1], globalCMap))
+          } else if (tokMatch[2] !== undefined) {
+            const hex = tokMatch[2].toLowerCase()
+            if (globalCMap.has(hex)) {
+              parts.push(globalCMap.get(hex)!)
+            } else if (hex.length % 4 === 0) {
+              let uStr = ''
+              for (let i = 0; i < hex.length; i += 4) {
+                const chunk = hex.slice(i, i + 4)
+                uStr += globalCMap.get(chunk) || String.fromCharCode(parseInt(chunk, 16))
+              }
+              parts.push(uStr)
+            } else {
+              let uStr = ''
+              for (let i = 0; i < hex.length; i += 2) {
+                const byteVal = parseInt(hex.slice(i, i + 2), 16)
+                uStr += TURKISH_WIN1254_MAP[byteVal] || String.fromCharCode(byteVal)
+              }
+              parts.push(uStr)
             }
-            lineTokens.push(uStr)
-          } else {
-            let uStr = ''
-            for (let i = 0; i < hex.length; i += 2) {
-              const byteVal = parseInt(hex.slice(i, i + 2), 16)
-              uStr += TURKISH_WIN1254_MAP[byteVal] || String.fromCharCode(byteVal)
-            }
-            lineTokens.push(uStr)
           }
         }
+        const line = parts.join('').trim()
+        if (line.length > 0) currentBlockLines.push(line)
       }
-      if (lineTokens.length > 0) {
-        textChunks.push(lineTokens.join(''))
+
+      // (...) Tj operatörleri
+      const singleTjRegex = /\(([^)]*(?:\\.[^)]*)*)\)\s*Tj/g
+      let sTjMatch: RegExpExecArray | null
+      while ((sTjMatch = singleTjRegex.exec(textBlock)) !== null) {
+        const line = decodePdfLiteralString(sTjMatch[1], globalCMap).trim()
+        if (line.length > 0) currentBlockLines.push(line)
+      }
+
+      // <hex> Tj operatörleri
+      const hexSingleRegex = /<([0-9a-fA-F]+)>\s*Tj/g
+      let hxMatch: RegExpExecArray | null
+      while ((hxMatch = hexSingleRegex.exec(textBlock)) !== null) {
+        const hex = hxMatch[1].toLowerCase()
+        let decoded = ''
+        if (globalCMap.has(hex)) {
+          decoded = globalCMap.get(hex)!
+        } else if (hex.length % 4 === 0) {
+          for (let i = 0; i < hex.length; i += 4) {
+            const chunk = hex.slice(i, i + 4)
+            decoded += globalCMap.get(chunk) || String.fromCharCode(parseInt(chunk, 16))
+          }
+        } else {
+          for (let i = 0; i < hex.length; i += 2) {
+            const byteVal = parseInt(hex.slice(i, i + 2), 16)
+            decoded += TURKISH_WIN1254_MAP[byteVal] || String.fromCharCode(byteVal)
+          }
+        }
+        if (decoded.trim()) currentBlockLines.push(decoded.trim())
+      }
+
+      if (currentBlockLines.length > 0) {
+        paragraphs.push(currentBlockLines.join(' '))
       }
     }
   }
 
-  // 3) Fallback
-  if (textChunks.length === 0) {
-    const fallbackRegex = /\(([^)]{3,})\)/g
-    let fbMatch: RegExpExecArray | null
-    while ((fbMatch = fallbackRegex.exec(str)) !== null) {
-      const val = fbMatch[1].trim()
-      if (val.length > 3 && !val.includes('/') && !val.includes('\\')) {
-        textChunks.push(val)
+  // Operatör ve çöp filtreleme: PDF komutları (TJ, ET, BT, Tm, Tf, cm, q, Q vb.) asla metin olarak kabul edilmez
+  const cleaned = paragraphs
+    .map(p => p.replace(/\b(?:TJ|ET|BT|Tm|Tf|cm|q|Q|rg|RG|re|W\*)\b/g, '').replace(/\s+/g, ' ').trim())
+    .filter(p => p.length > 0 && !/^[\d\s.\-+,#()\[\];]+$/.test(p))
+
+  if (cleaned.length > 0) {
+    return cleaned.join('\n\n').slice(0, 80_000)
+  }
+
+  // Güvenli yedek yol: FlateDecode akışlarındaki anlamlı karakter dizilerini çıkar
+  for (const st of decompressedStreams) {
+    const fallbackMatches = st.match(/\(([^)]{4,})\)/g)
+    if (fallbackMatches) {
+      for (const fm of fallbackMatches) {
+        const clean = fm.slice(1, -1).trim()
+        if (clean.length > 3 && !clean.includes('/') && !/[\\\[\]<>]/.test(clean)) {
+          cleaned.push(clean)
+        }
       }
     }
   }
 
-  return textChunks
+  return cleaned
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -493,7 +538,9 @@ export function extractTextFromPptx(buf: Buffer): string {
     slideEntries.sort((a, b) => a.num - b.num)
 
     const slideTexts: string[] = []
-    for (const slide of slideEntries) {
+    for (let i = 0; i < slideEntries.length; i++) {
+      const slide = slideEntries[i]
+      const slideIndexNum = i + 1
       const paragraphs: string[] = []
       const pRegex = /<a:p(?: [^>]*)?>([\s\S]*?)<\/a:p>/g
       let pMatch: RegExpExecArray | null
@@ -506,15 +553,27 @@ export function extractTextFromPptx(buf: Buffer): string {
         }
       }
 
-      if (paragraphs.length > 0) {
-        const title = paragraphs[0]
-        const bullets = paragraphs.slice(1)
-        let slideBlock = `[Slayt ${slide.num}: ${title}]`
-        if (bullets.length > 0) {
-          slideBlock += '\n' + bullets.map(b => `• ${b}`).join('\n')
+      // Tablo hücreleri ve ek metinler
+      const tcRegex = /<a:tc(?: [^>]*)?>([\s\S]*?)<\/a:tc>/g
+      let tcMatch: RegExpExecArray | null
+      while ((tcMatch = tcRegex.exec(slide.xml)) !== null) {
+        const tcXml = tcMatch[1]
+        const tMatches = tcXml.match(/<a:t(?: [^>]*)?>([^<]*)<\/a:t>/g) || []
+        const cellText = decodeXmlEntities(tMatches.map(m => m.replace(/<[^>]+>/g, '')).join('')).trim()
+        if (cellText.length > 0 && !paragraphs.includes(cellText)) {
+          paragraphs.push(cellText)
         }
-        slideTexts.push(slideBlock)
       }
+
+      const title = paragraphs.length > 0 ? paragraphs[0] : `Slayt ${slideIndexNum}`
+      const bullets = paragraphs.length > 1 ? paragraphs.slice(1) : []
+      let slideBlock = `[Slayt ${slideIndexNum}: ${title}]`
+      if (bullets.length > 0) {
+        slideBlock += '\n' + bullets.map(b => `• ${b}`).join('\n')
+      } else if (paragraphs.length <= 1) {
+        slideBlock += '\n(Grafik, şema veya görsel ağırlıklı slayt)'
+      }
+      slideTexts.push(slideBlock)
     }
 
     return slideTexts.join('\n\n').slice(0, 80_000)

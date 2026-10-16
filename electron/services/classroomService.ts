@@ -346,8 +346,62 @@ export class ClassroomService {
       }
     } catch (err) {
       // Üniversite/kurum politikaları gereği öğrenciler tüm sınıf listesini çekemeyebilir (403 Forbidden).
-      // Bu beklenen bir kısıtlamadır ve senkronizasyonu engellemez.
-      this.reportSyncFailure('Ogrenci listesi', err)
+      // Bu beklenen bir kısıtlamadır; kullanıcıyı yanıltıcı bir hata mesajıyla korkutmak yerine
+      // önceki önbelleği korur ve duyuru/ödev yorumlarındaki sınıf arkadaşlarını derleriz.
+      const is403 = String(err).includes('403') || (err instanceof HttpError && err.status === 403)
+      if (!is403) {
+        this.reportSyncFailure('Ogrenci listesi', err)
+      } else {
+        console.info(`[Classroom] ${courseId} için öğrenci listesi kısıtlı (403). Sınıf arkadaşları yorumlardan derleniyor...`)
+      }
+
+      // 1. Önceki oturumlardan kaydedilmiş öğrencileri koru
+      try {
+        const previous = this.storageService.getParticipants(courseId)
+        for (const p of previous) {
+          if (p.role === 'STUDENT' && !participants.some(existing => existing.userId === p.userId)) {
+            participants.push(p)
+          }
+        }
+      } catch {
+        /* yoksay */
+      }
+
+      // 2. Duyuru ve ödev yorumlarından sınıf arkadaşlarının profillerini derle
+      try {
+        const announcements = this.storageService.getAnnouncements(courseId)
+        for (const ann of announcements.slice(0, 8)) {
+          try {
+            const commentsRes = await googleHttp.request<any>(
+              `${API}/courses/${encodeURIComponent(courseId)}/announcements/${encodeURIComponent(ann.id)}/modifyAssignees?`, // fallback
+              { headers: { Authorization: `Bearer ${token}` } },
+            ).catch(async () => {
+              return await googleHttp.request<any>(
+                `${API}/courses/${encodeURIComponent(courseId)}/announcements/${encodeURIComponent(ann.id)}/comments`,
+                { headers: { Authorization: `Bearer ${token}` } },
+              )
+            })
+            const comments: any[] = commentsRes?.comments || []
+            for (const c of comments) {
+              const profile = c.userProfile
+              if (profile?.id && !participants.some(p => p.userId === profile.id)) {
+                participants.push({
+                  userId: profile.id,
+                  courseId,
+                  role: 'STUDENT',
+                  fullName: profile.name?.fullName || profile.name?.givenName || 'Sınıf Arkadaşı',
+                  email: profile.emailAddress,
+                  photoUrl: profile.photoUrl,
+                })
+              }
+            }
+          } catch {
+            /* yoksay */
+          }
+        }
+      } catch {
+        /* yoksay */
+      }
     }
 
     // Rol tespiti ve oturum açmış kullanıcının listeye dahil edilmesi

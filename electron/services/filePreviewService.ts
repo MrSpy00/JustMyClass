@@ -116,7 +116,9 @@ function extractPptxSlides(buf: Buffer): Array<{ slideNumber: number; title?: st
     }
     slideEntries.sort((a, b) => a.num - b.num)
 
-    for (const slide of slideEntries) {
+    for (let i = 0; i < slideEntries.length; i++) {
+      const slide = slideEntries[i]
+      const slideIndexNum = i + 1
       const paragraphs: string[] = []
       const pRegex = /<a:p(?: [^>]*)?>([\s\S]*?)<\/a:p>/g
       let pMatch: RegExpExecArray | null
@@ -129,11 +131,27 @@ function extractPptxSlides(buf: Buffer): Array<{ slideNumber: number; title?: st
         }
       }
 
-      if (paragraphs.length > 0) {
-        const title = paragraphs[0]
-        const bullets = paragraphs.slice(1)
-        slides.push({ slideNumber: slide.num, title, bullets })
+      // Tablo hücreleri ve ek metinler
+      const tcRegex = /<a:tc(?: [^>]*)?>([\s\S]*?)<\/a:tc>/g
+      let tcMatch: RegExpExecArray | null
+      while ((tcMatch = tcRegex.exec(slide.xml)) !== null) {
+        const tcXml = tcMatch[1]
+        const tMatches = tcXml.match(/<a:t(?: [^>]*)?>([^<]*)<\/a:t>/g) || []
+        const cellText = decodeXmlEntities(tMatches.map(m => m.replace(/<[^>]+>/g, '')).join('')).trim()
+        if (cellText.length > 0 && !paragraphs.includes(cellText)) {
+          paragraphs.push(cellText)
+        }
       }
+
+      const title = paragraphs.length > 0 ? paragraphs[0] : `Slayt ${slideIndexNum}`
+      const bullets =
+        paragraphs.length > 1
+          ? paragraphs.slice(1)
+          : paragraphs.length === 1
+            ? []
+            : ['(Bu slayt grafik, şema veya görsel ağırlıklı içerik barındırmaktadır.)']
+
+      slides.push({ slideNumber: slideIndexNum, title, bullets })
     }
   } catch {
     /* fallback */

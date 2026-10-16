@@ -18,11 +18,59 @@ import 'prismjs/components/prism-yaml'
 import 'prismjs/components/prism-markdown'
 import 'prismjs/components/prism-rust'
 import 'prismjs/components/prism-go'
+import 'prismjs/components/prism-markup'
+import 'prismjs/components/prism-css'
+import 'prismjs/components/prism-php'
+import 'prismjs/components/prism-ruby'
+import 'prismjs/components/prism-kotlin'
+import 'prismjs/components/prism-swift'
+import 'prismjs/components/prism-dart'
 
 interface MarkdownViewProps {
   content: string
   className?: string
   isUser?: boolean
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+function splitHighlightedHtmlLines(html: string): string[] {
+  const lines = html.split('\n')
+  const result: string[] = []
+  const openTags: string[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const prefix = openTags.join('')
+    const tagRegex = /<\/?([a-zA-Z0-9]+)[^>]*>/g
+    let match: RegExpExecArray | null
+    while ((match = tagRegex.exec(line)) !== null) {
+      const fullTag = match[0]
+      if (fullTag.startsWith('</')) {
+        openTags.pop()
+      } else if (!fullTag.endsWith('/>')) {
+        openTags.push(fullTag)
+      }
+    }
+    const suffix = openTags
+      .slice()
+      .reverse()
+      .map(t => {
+        const name = t.match(/<([a-zA-Z0-9]+)/)?.[1] || 'span'
+        return `</${name}>`
+      })
+      .join('')
+
+    result.push(prefix + line + suffix)
+  }
+  return result
 }
 
 function getPrismGrammar(lang?: string): { grammar: Prism.Grammar; langKey: string } | null {
@@ -46,6 +94,13 @@ function getPrismGrammar(lang?: string): { grammar: Prism.Grammar; langKey: stri
   if (l === 'md' || l === 'markdown') return { grammar: Prism.languages.markdown, langKey: 'markdown' }
   if (l === 'rs' || l === 'rust') return { grammar: Prism.languages.rust, langKey: 'rust' }
   if (l === 'go') return { grammar: Prism.languages.go, langKey: 'go' }
+  if (l === 'html' || l === 'xml' || l === 'svg') return { grammar: Prism.languages.markup, langKey: 'markup' }
+  if (l === 'css' || l === 'scss' || l === 'sass') return { grammar: Prism.languages.css, langKey: 'css' }
+  if (l === 'php') return { grammar: Prism.languages.php, langKey: 'php' }
+  if (l === 'rb' || l === 'ruby') return { grammar: Prism.languages.ruby, langKey: 'ruby' }
+  if (l === 'kt' || l === 'kotlin') return { grammar: Prism.languages.kotlin, langKey: 'kotlin' }
+  if (l === 'swift') return { grammar: Prism.languages.swift, langKey: 'swift' }
+  if (l === 'dart') return { grammar: Prism.languages.dart, langKey: 'dart' }
   if (Prism.languages[l]) return { grammar: Prism.languages[l], langKey: l }
   return null
 }
@@ -58,24 +113,40 @@ const CodeBlock: React.FC<{
   copied: boolean
   failed?: boolean
 }> = ({ code, lang, onCopy, copied, failed }) => {
-  const highlightedHtml = React.useMemo(() => {
+  const lines = React.useMemo(() => {
+    const normalized = code.replace(/\r\n/g, '\n')
+    const rawLines = normalized.split('\n')
+    if (rawLines.length > 1 && rawLines[rawLines.length - 1] === '') {
+      rawLines.pop()
+    }
     const match = getPrismGrammar(lang)
+    let highlightedLines: string[] = []
     if (match) {
       try {
-        return Prism.highlight(code, match.grammar, match.langKey)
+        const fullHtml = Prism.highlight(rawLines.join('\n'), match.grammar, match.langKey)
+        highlightedLines = splitHighlightedHtmlLines(fullHtml)
       } catch {
-        return null
+        highlightedLines = rawLines.map(l => escapeHtml(l))
       }
+    } else {
+      highlightedLines = rawLines.map(l => escapeHtml(l))
     }
-    return null
+    return rawLines.map((raw, idx) => ({
+      index: idx + 1,
+      raw,
+      html: highlightedLines[idx] || '&nbsp;',
+    }))
   }, [code, lang])
 
   return (
     <div className="my-2.5 overflow-hidden rounded-[var(--jmc-radius)] bg-[var(--jmc-code-bg)] shadow-[var(--jmc-shadow-sm)] border border-[var(--jmc-border-subtle)]">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg)]/40">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--jmc-text-dim)]">
-          {lang || 'kod'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-[var(--jmc-primary)]">
+            {lang || 'kod'}
+          </span>
+          <span className="text-[10px] text-[var(--jmc-text-dim)]">· {lines.length} satır</span>
+        </div>
         <button
           type="button"
           onClick={onCopy}
@@ -92,13 +163,19 @@ const CodeBlock: React.FC<{
           {copied ? 'Kopyalandı' : failed ? 'Kopyalanamadı' : 'Kopyala'}
         </button>
       </div>
-      <pre className="overflow-x-auto p-3 font-mono text-[11px] leading-[1.6] text-[var(--jmc-text)]">
-        {highlightedHtml ? (
-          <code dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
-        ) : (
-          <code>{code}</code>
-        )}
-      </pre>
+      <div className="overflow-x-auto py-2 font-mono text-[11px] leading-[1.6]">
+        {lines.map(row => (
+          <div key={row.index} className="flex items-start hover:bg-white/[0.03] transition-colors">
+            <span className="select-none pl-3 pr-3 text-right text-[var(--jmc-text-dim)] shrink-0 min-w-[2.75rem] font-mono text-[10.5px] opacity-40 border-r border-[var(--jmc-border-subtle)]/40">
+              {row.index}
+            </span>
+            <div
+              className="flex-1 pl-3 pr-3 min-w-0 font-mono text-[var(--jmc-text)] whitespace-pre"
+              dangerouslySetInnerHTML={{ __html: row.html }}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

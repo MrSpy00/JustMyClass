@@ -497,9 +497,15 @@ function setupIpcHandlers() {
   }
 
   // ---- Hesap ------------------------------------------------------------
-  handle('auth:loginWithGoogle', (_e, extraScopes?: string[]) =>
-    authService.loginWithGoogle(Array.isArray(extraScopes) ? extraScopes : []),
-  )
+  handle('auth:loginWithGoogle', async (_e, extraScopes?: string[]) => {
+    const account = await authService.loginWithGoogle(Array.isArray(extraScopes) ? extraScopes : [])
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+    return account
+  })
   handle('auth:cancelLogin', () => authService.cancelLogin())
   handle('auth:logout', async (_e, wipeCache?: boolean) => {
     // Depoyu silmek geri alinamaz. Renderer'a "sil" demesini tek
@@ -876,6 +882,19 @@ function setupIpcHandlers() {
           if (fs.existsSync(directPath)) {
             return { exists: true, filePath: directPath, fileName: safeCached }
           }
+        }
+      }
+    }
+
+    // 4. Doğrudan CAS önbellek dosya yolunda mevcutsa
+    const targetLookup = fileId || title
+    if (targetLookup) {
+      const cached = storageService.getCachedFile(targetLookup)
+      if (cached?.absolutePath && fs.existsSync(cached.absolutePath)) {
+        return {
+          exists: true,
+          filePath: cached.absolutePath,
+          fileName: cached.entry?.title || title || path.basename(cached.absolutePath),
         }
       }
     }
@@ -1281,6 +1300,14 @@ if (!app.requestSingleInstanceLock()) {
       session.defaultSession.setPermissionCheckHandler((_s, permission) =>
         GLOBAL_ALLOWED_PERMISSIONS.has(permission),
       )
+
+      try {
+        if (!app.isDefaultProtocolClient('justmyclass')) {
+          app.setAsDefaultProtocolClient('justmyclass')
+        }
+      } catch {
+        /* yut */
+      }
 
       setupIpcHandlers()
       createWindow()

@@ -48,6 +48,13 @@ import 'prismjs/components/prism-yaml'
 import 'prismjs/components/prism-markdown'
 import 'prismjs/components/prism-rust'
 import 'prismjs/components/prism-go'
+import 'prismjs/components/prism-markup'
+import 'prismjs/components/prism-css'
+import 'prismjs/components/prism-php'
+import 'prismjs/components/prism-ruby'
+import 'prismjs/components/prism-kotlin'
+import 'prismjs/components/prism-swift'
+import 'prismjs/components/prism-dart'
 
 import type { Attachment, FilePreviewResult } from '../../types/jmc'
 import { MarkdownView } from './MarkdownView'
@@ -68,6 +75,46 @@ function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
+}
+
+function splitHighlightedHtmlLines(html: string): string[] {
+  const lines = html.split('\n')
+  const result: string[] = []
+  const openTags: string[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const prefix = openTags.join('')
+    const tagRegex = /<\/?([a-zA-Z0-9]+)[^>]*>/g
+    let match: RegExpExecArray | null
+    while ((match = tagRegex.exec(line)) !== null) {
+      const fullTag = match[0]
+      if (fullTag.startsWith('</')) {
+        openTags.pop()
+      } else if (!fullTag.endsWith('/>')) {
+        openTags.push(fullTag)
+      }
+    }
+    const suffix = openTags
+      .slice()
+      .reverse()
+      .map(t => {
+        const name = t.match(/<([a-zA-Z0-9]+)/)?.[1] || 'span'
+        return `</${name}>`
+      })
+      .join('')
+
+    result.push(prefix + line + suffix)
+  }
+  return result
+}
+
+function getYouTubeVideoId(urlOrId?: string): string | null {
+  if (!urlOrId) return null
+  const str = urlOrId.trim()
+  if (/^[a-zA-Z0-9_-]{11}$/.test(str)) return str
+  const match = str.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/i)
+  return match ? match[1] : null
 }
 
 function formatBytes(bytes: number): string {
@@ -108,6 +155,45 @@ export function DocumentViewerModal({
     attachment?.downloadedPath || attachment?.localPath,
   )
   const [linkCopied, setLinkCopied] = useState(false)
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
+
+  const youtubeVideoId = useMemo(() => {
+    return (
+      attachment?.youTubeVideoId ||
+      getYouTubeVideoId(attachment?.alternateLink) ||
+      getYouTubeVideoId(preview?.title) ||
+      getYouTubeVideoId(attachment?.title)
+    )
+  }, [attachment, preview])
+
+  // PDF DataUrl'i Electron/Chromium engellerine takılmaması için Blob URL'e çevir
+  useEffect(() => {
+    if (preview?.kind === 'pdf' && preview.dataUrl) {
+      if (preview.dataUrl.startsWith('blob:') || preview.dataUrl.startsWith('http')) {
+        setPdfBlobUrl(preview.dataUrl)
+        return
+      }
+      try {
+        const parts = preview.dataUrl.split(',')
+        const base64 = parts[1] || parts[0]
+        const binaryString = atob(base64)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+        const blob = new Blob([bytes], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        setPdfBlobUrl(url)
+        return () => {
+          URL.revokeObjectURL(url)
+        }
+      } catch {
+        setPdfBlobUrl(preview.dataUrl)
+      }
+    } else {
+      setPdfBlobUrl(null)
+    }
+  }, [preview?.kind, preview?.dataUrl])
 
   const contentRef = useRef<HTMLDivElement | null>(null)
 
@@ -258,14 +344,23 @@ export function DocumentViewerModal({
     void window.jmcAPI.openLocalFile(preview.localPath)
   }, [preview])
 
-  // Asistan ile incele
+  // Asistan ile incele (Görseller, kodlar, belgeler ve tüm ekler dahil)
   const handleAnalyzeWithAssistant = useCallback(() => {
-    if (!preview) return
-    if (onSendToAssistant) {
-      onSendToAssistant(preview)
+    if (preview) {
+      onSendToAssistant?.(preview)
+      onClose()
+    } else if (attachment) {
+      onSendToAssistant?.({
+        fileId: attachment.driveFileId || attachment.id,
+        title: attachment.title,
+        kind: 'text',
+        mimeType: 'text/plain',
+        sizeBytes: 0,
+        text: `Dosya / Ek: ${attachment.title}\nBağlantı: ${attachment.alternateLink || ''}`,
+      })
       onClose()
     }
-  }, [preview, onSendToAssistant, onClose])
+  }, [preview, attachment, onSendToAssistant, onClose])
 
   // Klavye ile slayt geçişi (Sol / Sağ Ok tuşları)
   useEffect(() => {
@@ -304,7 +399,13 @@ export function DocumentViewerModal({
     if (lang === 'yaml' || lang === 'yml') return { grammar: Prism.languages.yaml, key: 'yaml' }
     if (lang === 'md' || lang === 'markdown') return { grammar: Prism.languages.markdown, key: 'markdown' }
     if (lang === 'rs' || lang === 'rust') return { grammar: Prism.languages.rust, key: 'rust' }
-    if (lang === 'go') return { grammar: Prism.languages.go, key: 'go' }
+    if (lang === 'html' || lang === 'xml' || lang === 'svg') return { grammar: Prism.languages.markup, key: 'markup' }
+    if (lang === 'css' || lang === 'scss' || lang === 'sass') return { grammar: Prism.languages.css, key: 'css' }
+    if (lang === 'php') return { grammar: Prism.languages.php, key: 'php' }
+    if (lang === 'rb' || lang === 'ruby') return { grammar: Prism.languages.ruby, key: 'ruby' }
+    if (lang === 'kt' || lang === 'kotlin') return { grammar: Prism.languages.kotlin, key: 'kotlin' }
+    if (lang === 'swift') return { grammar: Prism.languages.swift, key: 'swift' }
+    if (lang === 'dart') return { grammar: Prism.languages.dart, key: 'dart' }
     if (Prism.languages[lang]) return { grammar: Prism.languages[lang], key: lang }
     return null
   }, [preview?.language])
@@ -312,24 +413,24 @@ export function DocumentViewerModal({
   // Kod satırları ve Prism renklendirmesi
   const highlightedCodeLines = useMemo(() => {
     if (!preview?.text || (preview.kind !== 'code' && preview.kind !== 'text')) return []
-    const lines = preview.text.split('\n')
-    return lines.map((line, idx) => {
-      let html = ''
-      if (prismGrammar) {
-        try {
-          html = Prism.highlight(line, prismGrammar.grammar, prismGrammar.key)
-        } catch {
-          html = escapeHtml(line)
-        }
-      } else {
-        html = escapeHtml(line)
+    const normalized = preview.text.replace(/\r\n/g, '\n')
+    const lines = normalized.split('\n')
+    let highlightedLines: string[] = []
+    if (prismGrammar) {
+      try {
+        const fullHtml = Prism.highlight(normalized, prismGrammar.grammar, prismGrammar.key)
+        highlightedLines = splitHighlightedHtmlLines(fullHtml)
+      } catch {
+        highlightedLines = lines.map(l => escapeHtml(l))
       }
-      return {
-        lineIndex: idx + 1,
-        raw: line,
-        html: html || '&nbsp;',
-      }
-    })
+    } else {
+      highlightedLines = lines.map(l => escapeHtml(l))
+    }
+    return lines.map((line, idx) => ({
+      lineIndex: idx + 1,
+      raw: line,
+      html: highlightedLines[idx] || '&nbsp;',
+    }))
   }, [preview?.text, preview?.kind, prismGrammar])
 
   const filteredCodeRows = useMemo(() => {
@@ -434,12 +535,12 @@ export function DocumentViewerModal({
 
           {/* Sağ: Eylemler */}
           <div className="flex shrink-0 items-center gap-2">
-            {/* ASİSTAN İLE İNCELE (Ana Aksiyon Butonu) */}
-            {onSendToAssistant && preview && (preview.text || preview.slides || preview.tableData) && (
+            {/* ASİSTAN İLE İNCELE (Ana Aksiyon Butonu - Görseller, Kodlar, Slaytlar, Tüm Ekler İçin) */}
+            {onSendToAssistant && (preview || attachment) && (
               <button
                 type="button"
                 onClick={handleAnalyzeWithAssistant}
-                title="Bu dosyayı yapay zekâ asistanına gönder ve soru sor / analiz ettir"
+                title="Bu dosyayı veya eki yapay zekâ asistanına gönder ve soru sor / analiz ettir"
                 className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-3 py-1.5 text-[11.5px] font-semibold text-white shadow-md hover:opacity-95 active:scale-95 transition-all"
               >
                 <Sparkles className="h-3.5 w-3.5 animate-pulse" />
@@ -968,314 +1069,507 @@ export function DocumentViewerModal({
                 </div>
               )}
 
-              {/* --- 3. PDF GÖRÜNTÜLEYİCİ --- */}
-              {preview.kind === 'pdf' && (
-                <div className="h-full w-full flex flex-col">
-                  {pdfMode === 'embed' && preview.dataUrl ? (
+              {/* --- 0. YOUTUBE VİDEO OYNATICI (Uygulama İçi Yerleşik, Sıfır Ekstra Paket, Üstün Performans) --- */}
+              {youtubeVideoId ? (
+                <div className="flex h-full w-full flex-col items-center justify-center p-4 md:p-8 bg-black/90">
+                  <div className="w-full max-w-4xl aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black">
                     <iframe
-                      src={preview.dataUrl}
-                      title={preview.title}
-                      className="h-full w-full border-0 bg-neutral-900"
+                      src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}?rel=0&autoplay=0`}
+                      title={preview?.title || attachment?.title || 'YouTube Video'}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      className="w-full h-full border-0"
                     />
-                  ) : (
-                    <div className="p-6 md:p-8 max-w-4xl mx-auto w-full">
-                      <div className="rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 shadow-sm">
-                        <div className="flex items-center justify-between border-b border-[var(--jmc-border-subtle)] pb-3 mb-4">
-                          <h4 className="text-[13px] font-semibold text-[var(--jmc-text)]">
-                            PDF Ayıklanan Metin İçeriği
-                          </h4>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center justify-between w-full max-w-4xl px-2 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="rounded bg-red-600 px-2 py-0.5 text-[10.5px] font-bold text-white uppercase tracking-wider">
+                        YouTube
+                      </span>
+                      <span className="text-[12.5px] font-semibold text-white/90 truncate">
+                        {preview?.title || attachment?.title}
+                      </span>
+                    </div>
+                    {attachment?.alternateLink && (
+                      <button
+                        type="button"
+                        onClick={() => void window.jmcAPI?.openExternalUrl(attachment.alternateLink!)}
+                        className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-white/20 bg-white/10 px-3 py-1.5 text-[11.5px] font-medium text-white hover:bg-white/20 transition-all"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        <span>Tarayıcıda Aç</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* --- 1. KOD GÖRÜNTÜLEYİCİ (PrismJS Sözdizimi, Eşzamanlı Satır Numaraları, Satır Aralığı) --- */}
+                  {preview.kind === 'code' && (
+                    <div
+                      className="font-mono text-[12px] select-text min-h-full bg-[var(--jmc-bg)]"
+                      style={{ fontSize: `${fontSize}px` }}
+                    >
+                      <div className="w-full py-2">
+                        {filteredCodeRows.map(row => {
+                          const isMatch =
+                            searchQuery.trim().length > 0 &&
+                            row.raw.toLowerCase().includes(searchQuery.toLowerCase())
+                          const lineSpacingStyle =
+                            lineSpacing === 'compact'
+                              ? 'py-0 leading-[1.3]'
+                              : lineSpacing === 'relaxed'
+                                ? 'py-1.5 leading-[1.85]'
+                                : 'py-0.5 leading-[1.55]'
+
+                          return (
+                            <div
+                              key={row.lineIndex}
+                              className={`flex items-start transition-colors hover:bg-white/[0.04] ${lineSpacingStyle} ${
+                                isMatch ? 'bg-amber-500/15' : ''
+                              }`}
+                            >
+                              <span className="select-none pl-3 pr-4 text-right text-[var(--jmc-text-dim)] shrink-0 min-w-[3.75rem] font-mono text-[11px] opacity-60 border-r border-[var(--jmc-border-subtle)]">
+                                {row.lineIndex}
+                              </span>
+                              <div
+                                className={`flex-1 pl-4 pr-4 min-w-0 font-mono ${
+                                  codeWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre overflow-x-visible'
+                                } ${isMatch ? 'text-amber-200' : 'text-[var(--jmc-text)]'}`}
+                                dangerouslySetInnerHTML={{ __html: row.html }}
+                              />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- 2. MARKDOWN GÖRÜNTÜLEYİCİ --- */}
+                  {preview.kind === 'markdown' && (
+                    <div className="p-6 max-w-4xl mx-auto">
+                      {markdownMode === 'preview' ? (
+                        <div className="prose prose-invert max-w-none text-[13px] leading-relaxed">
+                          <MarkdownView content={preview.text || ''} />
+                        </div>
+                      ) : (
+                        <pre className="font-mono text-[12px] leading-relaxed p-4 rounded-lg bg-[var(--jmc-bg-surface)] whitespace-pre-wrap text-[var(--jmc-text)]">
+                          {preview.text}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+
+                  {/* --- 3. PDF GÖRÜNTÜLEYİCİ (Blob URL ve Yerleşik PDF Eklentisi) --- */}
+                  {preview.kind === 'pdf' && (
+                    <div className="h-full w-full flex flex-col">
+                      {pdfMode === 'embed' && (pdfBlobUrl || preview.dataUrl) ? (
+                        <object
+                          data={pdfBlobUrl || preview.dataUrl}
+                          type="application/pdf"
+                          className="h-full w-full border-0 bg-neutral-900 rounded-b-xl"
+                        >
+                          <embed
+                            src={pdfBlobUrl || preview.dataUrl}
+                            type="application/pdf"
+                            className="h-full w-full border-0 bg-neutral-900"
+                          />
+                        </object>
+                      ) : (
+                        <div className="p-6 md:p-8 max-w-4xl mx-auto w-full">
+                          <div className="rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 shadow-sm">
+                            <div className="flex items-center justify-between border-b border-[var(--jmc-border-subtle)] pb-3 mb-4">
+                              <h4 className="text-[13px] font-semibold text-[var(--jmc-text)]">
+                                PDF Ayıklanan Metin İçeriği
+                              </h4>
+                              <button
+                                type="button"
+                                onClick={handleCopy}
+                                className="inline-flex items-center gap-1 rounded bg-[var(--jmc-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] border border-[var(--jmc-border)]"
+                              >
+                                {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                                <span>{copied ? 'Kopyalandı' : 'Kopyala'}</span>
+                              </button>
+                            </div>
+                            <div className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-[var(--jmc-text)] select-text">
+                              {preview.text || 'Bu PDF dosyasından metin ayıklanamadı. PDF Görünümünü kullanın.'}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* --- 4. WORD / DOCX DOKÜMAN GÖRÜNTÜLEYİCİ --- */}
+                  {preview.kind === 'docx' && (
+                    <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6">
+                      <div className="rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-md space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--jmc-border-subtle)] pb-4">
+                          <div>
+                            <h2 className="text-[18px] md:text-[20px] font-bold text-[var(--jmc-text)] tracking-tight">
+                              {preview.title}
+                            </h2>
+                            <p className="text-[11.5px] text-[var(--jmc-text-dim)] mt-0.5">
+                              DOCX Dokümanı · Biçimlendirilmiş Okuma Görünümü
+                            </p>
+                          </div>
                           <button
                             type="button"
                             onClick={handleCopy}
-                            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] border border-[var(--jmc-border)]"
+                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
                           >
-                            {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                            <span>{copied ? 'Kopyalandı' : 'Kopyala'}</span>
+                            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                            <span>{copied ? 'Kopyalandı' : 'Tüm Metni Kopyala'}</span>
                           </button>
                         </div>
-                        <div className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-[var(--jmc-text)] select-text">
-                          {preview.text || 'Bu PDF dosyasından metin ayıklanamadı. PDF Görünümünü kullanın.'}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
-              {/* --- 4. WORD / DOCX DOKÜMAN GÖRÜNTÜLEYİCİ --- */}
-              {preview.kind === 'docx' && (
-                <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6">
-                  <div className="rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-md space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--jmc-border-subtle)] pb-4">
-                      <div>
-                        <h2 className="text-[18px] md:text-[20px] font-bold text-[var(--jmc-text)] tracking-tight">
-                          {preview.title}
-                        </h2>
-                        <p className="text-[11.5px] text-[var(--jmc-text-dim)] mt-0.5">
-                          DOCX Dokümanı · Biçimlendirilmiş Okuma Görünümü
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCopy}
-                        className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
-                      >
-                        {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                        <span>{copied ? 'Kopyalandı' : 'Tüm Metni Kopyala'}</span>
-                      </button>
-                    </div>
+                        <div className="space-y-3.5 pt-2 select-text">
+                          {preview.paragraphs && preview.paragraphs.length > 0 ? (
+                            preview.paragraphs
+                              .filter(p => !searchQuery.trim() || p.toLowerCase().includes(searchQuery.toLowerCase()))
+                              .map((p, idx) => {
+                                const trimmed = p.trim()
+                                const isMatch = searchQuery.trim() && trimmed.toLowerCase().includes(searchQuery.toLowerCase())
 
-                    <div className="space-y-3.5 pt-2 select-text">
-                      {preview.paragraphs && preview.paragraphs.length > 0 ? (
-                        preview.paragraphs
-                          .filter(p => !searchQuery.trim() || p.toLowerCase().includes(searchQuery.toLowerCase()))
-                          .map((p, idx) => {
-                            const trimmed = p.trim()
-                            const isMatch = searchQuery.trim() && trimmed.toLowerCase().includes(searchQuery.toLowerCase())
+                                // Basit Markdown Tablo Tespiti
+                                if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.includes('|')) {
+                                  const cells = trimmed
+                                    .split('|')
+                                    .map(c => c.trim())
+                                    .filter((_, i, arr) => i > 0 && i < arr.length - 1)
+                                  return (
+                                    <div key={idx} className="overflow-x-auto my-3 rounded-lg border border-[var(--jmc-border)]">
+                                      <table className="w-full text-left text-[12px]">
+                                        <tbody>
+                                          <tr className="bg-[var(--jmc-bg)]/60">
+                                            {cells.map((cell, cIdx) => (
+                                              <td
+                                                key={cIdx}
+                                                className="px-3.5 py-2 border-r border-[var(--jmc-border-subtle)] last:border-0 font-medium text-[var(--jmc-text)]"
+                                              >
+                                                {cell}
+                                              </td>
+                                            ))}
+                                          </tr>
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )
+                                }
 
-                            // Basit Markdown Tablo Tespiti
-                            if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.includes('|')) {
-                              const cells = trimmed
-                                .split('|')
-                                .map(c => c.trim())
-                                .filter((_, i, arr) => i > 0 && i < arr.length - 1)
-                              return (
-                                <div key={idx} className="overflow-x-auto my-3 rounded-lg border border-[var(--jmc-border)]">
-                                  <table className="w-full text-left text-[12px]">
-                                    <tbody>
-                                      <tr className="bg-[var(--jmc-bg)]/60">
-                                        {cells.map((cell, cIdx) => (
-                                          <td
-                                            key={cIdx}
-                                            className="px-3.5 py-2 border-r border-[var(--jmc-border-subtle)] last:border-0 font-medium text-[var(--jmc-text)]"
-                                          >
-                                            {cell}
-                                          </td>
-                                        ))}
-                                      </tr>
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )
-                            }
+                                // Madde İmli Paragraf
+                                if (trimmed.startsWith('•') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className={`flex items-start gap-2.5 pl-3 py-0.5 text-[13px] leading-relaxed ${
+                                        isMatch ? 'bg-amber-500/15 text-amber-200 rounded px-2' : 'text-[var(--jmc-text)]'
+                                      }`}
+                                    >
+                                      <span className="text-[var(--jmc-primary)] font-bold select-none">•</span>
+                                      <span>{trimmed.replace(/^[•\-\*]\s*/, '')}</span>
+                                    </div>
+                                  )
+                                }
 
-                            // Madde İmli Paragraf
-                            if (trimmed.startsWith('•') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-                              return (
-                                <div
-                                  key={idx}
-                                  className={`flex items-start gap-2.5 pl-3 py-0.5 text-[13px] leading-relaxed ${
-                                    isMatch ? 'bg-amber-500/15 text-amber-200 rounded px-2' : 'text-[var(--jmc-text)]'
-                                  }`}
-                                >
-                                  <span className="text-[var(--jmc-primary)] font-bold select-none">•</span>
-                                  <span>{trimmed.replace(/^[•\-\*]\s*/, '')}</span>
-                                </div>
-                              )
-                            }
-
-                            // Normal Paragraf
-                            return (
-                              <p
-                                key={idx}
-                                className={`text-[13px] leading-relaxed transition-colors ${
-                                  isMatch
-                                    ? 'bg-amber-500/15 text-amber-200 font-medium rounded p-1.5'
-                                    : 'text-[var(--jmc-text)]'
-                                }`}
-                              >
-                                {trimmed}
-                              </p>
-                            )
-                          })
-                      ) : (
-                        <p className="text-[13px] leading-relaxed text-[var(--jmc-text-muted)]">
-                          {preview.text || 'İçerik bulunamadı.'}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* --- 5. POWERPOINT / PPTX SLAYT GÖRÜNTÜLEYİCİ (Kenetlenmiş Sabit Gezinim Çubuğu) --- */}
-              {preview.kind === 'pptx' && preview.slides && (
-                <div className="flex h-full flex-col justify-between overflow-hidden">
-                  {/* Slayt İçerik Alanı (Ortalanmış ve Bağımsız Kaydırılabilir) */}
-                  <div className="flex-1 overflow-y-auto p-4 md:p-8 flex items-center justify-center">
-                    {preview.slides[activeSlideIndex] ? (
-                      <div className="w-full max-w-4xl min-h-[360px] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl flex flex-col justify-between transition-all">
-                        <div>
-                          <div className="flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)] border-b border-[var(--jmc-border-subtle)] pb-3">
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-400 px-2.5 py-0.5 font-semibold text-[10.5px]">
-                              <Presentation className="h-3 w-3" />
-                              Slayt {activeSlideIndex + 1} / {preview.slides.length}
-                            </span>
-                            <span className="truncate max-w-xs">{preview.title}</span>
-                          </div>
-                          <h2 className="mt-5 text-[20px] md:text-[24px] font-bold text-[var(--jmc-text)] tracking-tight">
-                            {preview.slides[activeSlideIndex].title || `Slayt ${activeSlideIndex + 1}`}
-                          </h2>
-                          {preview.slides[activeSlideIndex].bullets.length > 0 ? (
-                            <ul className="mt-6 space-y-3 text-[13.5px] md:text-[14.5px] text-[var(--jmc-text)] list-disc pl-6 leading-relaxed select-text">
-                              {preview.slides[activeSlideIndex].bullets.map((bullet, bIdx) => (
-                                <li key={bIdx} className="leading-relaxed">
-                                  {bullet}
-                                </li>
-                              ))}
-                            </ul>
+                                // Normal Paragraf
+                                return (
+                                  <p
+                                    key={idx}
+                                    className={`text-[13px] leading-relaxed transition-colors ${
+                                      isMatch
+                                        ? 'bg-amber-500/15 text-amber-200 font-medium rounded p-1.5'
+                                        : 'text-[var(--jmc-text)]'
+                                    }`}
+                                  >
+                                    {trimmed}
+                                  </p>
+                                )
+                              })
                           ) : (
-                            <p className="mt-6 text-[13px] italic text-[var(--jmc-text-dim)]">
-                              Bu slaytta madde imli metin bulunmuyor veya slayt yalnızca görsel/şema içeriyor olabilir.
+                            <p className="text-[13px] leading-relaxed text-[var(--jmc-text-muted)]">
+                              {preview.text || 'İçerik bulunamadı.'}
                             </p>
                           )}
                         </div>
+                      </div>
+                    </div>
+                  )}
 
-                        <div className="mt-8 pt-4 border-t border-[var(--jmc-border-subtle)] flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)]">
-                          <span>Klavye: ← Sol / → Sağ Ok tuşları ile gezinebilirsiniz</span>
-                          <span className="font-mono">
-                            {Math.round(((activeSlideIndex + 1) / preview.slides.length) * 100)}%
+                  {/* --- 5. POWERPOINT / PPTX SLAYT GÖRÜNTÜLEYİCİ (Kenetlenmiş Sabit Gezinim Çubuğu, Kesilmeyen Ortalı Düzen) --- */}
+                  {preview.kind === 'pptx' && preview.slides && (
+                    <div className="flex h-full flex-col justify-between overflow-hidden">
+                      {/* Slayt İçerik Alanı (Ortalanmış ve Kesintisiz Kaydırılabilir) */}
+                      <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center">
+                        {preview.slides[activeSlideIndex] ? (
+                          <div className="w-full max-w-4xl my-auto min-h-[380px] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl flex flex-col justify-between transition-all">
+                            <div>
+                              <div className="flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)] border-b border-[var(--jmc-border-subtle)] pb-3">
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-400 px-2.5 py-0.5 font-semibold text-[10.5px]">
+                                  <Presentation className="h-3 w-3" />
+                                  Slayt {activeSlideIndex + 1} / {preview.slides.length}
+                                </span>
+                                <span className="truncate max-w-xs">{preview.title}</span>
+                              </div>
+                              <h2 className="mt-5 text-[20px] md:text-[24px] font-bold text-[var(--jmc-text)] tracking-tight">
+                                {preview.slides[activeSlideIndex].title || `Slayt ${activeSlideIndex + 1}`}
+                              </h2>
+                              {preview.slides[activeSlideIndex].bullets.length > 0 ? (
+                                <ul className="mt-6 space-y-3 text-[13.5px] md:text-[14.5px] text-[var(--jmc-text)] list-disc pl-6 leading-relaxed select-text">
+                                  {preview.slides[activeSlideIndex].bullets.map((bullet, bIdx) => (
+                                    <li key={bIdx} className="leading-relaxed">
+                                      {bullet}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="mt-6 text-[13px] italic text-[var(--jmc-text-dim)]">
+                                  Bu slaytta madde imli metin bulunmuyor veya slayt yalnızca görsel/şema içeriyor olabilir.
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="mt-8 pt-4 border-t border-[var(--jmc-border-subtle)] flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)]">
+                              <span>Klavye: ← Sol / → Sağ Ok tuşları ile gezinebilirsiniz</span>
+                              <span className="font-mono">
+                                {Math.round(((activeSlideIndex + 1) / preview.slides.length) * 100)}%
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[12px] text-[var(--jmc-text-muted)] my-auto">Slayt bulunamadı.</p>
+                        )}
+                      </div>
+
+                      {/* SABİT & KENETLENMİŞ ALT KONTROL ÇUBUĞU */}
+                      <div className="shrink-0 border-t border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={activeSlideIndex <= 0}
+                            onClick={() => setActiveSlideIndex(i => Math.max(0, i - 1))}
+                            title="Önceki Slayt (Sol Ok)"
+                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-white hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            <span>Önceki Slayt</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={activeSlideIndex >= preview.slides.length - 1}
+                            onClick={() => setActiveSlideIndex(i => Math.min(preview.slides!.length - 1, i + 1))}
+                            title="Sonraki Slayt (Sağ Ok)"
+                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-white hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
+                          >
+                            <span>Sonraki Slayt</span>
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        {/* Slayt Numaraları / Hızlı Atlama Çubuğu */}
+                        <div className="flex items-center gap-1 overflow-x-auto max-w-xl py-1 no-scrollbar">
+                          {preview.slides.map((s, idx) => (
+                            <button
+                              key={s.slideNumber || idx}
+                              type="button"
+                              onClick={() => setActiveSlideIndex(idx)}
+                              title={`Slayt ${idx + 1}: ${s.title || 'Başlıksız'}`}
+                              className={`h-7 min-w-[28px] px-1.5 rounded text-[11px] font-mono transition-all ${
+                                activeSlideIndex === idx
+                                  ? 'bg-[var(--jmc-primary)] text-white font-bold shadow-xs scale-105'
+                                  : 'bg-[var(--jmc-bg)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] border border-[var(--jmc-border-subtle)]'
+                              }`}
+                            >
+                              {idx + 1}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[11.5px] font-semibold text-[var(--jmc-text)]">
+                            {activeSlideIndex + 1} / {preview.slides.length}
                           </span>
                         </div>
                       </div>
-                    ) : (
-                      <p className="text-[12px] text-[var(--jmc-text-muted)]">Slayt bulunamadı.</p>
-                    )}
-                  </div>
-
-                  {/* SABİT & KENETLENMİŞ ALT KONTROL ÇUBUĞU (Asla zıplamaz, içeriğe göre kaymaz) */}
-                  <div className="shrink-0 border-t border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={activeSlideIndex <= 0}
-                        onClick={() => setActiveSlideIndex(i => Math.max(0, i - 1))}
-                        title="Önceki Slayt (Sol Ok)"
-                        className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-white hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                        <span>Önceki Slayt</span>
-                      </button>
-                      <button
-                        type="button"
-                        disabled={activeSlideIndex >= preview.slides.length - 1}
-                        onClick={() => setActiveSlideIndex(i => Math.min(preview.slides!.length - 1, i + 1))}
-                        title="Sonraki Slayt (Sağ Ok)"
-                        className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-white hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
-                      >
-                        <span>Sonraki Slayt</span>
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
                     </div>
+                  )}
 
-                    {/* Slayt Numaraları / Hızlı Atlama Çubuğu */}
-                    <div className="flex items-center gap-1 overflow-x-auto max-w-xl py-1 no-scrollbar">
-                      {preview.slides.map((s, idx) => (
-                        <button
-                          key={s.slideNumber || idx}
-                          type="button"
-                          onClick={() => setActiveSlideIndex(idx)}
-                          title={`Slayt ${idx + 1}: ${s.title || 'Başlıksız'}`}
-                          className={`h-7 min-w-[28px] px-1.5 rounded text-[11px] font-mono transition-all ${
-                            activeSlideIndex === idx
-                              ? 'bg-[var(--jmc-primary)] text-white font-bold shadow-xs scale-105'
-                              : 'bg-[var(--jmc-bg)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] border border-[var(--jmc-border-subtle)]'
-                          }`}
-                        >
-                          {idx + 1}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[11.5px] font-semibold text-[var(--jmc-text)]">
-                        {activeSlideIndex + 1} / {preview.slides.length}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* --- 6. TABLO (CSV / TSV / XLSX) GÖRÜNTÜLEYİCİ --- */}
-              {(preview.kind === 'csv' || preview.kind === 'xlsx') && (
-                <div className="p-4">
-                  {filteredTableData.length > 0 ? (
-                    <div className="overflow-x-auto rounded-lg border border-[var(--jmc-border)]">
-                      <table className="w-full border-collapse text-left text-[12px]">
-                        <thead>
-                          <tr className="bg-[var(--jmc-bg-surface)] border-b border-[var(--jmc-border)]">
-                            {filteredTableData[0].map((h, hIdx) => (
-                              <th key={hIdx} className="px-3.5 py-2.5 font-semibold text-[var(--jmc-text)]">
-                                {h || `Sütun ${hIdx + 1}`}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredTableData.slice(1).map((row, rIdx) => (
-                            <tr
-                              key={rIdx}
-                              className="border-b border-[var(--jmc-border-subtle)] hover:bg-[var(--jmc-bg-surface)]/50 transition-colors"
-                            >
-                              {row.map((cell, cIdx) => (
-                                <td key={cIdx} className="px-3.5 py-2 text-[var(--jmc-text-muted)]">
-                                  {cell}
-                                </td>
+                  {/* --- 6. TABLO (CSV / TSV / XLSX) GÖRÜNTÜLEYİCİ --- */}
+                  {(preview.kind === 'csv' || preview.kind === 'xlsx') && (
+                    <div className="p-4">
+                      {filteredTableData.length > 0 ? (
+                        <div className="overflow-x-auto rounded-lg border border-[var(--jmc-border)]">
+                          <table className="w-full border-collapse text-left text-[12px]">
+                            <thead>
+                              <tr className="bg-[var(--jmc-bg-surface)] border-b border-[var(--jmc-border)]">
+                                {filteredTableData[0].map((h, hIdx) => (
+                                  <th key={hIdx} className="px-3.5 py-2.5 font-semibold text-[var(--jmc-text)]">
+                                    {h || `Sütun ${hIdx + 1}`}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredTableData.slice(1).map((row, rIdx) => (
+                                <tr
+                                  key={rIdx}
+                                  className="border-b border-[var(--jmc-border-subtle)] hover:bg-[var(--jmc-bg-surface)]/50 transition-colors"
+                                >
+                                  {row.map((cell, cIdx) => (
+                                    <td key={cIdx} className="px-3.5 py-2 text-[var(--jmc-text-muted)]">
+                                      {cell}
+                                    </td>
+                                  ))}
+                                </tr>
                               ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="p-8 text-center text-[12px] text-[var(--jmc-text-muted)]">
-                      Veri bulunamadı.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* --- 7. GÖRSEL GÖRÜNTÜLEYİCİ --- */}
-              {preview.kind === 'image' && preview.dataUrl && (
-                <div className="flex h-full w-full items-center justify-center overflow-auto p-4 bg-neutral-950/70">
-                  <img
-                    src={preview.dataUrl}
-                    alt={preview.title}
-                    style={{
-                      transform: `scale(${imageZoom}) rotate(${imageRotation}deg)`,
-                      transition: 'transform 0.15s ease-out',
-                    }}
-                    className="max-h-[80vh] max-w-[85vw] object-contain shadow-2xl rounded-md"
-                  />
-                </div>
-              )}
-
-              {/* --- 8. MEDYA (SES / VİDEO) GÖRÜNTÜLEYİCİ --- */}
-              {preview.kind === 'media' && preview.dataUrl && (
-                <div className="flex h-full w-full items-center justify-center p-8">
-                  {preview.mimeType.startsWith('video/') ? (
-                    <video
-                      controls
-                      src={preview.dataUrl}
-                      className="max-h-[75vh] max-w-[85vw] rounded-xl shadow-2xl"
-                    />
-                  ) : (
-                    <div className="rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-8 shadow-xl text-center space-y-4">
-                      <FileVideo className="mx-auto h-12 w-12 text-[var(--jmc-primary)]" />
-                      <h4 className="text-[14px] font-semibold text-[var(--jmc-text)]">
-                        {preview.title}
-                      </h4>
-                      <audio controls src={preview.dataUrl} className="w-80" />
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="p-8 text-center text-[12px] text-[var(--jmc-text-muted)]">
+                          Veri bulunamadı.
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* --- 9. DÜZ METİN / GENEL GÖRÜNTÜLEYİCİ --- */}
-              {(preview.kind === 'text' || preview.kind === 'binary') && (
-                <div className="p-6 max-w-4xl mx-auto font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap text-[var(--jmc-text)]">
-                  {preview.text}
-                </div>
+                  {/* --- 7. GÖRSEL GÖRÜNTÜLEYİCİ (Tam Otomatik Sığdırma, Yüzen Akıllı Slider) --- */}
+                  {preview.kind === 'image' && preview.dataUrl && (
+                    <div className="group relative flex h-full w-full items-center justify-center overflow-auto p-4 bg-neutral-950/70 select-none">
+                      <img
+                        src={preview.dataUrl}
+                        alt={preview.title}
+                        style={{
+                          transform: `scale(${imageZoom}) rotate(${imageRotation}deg)`,
+                          transition: 'transform 0.15s ease-out',
+                        }}
+                        className="max-h-[75vh] max-w-[88vw] object-contain shadow-2xl rounded-md transition-transform"
+                      />
+
+                      {/* Yüzen Kontrol Çubuğu */}
+                      <div
+                        className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-white/10 bg-neutral-900/80 px-4 py-2 backdrop-blur-md shadow-2xl transition-opacity duration-200 ${
+                          imageZoom !== 1 || imageRotation !== 0 ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setImageZoom(z => Math.max(0.2, z - 0.2))}
+                          className="rounded p-1 hover:bg-white/10 text-white transition-colors"
+                          title="Uzaklaş (-)"
+                        >
+                          <ZoomOut className="h-4 w-4" />
+                        </button>
+                        <input
+                          type="range"
+                          min="0.2"
+                          max="3"
+                          step="0.1"
+                          value={imageZoom}
+                          onChange={e => setImageZoom(parseFloat(e.target.value))}
+                          className="w-24 accent-[var(--jmc-primary)] cursor-pointer"
+                        />
+                        <span className="font-mono text-[11px] text-white/90 min-w-[42px] text-center">
+                          {Math.round(imageZoom * 100)}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setImageZoom(z => Math.min(3, z + 0.2))}
+                          className="rounded p-1 hover:bg-white/10 text-white transition-colors"
+                          title="Yakınlaş (+)"
+                        >
+                          <ZoomIn className="h-4 w-4" />
+                        </button>
+                        <div className="h-4 w-px bg-white/20 mx-1" />
+                        <button
+                          type="button"
+                          onClick={() => setImageRotation(r => (r + 90) % 360)}
+                          className="rounded p-1 hover:bg-white/10 text-white transition-colors"
+                          title="90° Döndür"
+                        >
+                          <RotateCw className="h-4 w-4" />
+                        </button>
+                        {(imageZoom !== 1 || imageRotation !== 0) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImageZoom(1)
+                              setImageRotation(0)
+                            }}
+                            className="rounded px-2 py-0.5 text-[10.5px] font-medium bg-white/15 hover:bg-white/25 text-white transition-colors ml-1"
+                          >
+                            Sıfırla
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- 8. MEDYA (SES / VİDEO) GÖRÜNTÜLEYİCİ --- */}
+                  {preview.kind === 'media' && preview.dataUrl && (
+                    <div className="flex h-full w-full items-center justify-center p-8">
+                      {preview.mimeType.startsWith('video/') ? (
+                        <video
+                          controls
+                          src={preview.dataUrl}
+                          className="max-h-[75vh] max-w-[85vw] rounded-xl shadow-2xl"
+                        />
+                      ) : (
+                        <div className="rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-8 shadow-xl text-center space-y-4">
+                          <FileVideo className="mx-auto h-12 w-12 text-[var(--jmc-primary)]" />
+                          <h4 className="text-[14px] font-semibold text-[var(--jmc-text)]">
+                            {preview.title}
+                          </h4>
+                          <audio controls src={preview.dataUrl} className="w-80" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* --- 9. BAĞLANTI (LINK) KARTI GÖRÜNTÜLEYİCİ --- */}
+                  {(preview.kind === 'binary' || preview.kind === 'text') && attachment.alternateLink && (
+                    <div className="p-8 max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[350px]">
+                      <div className="w-full rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-8 shadow-xl text-center space-y-4">
+                        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)]">
+                          <Link className="h-7 w-7" />
+                        </div>
+                        <div>
+                          <h3 className="text-[16px] font-bold text-[var(--jmc-text)]">
+                            {attachment.title}
+                          </h3>
+                          <p className="mt-1 font-mono text-[11px] text-[var(--jmc-text-dim)] truncate max-w-md mx-auto">
+                            {attachment.alternateLink}
+                          </p>
+                        </div>
+                        <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => void window.jmcAPI?.openExternalUrl(attachment.alternateLink!)}
+                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-4 py-2 text-[12px] font-semibold text-white shadow-md hover:bg-[var(--jmc-primary-hover)] active:scale-95 transition-all"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            <span>Tarayıcıda Aç</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCopyLink}
+                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-2 text-[12px] font-medium text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] active:scale-95 transition-all"
+                          >
+                            {linkCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                            <span>{linkCopied ? 'Kopyalandı' : 'Bağlantıyı Kopyala'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- 10. DÜZ METİN / GENEL GÖRÜNTÜLEYİCİ --- */}
+                  {(preview.kind === 'text' || preview.kind === 'binary') && !attachment.alternateLink && (
+                    <div className="p-6 max-w-4xl mx-auto font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap text-[var(--jmc-text)]">
+                      {preview.text}
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

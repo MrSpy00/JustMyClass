@@ -17,6 +17,7 @@ import {
   MessageCircleQuestion,
   PencilLine,
   Save,
+  Sparkles,
   Undo2,
 } from 'lucide-react'
 import { Attachment, Course, CourseWork, DraftEntry, Rubric, StudentSubmission } from '../../types/jmc'
@@ -30,6 +31,7 @@ interface DocumentStudioProps {
   onDownloadAttachment: (att: Attachment) => void
   onSelectFileForContext: (att: Attachment) => void
   onPreviewAttachment?: (att: Attachment) => void
+  onInspectAttachment?: (att: Attachment) => void
   onTriggerAiMode: (mode: 'socratic' | 'draft' | 'rubric' | 'quiz') => void
   /** Teslim sonrasi AppLayout'un yerel durumunu gunceller. */
   onSubmissionChanged?: (state: StudentSubmission['state']) => void
@@ -87,6 +89,7 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
   onDownloadAttachment,
   onSelectFileForContext,
   onPreviewAttachment,
+  onInspectAttachment,
   onTriggerAiMode,
   onSubmissionChanged,
   onBackToCourse,
@@ -100,6 +103,8 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
   const [notice, setNotice] = useState<Notice>(null)
   const [copied, setCopied] = useState(false)
   const [copyFailed, setCopyFailed] = useState(false)
+  const [downloadedStatusMap, setDownloadedStatusMap] = useState<Record<string, { exists: boolean; filePath?: string }>>({})
+  const [downloadingIds, setDownloadingIds] = useState<Record<string, boolean>>({})
 
   const courseId = course?.id ?? ''
   const workId = courseWork.id
@@ -252,6 +257,63 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
       )
     : null
   const submittedFiles = submission?.assignmentSubmission?.attachments ?? []
+
+  // Disk üzerindeki indirilen dosyaları kontrol et
+  useEffect(() => {
+    let cancelled = false
+    if (!window.jmcAPI?.checkDownloadedFile) return
+
+    const allAttachments = [...(courseWork.materials || []), ...(submittedFiles || [])]
+    if (allAttachments.length === 0) return
+
+    Promise.all(
+      allAttachments.map(async att => {
+        try {
+          const res = await window.jmcAPI.checkDownloadedFile(att)
+          return { id: att.id, driveId: att.driveFileId, res }
+        } catch {
+          return { id: att.id, driveId: att.driveFileId, res: { exists: false } }
+        }
+      }),
+    ).then(results => {
+      if (cancelled) return
+      setDownloadedStatusMap(prev => {
+        const next = { ...prev }
+        for (const item of results) {
+          if (item.res.exists) {
+            next[item.id] = item.res
+            if (item.driveId) {
+              next[item.driveId] = item.res
+            }
+          }
+        }
+        return next
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [courseWork.materials, submittedFiles])
+
+  const handleDownloadItem = async (att: Attachment) => {
+    setDownloadingIds(prev => ({ ...prev, [att.id]: true }))
+    try {
+      await onDownloadAttachment(att)
+      if (window.jmcAPI?.checkDownloadedFile) {
+        const res = await window.jmcAPI.checkDownloadedFile(att)
+        if (res.exists) {
+          setDownloadedStatusMap(prev => ({
+            ...prev,
+            [att.id]: res,
+            ...(att.driveFileId ? { [att.driveFileId]: res } : {}),
+          }))
+        }
+      }
+    } finally {
+      setDownloadingIds(prev => ({ ...prev, [att.id]: false }))
+    }
+  }
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-[var(--jmc-bg)] text-[var(--jmc-text)]">
@@ -427,7 +489,10 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
                         attachment={mat}
                         onOpen={() => onSelectFileForContext(mat)}
                         onPreview={() => onPreviewAttachment?.(mat)}
-                        onDownload={() => onDownloadAttachment(mat)}
+                        onInspect={() => onInspectAttachment?.(mat)}
+                        onDownload={() => void handleDownloadItem(mat)}
+                        isDownloading={Boolean(downloadingIds[mat.id])}
+                        downloadedStatus={downloadedStatusMap[mat.id] || (mat.driveFileId ? downloadedStatusMap[mat.driveFileId] : undefined)}
                         downloadLabel={t('coursework.download')}
                         localLabel={t('coursework.offlineAvailable')}
                       />
@@ -447,7 +512,10 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
                         attachment={att}
                         onOpen={() => onSelectFileForContext(att)}
                         onPreview={() => onPreviewAttachment?.(att)}
-                        onDownload={() => onDownloadAttachment(att)}
+                        onInspect={() => onInspectAttachment?.(att)}
+                        onDownload={() => void handleDownloadItem(att)}
+                        isDownloading={Boolean(downloadingIds[att.id])}
+                        downloadedStatus={downloadedStatusMap[att.id] || (att.driveFileId ? downloadedStatusMap[att.driveFileId] : undefined)}
                         downloadLabel={t('coursework.download')}
                         localLabel={t('coursework.offlineAvailable')}
                       />
@@ -663,20 +731,42 @@ const AttachmentRow: React.FC<{
   attachment: Attachment
   onOpen: () => void
   onPreview?: () => void
+  onInspect?: () => void
   onDownload: () => void
+  isDownloading?: boolean
+  downloadedStatus?: { exists: boolean; filePath?: string }
   downloadLabel: string
   localLabel: string
-}> = ({ attachment, onOpen, onPreview, onDownload, downloadLabel, localLabel }) => {
+}> = ({
+  attachment,
+  onOpen,
+  onPreview,
+  onInspect,
+  onDownload,
+  isDownloading,
+  downloadedStatus,
+  downloadLabel,
+  localLabel,
+}) => {
   const { t } = useI18n()
   const isPdf = Boolean(attachment.mimeType?.includes('pdf'))
-  const meta = attachment.isLocalAvailable
-    ? `${localLabel} · ${attachment.sha256 ? `sha256 ${attachment.sha256.slice(0, 12)}` : ''}`
+  const isDownloaded = Boolean(
+    downloadedStatus?.exists ||
+    (attachment.isLocalAvailable && (attachment.downloadedPath || attachment.localPath))
+  )
+  const targetPath =
+    downloadedStatus?.filePath ||
+    attachment.downloadedPath ||
+    attachment.localPath
+
+  const meta = isDownloaded
+    ? `${localLabel} · ${attachment.sha256 ? `sha256 ${attachment.sha256.slice(0, 12)}` : 'Yerel kopya'}`
     : attachment.driveFileId
       ? t('coursework.onDrive')
       : t('coursework.link')
 
   return (
-    <div className="flex items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-2 shadow-[var(--jmc-shadow-sm)]">
+    <div className="flex items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-2 shadow-[var(--jmc-shadow-sm)] border border-[var(--jmc-border-subtle)]">
       {isPdf ? (
         <FileText className="h-4 w-4 shrink-0 text-[var(--jmc-text-dim)]" />
       ) : (
@@ -688,54 +778,78 @@ const AttachmentRow: React.FC<{
         className="min-w-0 flex-1 text-left"
         title="Görüntülemek için tıklayın"
       >
-        <span className="block truncate text-[12px] font-medium hover:text-[var(--jmc-primary)] transition-colors">{attachment.title}</span>
-        <span className="block truncate font-mono text-[10.5px] text-[var(--jmc-text-dim)]">{meta}</span>
+        <span className="block truncate text-[12px] font-medium hover:text-[var(--jmc-primary)] transition-colors">
+          {attachment.title}
+        </span>
+        <span className="block truncate font-mono text-[10.5px] text-[var(--jmc-text-dim)]">
+          {meta}
+        </span>
       </button>
 
-      {onPreview && (attachment.driveFileId || attachment.isLocalAvailable || attachment.alternateLink) && (
-        <button
-          type="button"
-          onClick={onPreview}
-          title="Uygulama İçinde Görüntüle"
-          className="shrink-0 inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
-        >
-          <Eye className="h-3.5 w-3.5" />
-          <span>Görüntüle</span>
-        </button>
-      )}
+      <div className="flex items-center gap-1 shrink-0">
+        {onPreview && (attachment.driveFileId || isDownloaded || attachment.alternateLink) && (
+          <button
+            type="button"
+            onClick={onPreview}
+            title="Uygulama İçinde Görüntüle"
+            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            <span>Görüntüle</span>
+          </button>
+        )}
 
-      {attachment.isLocalAvailable && (attachment.downloadedPath || attachment.localPath) ? (
-        <div className="flex items-center gap-1 shrink-0">
+        {onInspect && (attachment.driveFileId || isDownloaded || attachment.alternateLink) && (
           <button
             type="button"
-            onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(attachment.downloadedPath || attachment.localPath!) : window.jmcAPI?.openLocalFile(attachment.localPath!))}
-            title="İndirilen Dosyayı Aç"
-            className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+            onClick={onInspect}
+            title="Yapay Zekâ Asistanı ile İncele"
+            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
           >
-            <FolderOpen className="h-3.5 w-3.5" />
-            <span>Aç</span>
+            <Sparkles className="h-3 w-3" />
+            <span className="hidden sm:inline">İncele</span>
           </button>
+        )}
+
+        {isDownloaded && targetPath ? (
+          <>
+            <button
+              type="button"
+              onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(targetPath) : window.jmcAPI?.openLocalFile(targetPath))}
+              title="İndirilen Dosyayı Aç"
+              className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              <span>Aç</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void window.jmcAPI?.showItemInFolder?.(targetPath)}
+              title="İndirilenler Klasöründe Göster"
+              className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
+            >
+              <Folder className="h-3.5 w-3.5 text-amber-500" />
+              <span className="hidden sm:inline">Klasörde</span>
+            </button>
+          </>
+        ) : (
           <button
             type="button"
-            onClick={() => void window.jmcAPI?.showItemInFolder?.(attachment.downloadedPath || attachment.localPath!)}
-            title="İndirilenler Klasöründe Göster"
-            className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
+            onClick={onDownload}
+            disabled={isDownloading}
+            title={downloadLabel}
+            aria-label={`${downloadLabel}: ${attachment.title}`}
+            className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors disabled:opacity-50"
           >
-            <Folder className="h-3.5 w-3.5 text-amber-500" />
-            <span className="hidden sm:inline">Klasörde</span>
+            {isDownloading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary)]" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            <span>{isDownloading ? 'İndiriliyor...' : 'İndir'}</span>
           </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={onDownload}
-          title={downloadLabel}
-          aria-label={`${downloadLabel}: ${attachment.title}`}
-          className="shrink-0 rounded-[var(--jmc-radius-sm)] p-1.5 text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg)] hover:text-[var(--jmc-text)]"
-        >
-          <Download className="h-3.5 w-3.5" />
-        </button>
-      )}
+        )}
+      </div>
     </div>
   )
 }

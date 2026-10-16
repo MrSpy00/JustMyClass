@@ -20,6 +20,8 @@ import {
   KeyRound,
   Library,
   LogIn,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRightClose,
   Paperclip,
   Plus,
@@ -306,6 +308,23 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [syncing, setSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [coursesOpen, setCoursesOpen] = useState<boolean>(() => {
+    try {
+      const stored = window.localStorage.getItem('jmc.coursesOpen')
+      return stored !== null ? stored === 'true' : true
+    } catch {
+      return true
+    }
+  })
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('jmc.coursesOpen', String(coursesOpen))
+    } catch {
+      /* ignore */
+    }
+  }, [coursesOpen])
+
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [chatAttachment, setChatAttachment] = useState<ChatAttachment | null>(null)
@@ -1135,6 +1154,25 @@ const resetSessionUiState = useCallback(() => {
     [onNotify],
   )
 
+  const handleInspectAttachment = useCallback(
+    (att: Attachment) => {
+      setInspectorOpen(true)
+      const title = att.title || 'Dosya'
+      setInputPrompt(`Lütfen "${title}" ekini/materyalini ayrıntılı incele, ana temaları ve ders için önemini özetle.`)
+      const updated: ActiveContext = {
+        ...activeContextRef.current,
+        activeFileId: att.driveFileId ?? att.id,
+        activeFileName: att.title,
+        activeFileMimeType: att.mimeType,
+      }
+      activeContextRef.current = updated
+      setActiveContext(updated)
+      void window.jmcAPI?.updateActiveContext(updated)
+      onNotify('success', `"${title}" asistan bağlamına eklendi.`)
+    },
+    [onNotify],
+  )
+
   const handleSyncAll = useCallback(async () => {
     const currentAccount = accountRef.current || (await window.jmcAPI.getAccount())
     if (!currentAccount) {
@@ -1453,6 +1491,16 @@ const resetSessionUiState = useCallback(() => {
           </button>
 
           <div className="flex flex-col gap-1">
+            <RailButton
+              label={coursesOpen ? 'Dersleri daralt' : 'Dersleri genişlet'}
+              onClick={() => setCoursesOpen(prev => !prev)}
+            >
+              {coursesOpen ? (
+                <PanelLeftClose className="h-[18px] w-[18px] text-[var(--jmc-primary)]" />
+              ) : (
+                <BookOpen className="h-[18px] w-[18px] text-[var(--jmc-text-muted)]" />
+              )}
+            </RailButton>
             <RailButton label="Komut paleti (Ctrl+K)" onClick={() => setPaletteOpen(true)}>
               <Search className="h-[18px] w-[18px]" />
             </RailButton>
@@ -1516,14 +1564,31 @@ const resetSessionUiState = useCallback(() => {
 
       {/* ---------------- Ders ve görev listesi ---------------- */}
       <aside
-        style={{ width: `${leftSidebarWidth}px` }}
-        className="flex shrink-0 flex-col bg-[var(--jmc-bg-elevated)] overflow-hidden"
+        aria-label={t('courses.title')}
+        style={{ width: coursesOpen ? `${leftSidebarWidth}px` : '0px' }}
+        className={`flex shrink-0 flex-col bg-[var(--jmc-bg-elevated)] transition-[width,opacity] duration-200 ease-out select-none overflow-hidden ${
+          coursesOpen
+            ? 'opacity-100 border-r border-[var(--jmc-border)]'
+            : 'opacity-0 border-r-0 pointer-events-none'
+        }`}
       >
-        <header className="flex flex-col gap-1 px-4 py-3 border-b border-[var(--jmc-border-subtle)]">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[13px] font-semibold tracking-tight">{t('courses.title')}</h2>
-            <span className="tnum text-[11px] text-[var(--jmc-text-dim)]">{courses.length}</span>
-          </div>
+        <div style={{ width: `${leftSidebarWidth}px` }} className="flex h-full flex-col">
+          <header className="flex flex-col gap-1 px-4 py-3 border-b border-[var(--jmc-border-subtle)]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[13px] font-semibold tracking-tight">{t('courses.title')}</h2>
+                <span className="tnum text-[11px] text-[var(--jmc-text-dim)]">{courses.length}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCoursesOpen(false)}
+                aria-label="Dersleri daralt"
+                title="Dersleri daralt"
+                className="rounded p-1 text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-text)] active:scale-95"
+              >
+                <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
           {account?.institution && (
             <div className="flex items-center gap-1.5 truncate text-[10.5px] font-medium text-[var(--jmc-primary)]">
               <GraduationCap className="h-3 w-3 shrink-0" />
@@ -1716,24 +1781,40 @@ const resetSessionUiState = useCallback(() => {
             </button>
           </div>
         </footer>
+        </div>
       </aside>
 
       {/* ---------------- Sol panel yeniden boyutlandırıcı ---------------- */}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        onMouseDown={e => {
-          e.preventDefault()
-          isDraggingLeftRef.current = true
-          document.body.style.cursor = 'col-resize'
-          document.body.style.userSelect = 'none'
-        }}
-        className="w-1 cursor-col-resize hover:bg-[var(--jmc-primary)] transition-colors z-10 shrink-0 select-none bg-[var(--jmc-border-subtle)]"
-        title="Genişliği ayarla"
-      />
+      {coursesOpen && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onMouseDown={e => {
+            e.preventDefault()
+            isDraggingLeftRef.current = true
+            document.body.style.cursor = 'col-resize'
+            document.body.style.userSelect = 'none'
+          }}
+          className="w-1 cursor-col-resize hover:bg-[var(--jmc-primary)] transition-colors z-10 shrink-0 select-none bg-[var(--jmc-border-subtle)]"
+          title="Genişliği ayarla"
+        />
+      )}
 
       {/* ---------------- Ana içerik ---------------- */}
       <main className="relative min-w-0 flex-1 overflow-hidden flex flex-col">
+        {!coursesOpen && (
+          <button
+            type="button"
+            onClick={() => setCoursesOpen(true)}
+            aria-label="Dersleri göster"
+            title="Dersleri göster"
+            className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-elevated)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-text-muted)] border border-[var(--jmc-border)] shadow-[var(--jmc-shadow-md)] transition-all duration-200 hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] hover:scale-[1.02] active:scale-[0.98] animate-pop-in"
+          >
+            <PanelLeftOpen className="h-4 w-4 text-[var(--jmc-primary)]" />
+            <span>{t('courses.title')}</span>
+            <span className="tnum text-[10.5px] text-[var(--jmc-text-dim)]">({courses.length})</span>
+          </button>
+        )}
         {!inspectorOpen && (
           <button
             type="button"
@@ -1757,6 +1838,7 @@ const resetSessionUiState = useCallback(() => {
             submission={currentSubmission}
             onDownloadAttachment={handleDownloadAttachment}
             onPreviewAttachment={handleOpenPreview}
+            onInspectAttachment={handleInspectAttachment}
             onSelectFileForContext={selectFileForContext}
             onTriggerAiMode={mode => setAiMode(mode)}
             onSubmissionChanged={state =>
@@ -1777,6 +1859,7 @@ const resetSessionUiState = useCallback(() => {
             isSyncing={syncing}
             onDownloadAttachment={handleDownloadAttachment}
             onPreviewAttachment={handleOpenPreview}
+            onInspectAttachment={handleInspectAttachment}
           />
         ) : (
           <div className="grid h-full place-items-center p-8">

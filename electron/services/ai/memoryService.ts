@@ -157,7 +157,7 @@ export class JustMyClassMemoryService {
     if (!text || text.length < 5) return
 
     // 1. Bölüm / Sınıf / Rol ifadeleri
-    const deptMatch = text.match(/\b([A-Za-zÇĞİÖŞÜçğıöşü\s]+?(?:mühendisliği|bölümü|öğrencisiyim|üniversitesindeyim|fakültesi))\b/i)
+    const deptMatch = text.match(/\b([A-Za-zÇĞİÖŞÜçğıöşü\s]+?(?:mühendisliği|bölümü|öğrencisiyim|üniversitesindeyim|fakültesi|\d\.\s*sınıf))\b/i)
     if (deptMatch && deptMatch[1].length < 60) {
       this.saveItem({
         category: 'academic',
@@ -167,20 +167,69 @@ export class JustMyClassMemoryService {
       })
     }
 
-    // 2. Özel kural veya istek ifadeleri: "Bundan sonra...", "Her zaman...", "Asla..."
+    // 2. Özel kural veya istek ifadeleri: "Bundan sonra...", "Her zaman...", "Asla...", "Lütfen..."
     const ruleMatch = text.match(/(?:bundan sonra|her zaman|lütfen her yanıtta|bana hep|asla)\s+([^.!?\n]{6,120})/i)
     if (ruleMatch && ruleMatch[1]) {
       this.saveItem({
         category: 'rule',
-        key: 'Öğrenci Kuralı',
+        key: 'Öğrenci Kuralı / Tercihi',
         value: ruleMatch[0].trim(),
         source: 'assistant_extracted',
       })
     }
 
-    // 3. Sohbet hedefi (ilk mesajlarda ödev/konu belirleme)
-    if (sessionId && (text.toLowerCase().includes('ödevi') || text.toLowerCase().includes('raporu') || text.toLowerCase().includes('projesi'))) {
-      const subjectMatch = text.match(/(?:[\w\s-]+\s+(?:ödevi|raporu|projesi|sunumu))/i)
+    // 3. Yazılım Dili / Teknoloji Tercihi
+    const techMatch = text.match(/\b(Python|JavaScript|TypeScript|C\+\+|C#|Java|Rust|Go|SQL|PHP|Flutter|Dart|React|Vue|Angular|Kotlin|Swift|MATLAB|R)\b(?:\s+(?:kullan|ile yaz|ile kodla|üzerinden|dilinde|kodla))?/i)
+    if (techMatch && techMatch[1]) {
+      this.saveItem({
+        category: 'preference',
+        key: 'Tercih Edilen Teknoloji / Dil',
+        value: techMatch[1],
+        source: 'assistant_extracted',
+      })
+    }
+
+    // 4. Açıklama ve Anlatım Tarzı Tercihi
+    if (/kısa ve öz|özetle|detaylandırma|uzatmadan/i.test(text)) {
+      this.saveItem({
+        category: 'preference',
+        key: 'Cevap Tarzı',
+        value: 'Kısa ve öz, doğrudan sonuca odaklı',
+        source: 'assistant_extracted',
+      })
+    } else if (/adım adım|detaylı açıkla|ayrıntılı anlat|tüm adımları/i.test(text)) {
+      this.saveItem({
+        category: 'preference',
+        key: 'Cevap Tarzı',
+        value: 'Adım adım, ayrıntılı ve açıklayıcı',
+        source: 'assistant_extracted',
+      })
+    } else if (/akademik dille|kaynakçalı|bilimsel/i.test(text)) {
+      this.saveItem({
+        category: 'preference',
+        key: 'Cevap Tarzı',
+        value: 'Akademik ve kurallara uygun biçim',
+        source: 'assistant_extracted',
+      })
+    }
+
+    // 5. Sınav ve Teslim Tarihi Takibi
+    const deadlineMatch = text.match(/\b((?:vize|final|büt|proje|ödev|sunum)\s+(?:tarihi|haftası|için|yarın|haftaya|pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar|günü))(?:\s+([^.!?\n]{3,60}))?/i)
+    if (deadlineMatch && deadlineMatch[0]) {
+      this.saveItem(
+        {
+          category: 'academic',
+          key: 'Yaklaşan Teslim / Sınav Notu',
+          value: deadlineMatch[0].trim(),
+          source: 'assistant_extracted',
+        },
+        sessionId,
+      )
+    }
+
+    // 6. Sohbet hedefi (ilk mesajlarda ödev/konu belirleme)
+    if (sessionId && (text.toLowerCase().includes('ödevi') || text.toLowerCase().includes('raporu') || text.toLowerCase().includes('projesi') || text.toLowerCase().includes('dersi'))) {
+      const subjectMatch = text.match(/(?:[\w\s-]+\s+(?:ödevi|raporu|projesi|sunumu|dersi))/i)
       if (subjectMatch) {
         this.saveItem(
           {

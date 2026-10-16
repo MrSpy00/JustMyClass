@@ -105,7 +105,7 @@ export class UpdateService {
       stage: 'idle',
       currentVersion: app.getVersion(),
       configured: true,
-      feedUrl: `GitHub (${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO})`,
+      feedUrl: `https://github.com/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases`,
     }
     this.readFeedUrlFromStorage()
   }
@@ -116,7 +116,7 @@ export class UpdateService {
 
   /**
    * Adres depoda `update.feedUrl` anahtari altinda saklanir.
-   * Bos ise resmi GitHub deposu (MrSpy00/JustMyClass) kullanilir.
+   * Bos ise resmi GitHub deposu (https://github.com/MrSpy00/JustMyClass/releases) kullanilir.
    */
   private readFeedUrlFromStorage(): void {
     try {
@@ -135,16 +135,16 @@ export class UpdateService {
   /**
    * Besleme adresini ayarlar ve dogrular.
    *
-   * BOS DIZGI "kapali" demektir; bu ayrica kullaniciya karsi
-   * gorunur olur (ozellik kilitlenmez, yalnizca durumu bildirilir).
+   * BOS DIZGI "varsayilan GitHub deposu" demektir.
    */
   public setFeedUrl(raw: string): { ok: boolean; error?: string; status: UpdateStatus } {
     const value = (raw ?? '').trim()
 
-    if (!value) {
-      this.configuredUrl = null
-      void this.storageService.setSetting('update.feedUrl', '')
-      this.applyFeedUrl('')
+    if (!value || value.toLowerCase().includes('github.com') || value.toLowerCase().startsWith('github (')) {
+      const canonical = `https://github.com/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases`
+      this.configuredUrl = canonical
+      void this.storageService.setSetting('update.feedUrl', canonical)
+      this.applyFeedUrl(canonical)
       return { ok: true, status: this.status }
     }
 
@@ -152,7 +152,7 @@ export class UpdateService {
     try {
       parsed = new URL(value)
     } catch {
-      const error = 'Adres geçersiz. Örnek: https://sunucu/justmyclass/surumler'
+      const error = 'Adres geçersiz. Örnek: https://sunucu/justmyclass/surumler veya https://github.com/MrSpy00/JustMyClass/releases'
       this.patch({ stage: 'error', error, configured: true, feedUrl: value })
       return { ok: false, error, status: this.status }
     }
@@ -180,17 +180,12 @@ export class UpdateService {
   }
 
   private applyFeedUrl(value: string): void {
-    if (!value) {
-      this.configuredUrl = null
-      this.patch({
-        configured: true,
-        feedUrl: `GitHub (${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO})`,
-      })
-      this.wire()
-      return
-    }
-    this.configuredUrl = value
-    this.patch({ configured: true, feedUrl: value })
+    const targetUrl = value || `https://github.com/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases`
+    this.configuredUrl = targetUrl
+    this.patch({
+      configured: true,
+      feedUrl: targetUrl,
+    })
     this.wire()
   }
 

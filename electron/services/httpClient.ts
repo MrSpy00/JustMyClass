@@ -47,6 +47,28 @@ export class HttpError extends Error {
  * (baska kiracilarin verileri dahil) birlikte gonderilmesine yol acar.
  * Bu yuzden her zaman yeni, tam boyutlu bir kopya uretilir.
  */
+/**
+ * Calisma zamanina gore en uygun fetch uygulamasini secer.
+ * Electron ana surecinde (Chromium ag katmani) `net.fetch` kullanilir.
+ * Bu sayede Windows sistem proxy ayarlari, kurumsal sertifikalar (universite/eduroam)
+ * ve PAC betikleri otomatik olarak devreye girer.
+ * Test ve Node ortamlarinda `globalThis.fetch` kullanilir.
+ */
+function getFetchImpl(): typeof fetch {
+  try {
+    if (typeof process !== 'undefined' && process.versions?.electron) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const electron = require('electron')
+      if (electron?.net?.fetch) {
+        return electron.net.fetch.bind(electron.net)
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return globalThis.fetch.bind(globalThis)
+}
+
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength)
   copy.set(bytes)
@@ -207,7 +229,8 @@ export class HttpClient {
             : toArrayBuffer(body)
 
       try {
-        const response = await fetch(url, {
+        const fetchFn = getFetchImpl()
+        const response = await fetchFn(url, {
           method,
           headers: {
             'User-Agent': this.userAgent,
@@ -216,26 +239,11 @@ export class HttpClient {
           },
           body: fetchBody,
           signal: controller.signal,
-          // Node fetch electron main process'te zaten CORS uygulamaz.
           redirect: 'follow',
         })
 
         if (response.ok) {
           if (raw) {
-            // Akis (SSE) icin zaman asimi KALDIRILMAZ.
-            //
-            // Onceki surumde `raw` donusunde `finally` bloğu zaman asimini
-            // temizliyordu; yani 180/300 saniyelik zaman asimi yanit
-            // basliklari geldikten SONRA iptal oluyordu. Govde akisi
-            // ortada kesildiginde `reader.read()` sonsuza kadar bekliyor,
-            // kullanici "Yanit bekleniyor..." ekraninda takili kalıyor ve
-            // butunlar pasifleşiyordu.
-            //
-            // Cozum: akis icin ayri bir "govde zaman asimi" olusturulur ve
-            // bu sinyAL yanit govdesine baglanir. Cagiran taraf
-            // `reader` bitince `controller`'a erisemeyecegi icin, burada
-            // `options.signal` uzerinden dis iptal desteklenir ve
-            // sonraki satirlarda `release()` icin akis kaydi tutulur.
             if (options.timeoutMs !== 0 && raw) {
               const bodyDeadline = setTimeout(() => {
                 controller.abort(new Error('Yanit akisi zaman asimina ugradi.'))
@@ -287,10 +295,13 @@ export class HttpClient {
         const isAbort =
           err instanceof Error &&
           (err.name === 'AbortError' || err.message.includes('zaman asimi'))
-        // Zaman asimi ve ag hatalari yeniden denenebilir.
-        if (!isAbort && err instanceof TypeError) {
-          // fetch ag hatasi (DNS, baglanti reddi vb.)
+
+        const cause = (err as any)?.cause
+        const causeDetail = cause ? ` (${cause.code || cause.message || String(cause)})` : ''
+        if (err instanceof Error && !err.message.includes('(') && causeDetail) {
+          err.message = `${err.message}${causeDetail}`
         }
+
         lastError = err as Error
         if (attempt < maxRetries) {
           this.stats.retries += 1

@@ -1253,59 +1253,66 @@ function buildAuthSuccessHtml(account: Account): string {
       border-radius: 20px;
       margin-bottom: 24px;
     }
-    .progress-track {
-      width: 100%;
-      height: 4px;
-      background: rgba(255, 255, 255, 0.08);
-      border-radius: 2px;
-      overflow: hidden;
-      margin-bottom: 12px;
+    .status-notice {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.22);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 22px;
+      text-align: left;
     }
-    .progress-bar {
-      height: 100%;
-      background: linear-gradient(90deg, #10B981, #06B6D4);
-      width: 100%;
-      transform-origin: left;
-      animation: countdown 3.5s linear forwards;
+    .status-notice svg {
+      flex-shrink: 0;
+      color: #10B981;
     }
-    @keyframes countdown {
-      from { transform: scaleX(1); }
-      to { transform: scaleX(0); }
+    .status-notice p {
+      font-size: 13px;
+      line-height: 1.5;
+      color: #E2E8F0;
+      margin: 0;
     }
-    .footer-text {
+    .status-notice strong {
+      color: #38BDF8;
+      font-weight: 600;
+    }
+    .footer-hint {
       font-size: 12px;
       color: #64748B;
-      margin-bottom: 24px;
+      margin-bottom: 18px;
+      line-height: 1.4;
     }
     .actions {
       display: flex;
+      justify-content: center;
       gap: 10px;
     }
     .btn {
-      flex: 1;
-      padding: 11px 16px;
+      padding: 11px 24px;
       border-radius: 12px;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
       text-decoration: none;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      gap: 8px;
       border: none;
     }
     .btn-primary {
-      background: #0284C7;
+      background: linear-gradient(135deg, #0284C7, #0369A1);
       color: #ffffff;
+      box-shadow: 0 4px 16px rgba(2, 132, 199, 0.3);
     }
-    .btn-primary:hover { background: #0369A1; }
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.06);
-      color: #94A3B8;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #0369A1, #075985);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(2, 132, 199, 0.4);
     }
-    .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); color: #F1F5F9; }
   </style>
 </head>
 <body>
@@ -1332,33 +1339,20 @@ function buildAuthSuccessHtml(account: Account): string {
       </div>
     </div>
 
-    <div class="progress-track">
-      <div class="progress-bar"></div>
+    <div class="status-notice">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <p>Bu tarayıcı sekmesini kapatıp doğrudan <strong>JustMyClass</strong> masaüstü uygulamanıza dönebilirsiniz.</p>
     </div>
-    <p class="footer-text">Bu sekme <strong id="timer">3</strong> saniye içinde kapatılacaktır.</p>
+
+    <p class="footer-hint">Uygulama penceremiz otomatik olarak öne gelecektir.</p>
 
     <div class="actions">
-      <button type="button" class="btn btn-secondary" onclick="window.close()">Sekmeyi Kapat</button>
-      <button type="button" class="btn btn-primary" onclick="tryCloseOrFocus()">JustMyClass'e Dön</button>
+      <a href="justmyclass://auth-success" class="btn btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        <span>JustMyClass'e Dön</span>
+      </a>
     </div>
   </div>
-
-  <script>
-    let remaining = 3;
-    const timerEl = document.getElementById('timer');
-    const interval = setInterval(function() {
-      remaining--;
-      if (timerEl) timerEl.textContent = remaining;
-      if (remaining <= 0) {
-        clearInterval(interval);
-        tryCloseOrFocus();
-      }
-    }, 1000);
-
-    function tryCloseOrFocus() {
-      try { window.close(); } catch(e) {}
-    }
-  </script>
 </body>
 </html>`
 }
