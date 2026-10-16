@@ -1,0 +1,225 @@
+# =============================================================================
+# electron-builder yapilandirmasi - JustMyClass
+# =============================================================================
+#
+# BU DOSYA "TEK DOGRULUK KAYNAGI"DIR.
+#
+# ONCEKI DURUM
+# ------------
+# Yapilandirma `package.json` icinde 35 satirdi ve sadece `dir` +
+# `portable` hedeflerini kapsiyordu. Bunun sonucu:
+#
+#   • KURULUM SIHIRBAZI YOK. Kullaniciya "hedefi degistir", "masaustu
+#     kisayolu olustur", "bitince calistir" secenekleri sunulmuyordu.
+#   • UNINSTALLER YOK. Tek cikar yolu klasoru elle silmekti.
+#   • HEDEF YOK. Windows disinda tek paket uretilmiyordu.
+#   • ICON YOK. Electron'un varsayilan ikonu gosteriliyordu.
+#
+# ASAGIDAKI YAPI "TEK DOSYAYI CALISTIRIP PAYLASMA" senaryosunu kapsar:
+#   npm run build:win
+#   -> dist/JustMyClass-Setup-<surum>-x64.exe   (kurulum sihirbazi)
+#   -> dist/JustMyClass-Portable-<surum>.exe     (kurulum gerektirmez)
+#
+# =============================================================================
+
+appId: com.aegissoft.justmyclass
+productName: JustMyClass
+copyright: Copyright © 2026 aegisSoft
+
+publish:
+  provider: github
+  owner: MrSpy00
+  repo: JustMyClass
+
+directories:
+  output: release
+  buildResources: build
+
+# ---------------------------------------------------------------------------
+# paketlenen dosyalar
+# ---------------------------------------------------------------------------
+# ONEMLI: BURAYA `node_modules` HARIC BIRAKMA KURALI YAZILMAZ.
+#
+# Onceki surumde `!**/node_modules/**/*` vardi. Bu kural, uygulamanin
+# CALISMA ZAMANI bagimliliklarini da disariyordu. Sonuc: paketlenmis
+# uygulama `require('electron-updater')` yapamadigi icin otomatik
+# guncelleme sessizce calismiyordu — gelistirme makinesinde calisiyor,
+# kurulumdan sonra calismiyordu.
+#
+# `electron-builder` uretim bagimliliklarini (dependencies) zaten
+# OTOMATIK alir; gelistirme bagimliliklarini (devDependencies) otomatik
+# HARIC birakir. Elle kural yazmaya gerek yoktur ve yazmak hatadir.
+files:
+  - dist-renderer/**/*
+  - dist-electron/**/*
+  - package.json
+  # Kaynak haritalari ve TypeScript kaynaklari kuruluma katilmaz:
+  # hata ayiklama gerektiginde yerelde mevcutlar, kullaniciya gerekmez.
+  - '!**/*.map'
+  - '!**/*.ts'
+
+asar: true
+
+# Icerik zaten sikistirilmis; asar uzerinde tekrar sikistirmak
+# yalnizca kurulum suresini uzatir, boyutu buyutmez.
+asarUnpack: []
+
+# En yuksek sikistirma. Kurulum dosyasi buyur ama indirme tek seferde
+# olur ve acilma suresi belirgin sekilde kisalir.
+compression: maximum
+
+# Yerel moduller yok; yeniden derleme (npmRebuild) hem yavas hem de
+# gereksiz. Acilisi hizlandirir ve kurulum kabiliyetlerini kaldirir.
+npmRebuild: false
+buildDependenciesFromSource: false
+
+# Kurulum paketinde node-gyp calistirmasin: kullanici makinesinde
+# Visual Studio kurulu olmaya bagimli olmaz.
+nodeGypRebuild: false
+
+# Gereksiz bagimlilik betiklerini kurulumda calistirma.
+removePackageScripts: true
+
+# ---------------------------------------------------------------------------
+# Windows
+# ---------------------------------------------------------------------------
+win:
+  icon: build/icon.ico
+  # Imzalanmamis paketlerde Windows "SmartScreen uygulamanizi tanimiyor"
+  # uyarisi gosterir. Bu dogru davranistir: KOD IMLZASI YOKTURSA uyari
+  # dogru gelir. Imza icin CSC_LINK ortam degiskenini ayarlayin;
+  # build:sign betigi bunu otomatik kullanir (bkz. package.json).
+  legalTrademarks: aegisSoft
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  artifactName: JustMyClass-${version}-${arch}.${ext}
+
+# ---------------------------------------------------------------------------
+# NSIS: kurulum sihirbazi
+# ---------------------------------------------------------------------------
+nsis:
+  # oneClick: false -> ASIL SIhirbaz. Kullanici adim adim ilerler:
+  #   1) Kurulum turu (yalnizca bu kullaniciya / tum kullanicilara)
+  #   2) Kurulum klasoru (istedigi yere)
+  #   3) Masaustu + Baslat Menusu kisayollari (ayri ayri secilebilir)
+  #   4) Kurulum / iptal
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+
+  # "Nereye kurulacak?" ekrani. Bu olmadan her sey varsayilan
+  # Program Files altina gider ve kullanici hicbir sey secemez.
+  allowToChangeInstallationDirectory: true
+
+  # Kullanicinin istegine gore kisayol. "always" olsaydi her kurulumda
+  # zorla masaustu ikonu birakilirdi; "never" olsaydi hicbir zaman
+  # olusmazdi. Varsayilan deger ikisinin de dogru yonu: sihirbazi
+  # gosterir, secimi kullaniciya birakir.
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: JustMyClass
+
+  # Kurulum bitince uygulamayi ac (kapatilabilir).
+  runAfterFinish: true
+
+  # Kaldirirken kullanici verisini, onbellegi ve kurulum klasorunu tamamen sil.
+  deleteAppDataOnUninstall: true
+  include: build/installer.nsh
+
+  # Kurulum sihirbazi dili: Turkce + Ingilizce.
+  installerLanguages:
+    - tr_TR
+    - en_US
+  language: '1055' # varsayilan: Turkce (1055)
+
+  # Kaldirma sihirbazinda ayri bir onay sayfasi.
+  uninstallDisplayName: JustMyClass ${version}
+
+  # Fark paketi uretme: uygulama ~120 MB, fark paketi bu boyutta
+  # pratik kazanc saglamaz ama kurulum dosyasini buyutur.
+  differentialPackage: false
+
+  # Unicode: Turkce karakterler dahil TUM dil yazilari dogru calisir.
+  unicode: true
+
+  # Kurulum sihirbazinda gosterilecek yazilar.
+  artifactName: JustMyClass-Setup-${version}-${arch}.${ext}
+
+# ---------------------------------------------------------------------------
+# Portable: kurulum gerektirmeyen tek dosya
+# ---------------------------------------------------------------------------
+portable:
+  artifactName: JustMyClass-Portable-${version}.${ext}
+  unicode: true
+  # Tasiyabilir kullanimda veri klasoru isaretciyle (USB) tasinabilsin.
+  requestExecutionLevel: user
+  unpackDirName: JustMyClass
+
+# ---------------------------------------------------------------------------
+# macOS
+# ---------------------------------------------------------------------------
+mac:
+  icon: build/icon.png
+  category: public.app-category.education
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  darkModeSupport: true
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  artifactName: JustMyClass-${version}-${arch}.${ext}
+
+dmg:
+  title: JustMyClass ${version}
+  contents:
+    - x: 140
+      y: 190
+      type: file
+    - x: 400
+      y: 190
+      type: link
+      path: /Applications
+
+# ---------------------------------------------------------------------------
+# Linux
+# ---------------------------------------------------------------------------
+linux:
+  icon: build/icon.png
+  category: Education
+  synopsis: Google Classroom icin yerel-oncelikli yapay zeka calisma alani
+  desktop:
+    entry:
+      Categories: Education;Network;
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+
+# ---------------------------------------------------------------------------
+# Kaldirma / onarim
+# ---------------------------------------------------------------------------
+# Kaldirildiktan sonra da veri klasoru kalir (yukariya bakin). Kullanici
+# "Ayarlar > Verileri temizle" ile silebilir; boylece bir kazada veri
+# kalici olarak gitmez.
+#
+# ONARIM: Kurulum hatali bir yere giderse, ayrica uretilen
+# JustMyClass-Setup-<surum>.exe ayni yerden yeniden calistirilir ve
+# yeni konuma tasinir.

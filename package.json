@@ -1,0 +1,50 @@
+{
+  "name": "justmyclass",
+  "version": "0.0.1",
+  "description": "Google Classroom için Yerel-Öncelikli, Yapay Zeka Destekli Bağımsız Masaüstü Çalışma Alanı",
+  "author": "aegisSoft <info@aegissoft.com.tr> (https://www.aegissoft.com.tr/)",
+  "homepage": "https://github.com/MrSpy00/JustMyClass",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MrSpy00/JustMyClass.git"
+  },
+  "license": "MIT",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "icons": "node scripts/generate-icons.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc && vite build && electron-builder --dir",
+    "build:win": "tsc && vite build && electron-builder --win",
+    "build:portable": "tsc && vite build && electron-builder --win portable",
+    "build:all": "tsc && vite build && electron-builder --win nsis portable --mac dmg zip --linux AppImage deb",
+    "build:release": "tsc && vite build && node scripts/release.mjs",
+    "clean": "node -e \"for (const d of ['dist','dist-renderer','dist-electron','release']) require('fs').rmSync(d,{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.9",
+    "@types/node": "^22.13.9",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "clsx": "^2.1.1",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
+    "lucide-react": "^1.16.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.0.0",
+    "remark-gfm": "^4.0.0",
+    "tailwind-merge": "^3.0.2",
+    "tailwindcss": "^4.0.9",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^3.0.7"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

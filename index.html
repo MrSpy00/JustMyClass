@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Content-Security-Policy bilerek burada degil: Electron main surecinde
+      oturum seviyesinde uygulanir (bkz. electron/main.ts ->
+      applyContentSecurityPolicy). Boylece uretimde `script-src 'unsafe-inline'`
+      gerekmez.
+    -->
+    <title>JustMyClass</title>
+    <!--
+      Yazi tipleri uygulamayla birlikte paketlenir: cevrimdisi calisir,
+      her acilista dis sunucuya istek atmaz ve CSP'de harici font izni
+      gerekmez.
+    -->
+    <link rel="stylesheet" href="/fonts/fonts.css" />
+  </head>
+  <body class="overflow-hidden select-none bg-[var(--jmc-bg)] text-[var(--jmc-text)] font-sans">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

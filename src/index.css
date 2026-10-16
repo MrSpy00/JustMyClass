@@ -1,0 +1,392 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Tasarım belirteçleri (token)
+   --------------------------------------------------------------------------
+   Renkler tema sağlayıcısı tarafından çalışma zamanında yazılır.
+   Tipografi ve ölçü değerleri burada tanımlanır.
+   ========================================================================== */
+:root {
+  --jmc-bg: #0b0f16;
+  --jmc-bg-elevated: #11161f;
+  --jmc-bg-surface: #171d28;
+  --jmc-border: #242c3a;
+  --jmc-border-subtle: #1a212c;
+  --jmc-text: #e8edf5;
+  --jmc-text-muted: #9aa8bd;
+  --jmc-text-dim: #6f7d93;
+  --jmc-primary: #4c8dff;
+  --jmc-primary-hover: #3a7ae8;
+  --jmc-accent: #7aa7ff;
+  --jmc-accent-hover: #4c8dff;
+  --jmc-warning: #e0a03a;
+  --jmc-danger: #ef5f6b;
+  --jmc-success: #3fb98a;
+  --jmc-code-bg: #0d1219;
+  --jmc-badge-bg: rgba(76, 141, 255, 0.14);
+  --jmc-elevation: rgba(0, 0, 0, 0.35);
+  --jmc-shadow-sm: 0 1px 2px var(--jmc-elevation);
+  --jmc-shadow-md: 0 4px 14px var(--jmc-elevation);
+  --jmc-shadow-lg: 0 18px 48px var(--jmc-elevation);
+
+  /* Ölçü sistemi */
+  --jmc-radius-sm: 6px;
+  --jmc-radius: 9px;
+  --jmc-radius-lg: 13px;
+
+  --jmc-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --jmc-dur: 140ms;
+
+  --font-ui: "Inter", "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Temel
+   ========================================================================== */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: -0.006em;
+  background-color: var(--jmc-bg);
+  color: var(--jmc-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss03";
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+
+/* Uygulama kabuğunda metin seçimi yalnızca içerik alanlarında açıktır. */
+body {
+  user-select: none;
+}
+input,
+textarea,
+[data-selectable],
+.prose {
+  user-select: text;
+}
+
+/* Erişilebilir odak halkası — her yerde tutarlı. */
+:focus-visible {
+  outline: 2px solid var(--jmc-primary);
+  outline-offset: 2px;
+  border-radius: var(--jmc-radius-sm);
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ==========================================================================
+   Hareket azaltma
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+[data-reduce-motion="1"] *,
+[data-reduce-motion="1"] *::before,
+[data-reduce-motion="1"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* ==========================================================================
+   Kaydırma çubukları — ince, yalnızca üzerine gelindiğinde belirgin
+   ========================================================================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--jmc-border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color var(--jmc-dur) var(--jmc-ease);
+}
+:hover::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--jmc-border);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ==========================================================================
+   Yerleşik hareket ve animasyonlar — soft, smooth ve modern
+   ========================================================================== */
+@keyframes jmc-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes jmc-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes jmc-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes jmc-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes jmc-pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.97);
+  }
+}
+@keyframes jmc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes jmc-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-fade-in {
+  animation: jmc-fade-in 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-pop-in {
+  animation: jmc-pop-in 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-slide-right {
+  animation: jmc-slide-right 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-slide-left {
+  animation: jmc-slide-left 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-pulse-soft {
+  animation: jmc-pulse-soft 2s ease-in-out infinite;
+}
+.animate-spin-slow {
+  animation: jmc-spin 850ms linear infinite;
+}
+
+/* Etkileşim sınıfları */
+.jmc-btn-interactive {
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.jmc-btn-interactive:active {
+  transform: scale(0.97);
+}
+.jmc-panel-transition {
+  transition: all 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ==========================================================================
+   Markdown içerik
+   ========================================================================== */
+.prose {
+  color: var(--jmc-text);
+  overflow-wrap: anywhere;
+}
+.prose > *:first-child {
+  margin-top: 0;
+}
+.prose > *:last-child {
+  margin-bottom: 0;
+}
+.prose p {
+  margin: 0 0 0.65em;
+  line-height: 1.65;
+}
+.prose strong {
+  font-weight: 650;
+  color: var(--jmc-text);
+}
+.prose em {
+  font-style: italic;
+}
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 1.2em 0 0.45em;
+}
+.prose h1 {
+  font-size: 1.12em;
+}
+.prose h2 {
+  font-size: 1.04em;
+}
+.prose h3 {
+  font-size: 0.98em;
+  color: var(--jmc-text);
+}
+.prose ul,
+.prose ol {
+  margin: 0 0 0.65em;
+  padding-left: 1.25em;
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li {
+  margin: 0.2em 0;
+}
+.prose li::marker {
+  color: var(--jmc-text-dim);
+}
+.prose blockquote {
+  margin: 0.75em 0;
+  padding-left: 0.9em;
+  border-left: 2px solid var(--jmc-primary);
+  color: var(--jmc-text-muted);
+}
+.prose a {
+  color: var(--jmc-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.prose a:hover {
+  color: var(--jmc-primary-hover);
+}
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--jmc-border-subtle);
+  margin: 1em 0;
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.95em;
+}
+.prose th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--jmc-text);
+  background: var(--jmc-bg-surface);
+  padding: 0.5em 0.7em;
+}
+.prose td {
+  padding: 0.5em 0.7em;
+  vertical-align: top;
+}
+.prose th + th,
+.prose td + td {
+  box-shadow: inset 1px 0 0 var(--jmc-border-subtle);
+}
+.prose tbody tr + tr td {
+  box-shadow: inset 0 1px 0 var(--jmc-border-subtle);
+}
+.prose :not(pre) > code {
+  font-size: 0.88em;
+  padding: 0.12em 0.38em;
+  border-radius: var(--jmc-radius-sm);
+  background: var(--jmc-bg-surface);
+  color: var(--jmc-accent);
+}
+.prose pre {
+  margin: 0.75em 0;
+  padding: 0.8em 0.9em;
+  border-radius: var(--jmc-radius);
+  background: var(--jmc-code-bg);
+  overflow-x: auto;
+  font-size: 0.86em;
+  line-height: 1.55;
+}
+
+/* ==========================================================================
+   Yardımcı sınıflar
+   ========================================================================== */
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility panel {
+  background-color: var(--jmc-bg-elevated);
+  box-shadow: var(--jmc-shadow-sm);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Pencere düğmeleri hariç her yerde metin seçimi kapalı. */
+::selection {
+  background: var(--jmc-badge-bg);
+  color: var(--jmc-text);
+}
