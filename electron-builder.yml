@@ -26,6 +26,11 @@ appId: com.aegissoft.justmyclass
 productName: JustMyClass
 copyright: Copyright © 2026 aegisSoft
 
+protocols:
+  - name: JustMyClass
+    schemes:
+      - justmyclass
+
 publish:
   provider: github
   owner: MrSpy00

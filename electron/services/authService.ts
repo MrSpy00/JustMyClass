@@ -639,6 +639,12 @@ export class AuthService {
 
   public static readonly REQUIRED_SCOPES = [...AuthService.BASE_SCOPES]
 
+  private onAuthSuccessCallback?: (account: Account) => void
+
+  public setOnAuthSuccess(cb: (account: Account) => void): void {
+    this.onAuthSuccessCallback = cb
+  }
+
   constructor(vaultService: VaultService, storageService: StorageService) {
     this.vaultService = vaultService
     this.storageService = storageService
@@ -1341,15 +1347,15 @@ function buildAuthSuccessHtml(account: Account): string {
 
     <div class="status-notice">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      <p>Bu tarayıcı sekmesini kapatıp doğrudan <strong>JustMyClass</strong> masaüstü uygulamanıza dönebilirsiniz.</p>
+      <p>Bu sekmeyi kapatıp doğrudan <strong>JustMyClass</strong> masaüstü uygulamanıza dönebilirsiniz.</p>
     </div>
 
-    <p class="footer-hint">Uygulama penceremiz otomatik olarak öne gelecektir.</p>
+    <p class="footer-hint">Uygulama pencereniz otomatik olarak öne gelecektir.</p>
 
     <div class="actions">
-      <a href="justmyclass://auth-success" class="btn btn-primary">
+      <a href="justmyclass://auth-success" class="btn btn-primary" id="open-app-btn">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        <span>JustMyClass'e Dön</span>
+        <span>JustMyClass Uygulamasını Aç</span>
       </a>
     </div>
   </div>
@@ -1514,6 +1520,7 @@ function buildAuthErrorHtml(title: string, message: string): string {
               lastAuthAt: new Date().toISOString(),
             }
             this.storageService.setAccount(account)
+            this.onAuthSuccessCallback?.(account)
 
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
             res.end(buildAuthSuccessHtml(account))
@@ -1750,6 +1757,7 @@ function buildAuthErrorHtml(title: string, message: string): string {
       lastAuthAt: new Date().toISOString(),
     }
     this.storageService.setAccount(account)
+    this.onAuthSuccessCallback?.(account)
     return account
   }
 

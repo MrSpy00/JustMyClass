@@ -20,6 +20,15 @@
   SetOutPath "$TEMP"
 !macroend
 
+!macro customInstall
+  DetailPrint "JustMyClass protokol kaydı yapılandırılıyor..."
+  WriteRegStr HKCU "Software\Classes\justmyclass" "" "JustMyClass"
+  WriteRegStr HKCU "Software\Classes\justmyclass" "FriendlyTypeName" "JustMyClass"
+  WriteRegStr HKCU "Software\Classes\justmyclass" "URL Protocol" ""
+  WriteRegStr HKCU "Software\Classes\justmyclass\DefaultIcon" "" "$INSTDIR\JustMyClass.exe,0"
+  WriteRegStr HKCU "Software\Classes\justmyclass\shell\open\command" "" '"$INSTDIR\JustMyClass.exe" "%1"'
+!macroend
+
 !macro customUnInstall
   DetailPrint "JustMyClass surecleri ve kilitleri kontrol ediliyor..."
   nsExec::ExecToStack 'taskkill /F /IM "JustMyClass.exe" /T'
@@ -53,6 +62,8 @@
   DetailPrint "JustMyClass kayit defteri anahtarlari temizleniyor..."
   DeleteRegKey HKCU "Software\JustMyClass"
   DeleteRegKey HKLM "Software\JustMyClass"
+  DeleteRegKey HKCU "Software\Classes\justmyclass"
+  DeleteRegKey HKLM "Software\Classes\justmyclass"
   DeleteRegKey HKCU "Software\com.aegissoft.justmyclass"
   DeleteRegKey HKLM "Software\com.aegissoft.justmyclass"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\com.aegissoft.justmyclass"

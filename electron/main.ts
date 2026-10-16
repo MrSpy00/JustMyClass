@@ -19,6 +19,11 @@ import { ExportService, ExportFormat } from './services/exportService'
 import { UpdateService } from './services/updateService'
 import { FilePreviewService } from './services/filePreviewService'
 
+app.name = 'JustMyClass'
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.aegissoft.justmyclass')
+}
+
 let mainWindow: BrowserWindow | null = null
 
 // Servisler tekil olarak kurulur; ana anahtar ilk gercek erisimde alinir.
@@ -26,6 +31,14 @@ const keyringService = new KeyringService()
 const vaultService = new VaultService(keyringService)
 const storageService = new StorageService(keyringService)
 const authService = new AuthService(vaultService, storageService)
+
+authService.setOnAuthSuccess(() => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
+})
 
 function getDownloadsDirectory(): string {
   const custom = storageService.getSetting<string>('downloads.path', '')
@@ -233,7 +246,13 @@ function applyContentSecurityPolicy(session: Session): void {
     "'self'",
     'data:',
     'blob:',
-    ...(isDev ? [] : ['https://lh3.googleusercontent.com']),
+    'https://*.googleusercontent.com',
+    'https://lh3.googleusercontent.com',
+    'https://lh4.googleusercontent.com',
+    'https://lh5.googleusercontent.com',
+    'https://lh6.googleusercontent.com',
+    'https://*.ytimg.com',
+    'https://*.google.com',
   ]
 
   const policy = [
@@ -244,8 +263,8 @@ function applyContentSecurityPolicy(session: Session): void {
     "font-src 'self' data:",
     `img-src ${imgSrc.join(' ')}`,
     `connect-src ${connectSrc.join(' ')}`,
-    "media-src 'self' data: blob:",
-    "frame-src 'self' blob: data:",
+    "media-src 'self' data: blob: https://*.googlevideo.com",
+    "frame-src 'self' blob: data: https://www.youtube.com https://www.youtube-nocookie.com",
     "object-src 'self' blob: data:",
     "base-uri 'none'",
     "form-action 'none'",
@@ -253,12 +272,21 @@ function applyContentSecurityPolicy(session: Session): void {
   ].join('; ')
 
   session.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [policy],
-      },
-    })
+    // Sadece tarayici penceresinin yukledigi sayfa ve alt cercevelere CSP ekle,
+    // net.fetch veya harici API yanitlarini degistirme.
+    if (
+      details.resourceType === 'mainFrame' ||
+      details.resourceType === 'subFrame'
+    ) {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [policy],
+        },
+      })
+      return
+    }
+    callback({ responseHeaders: details.responseHeaders })
   })
 }
 
@@ -353,20 +381,49 @@ function createWindow() {
   // uygulanir; boylece uretimde `script-src 'unsafe-inline'` gerekmez.
   applyContentSecurityPolicy(wc.session)
 
-  // Harici kaynaklardan gelen ag trafigini engelle. Tek istisna, hesap
-  // fotografi icin Google'in profil resim sunucusudur.
-  wc.session.webRequest.onBeforeRequest((details: { url: string }, callback: (r: { cancel: boolean }) => void) => {
-    const reqUrl = details.url
-    const devUrl = !app.isPackaged ? process.env.VITE_DEV_SERVER_URL : undefined
-    const allowed =
-      reqUrl.startsWith('file:') ||
-      (!app.isPackaged && reqUrl.startsWith('devtools:')) ||
-      reqUrl.startsWith('blob:') ||
-      reqUrl.startsWith('data:') ||
-      reqUrl.startsWith(PROFILE_IMAGE_ORIGIN) ||
-      (!!devUrl && reqUrl.startsWith(devUrl))
-    callback({ cancel: !allowed })
-  })
+  // Yalnizca renderer (arayuz penceresi) tarafindan baslatilan ag isteklerini
+  // filtrele. Node.js / Electron ana surecinden yapilan API istekleri
+  // (net.fetch, Google Classroom/Drive, Gemini/AI, surum denetimi)
+  // `webContentsId` tasimaz veya ana pencereye ait degildir; bunlar
+  // asla engellenmez.
+  wc.session.webRequest.onBeforeRequest(
+    (
+      details: { url: string; webContentsId?: number },
+      callback: (r: { cancel: boolean }) => void,
+    ) => {
+      // Ana surec kaynakli (net.fetch, arka plan servisleri) istekleri dogrudan gecir
+      if (
+        details.webContentsId === undefined ||
+        details.webContentsId === null ||
+        details.webContentsId !== wc.id
+      ) {
+        callback({ cancel: false })
+        return
+      }
+
+      const reqUrl = details.url
+      const devUrl = !app.isPackaged ? process.env.VITE_DEV_SERVER_URL : undefined
+      const isAllowedScheme =
+        reqUrl.startsWith('file:') ||
+        (!app.isPackaged && reqUrl.startsWith('devtools:')) ||
+        reqUrl.startsWith('blob:') ||
+        reqUrl.startsWith('data:') ||
+        (!!devUrl && reqUrl.startsWith(devUrl))
+
+      const isAllowedDomain =
+        reqUrl.includes('.googleusercontent.com/') ||
+        reqUrl.startsWith('https://lh3.googleusercontent.com') ||
+        reqUrl.startsWith('https://lh4.googleusercontent.com') ||
+        reqUrl.startsWith('https://lh5.googleusercontent.com') ||
+        reqUrl.startsWith('https://lh6.googleusercontent.com') ||
+        reqUrl.includes('youtube.com/') ||
+        reqUrl.includes('youtube-nocookie.com/') ||
+        reqUrl.includes('ytimg.com/') ||
+        reqUrl.includes('googlevideo.com/')
+
+      callback({ cancel: !(isAllowedScheme || isAllowedDomain) })
+    },
+  )
 
   const isDevMode = !app.isPackaged && !!process.env.VITE_DEV_SERVER_URL
   let devUrlValid = false
@@ -1278,8 +1335,43 @@ if (!app.requestSingleInstanceLock()) {
       return
     }
     if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
     mainWindow.focus()
   })
+
+  app.on('open-url', event => {
+    event.preventDefault()
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow()
+      return
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  })
+
+  function registerAppProtocols(): void {
+    try {
+      if (!app.isDefaultProtocolClient('justmyclass')) {
+        app.setAsDefaultProtocolClient('justmyclass')
+      }
+    } catch (err) {
+      console.warn('[JustMyClass] setAsDefaultProtocolClient uyarısı:', err)
+    }
+
+    // Windows'ta tarayıcıların "...... adlı uygulamayı aç" yerine
+    // temiz şekilde "JustMyClass adlı uygulamayı aç" göstermesini sağlar.
+    if (process.platform === 'win32') {
+      try {
+        const regCmd = `reg add "HKCU\\Software\\Classes\\justmyclass" /v FriendlyTypeName /t REG_SZ /d "JustMyClass" /f`
+        execFileSync('cmd.exe', ['/c', regCmd], { stdio: 'ignore', timeout: 3000, windowsHide: true })
+        const defCmd = `reg add "HKCU\\Software\\Classes\\justmyclass" /ve /t REG_SZ /d "JustMyClass" /f`
+        execFileSync('cmd.exe', ['/c', defCmd], { stdio: 'ignore', timeout: 3000, windowsHide: true })
+      } catch {
+        /* yut */
+      }
+    }
+  }
 
   app.whenReady()
     .then(() => {
@@ -1301,13 +1393,7 @@ if (!app.requestSingleInstanceLock()) {
         GLOBAL_ALLOWED_PERMISSIONS.has(permission),
       )
 
-      try {
-        if (!app.isDefaultProtocolClient('justmyclass')) {
-          app.setAsDefaultProtocolClient('justmyclass')
-        }
-      } catch {
-        /* yut */
-      }
+      registerAppProtocols()
 
       setupIpcHandlers()
       createWindow()

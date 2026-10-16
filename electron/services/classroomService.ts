@@ -370,18 +370,39 @@ export class ClassroomService {
       // 2. Duyuru ve ödev yorumlarından sınıf arkadaşlarının profillerini derle
       try {
         const announcements = this.storageService.getAnnouncements(courseId)
-        for (const ann of announcements.slice(0, 8)) {
+        for (const ann of announcements.slice(0, 10)) {
           try {
             const commentsRes = await googleHttp.request<any>(
-              `${API}/courses/${encodeURIComponent(courseId)}/announcements/${encodeURIComponent(ann.id)}/modifyAssignees?`, // fallback
+              `${API}/courses/${encodeURIComponent(courseId)}/announcements/${encodeURIComponent(ann.id)}/comments`,
               { headers: { Authorization: `Bearer ${token}` } },
-            ).catch(async () => {
-              return await googleHttp.request<any>(
-                `${API}/courses/${encodeURIComponent(courseId)}/announcements/${encodeURIComponent(ann.id)}/comments`,
-                { headers: { Authorization: `Bearer ${token}` } },
-              )
-            })
+            )
             const comments: any[] = commentsRes?.comments || []
+            for (const c of comments) {
+              const profile = c.userProfile
+              if (profile?.id && !participants.some(p => p.userId === profile.id)) {
+                participants.push({
+                  userId: profile.id,
+                  courseId,
+                  role: 'STUDENT',
+                  fullName: profile.name?.fullName || profile.name?.givenName || 'Sınıf Arkadaşı',
+                  email: profile.emailAddress,
+                  photoUrl: profile.photoUrl,
+                })
+              }
+            }
+          } catch {
+            /* yoksay */
+          }
+        }
+
+        const courseWorks = this.storageService.getCourseWork(courseId)
+        for (const cw of courseWorks.slice(0, 10)) {
+          try {
+            const cwCommentsRes = await googleHttp.request<any>(
+              `${API}/courses/${encodeURIComponent(courseId)}/courseWork/${encodeURIComponent(cw.id)}/comments`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            )
+            const comments: any[] = cwCommentsRes?.comments || []
             for (const c of comments) {
               const profile = c.userProfile
               if (profile?.id && !participants.some(p => p.userId === profile.id)) {
