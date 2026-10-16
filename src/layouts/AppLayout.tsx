@@ -1145,12 +1145,16 @@ const resetSessionUiState = useCallback(() => {
     setSyncError(null)
     try {
       const status = await window.jmcAPI.syncAll()
-      setSyncStatus(status)
-      if (status.activeErrors.length) {
-        setSyncError(status.activeErrors.join(' · '))
-      }
       const list = await window.jmcAPI.getCourses()
       setCourses(list)
+
+      if (status.activeErrors.length) {
+        const errMsg = status.activeErrors.join(' · ')
+        setSyncError(errMsg)
+        onNotify('error', `Senkronizasyon uyarısı: ${errMsg}`)
+      } else {
+        onNotify('success', `${list.length} ders başarıyla senkronize edildi.`)
+      }
 
       // Önceki secim hâlâ geçerliyse onu koru, degilse ilk dersi ac.
       // Secim her zaman selectCourse uzerinden gecer; aksi halde ders
@@ -1168,11 +1172,13 @@ const resetSessionUiState = useCallback(() => {
         setSelectedWork(null)
       }
     } catch (err) {
-      setSyncError(err instanceof Error ? err.message : 'Senkronizasyon başarısız.')
+      const msg = err instanceof Error ? err.message : 'Senkronizasyon başarısız.'
+      setSyncError(msg)
+      onNotify('error', msg)
     } finally {
       setSyncing(false)
     }
-  }, [onOpenAuth, selectCourse])
+  }, [onOpenAuth, selectCourse, onNotify])
 
   handleSyncAllRef.current = handleSyncAll
 

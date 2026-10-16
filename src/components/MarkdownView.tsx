@@ -2,6 +2,22 @@ import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AlertCircle, Check, Copy, ExternalLink } from 'lucide-react'
+import Prism from 'prismjs'
+import 'prismjs/components/prism-clike'
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-python'
+import 'prismjs/components/prism-java'
+import 'prismjs/components/prism-c'
+import 'prismjs/components/prism-cpp'
+import 'prismjs/components/prism-csharp'
+import 'prismjs/components/prism-sql'
+import 'prismjs/components/prism-bash'
+import 'prismjs/components/prism-json'
+import 'prismjs/components/prism-yaml'
+import 'prismjs/components/prism-markdown'
+import 'prismjs/components/prism-rust'
+import 'prismjs/components/prism-go'
 
 interface MarkdownViewProps {
   content: string
@@ -9,40 +25,83 @@ interface MarkdownViewProps {
   isUser?: boolean
 }
 
-/** Kod bloklarını kopyalanabilir hâle getiren küçük bileşen. */
+function getPrismGrammar(lang?: string): { grammar: Prism.Grammar; langKey: string } | null {
+  if (!lang) return null
+  const l = lang.toLowerCase().trim()
+  if (l === 'ts' || l === 'typescript' || l === 'tsx') {
+    return { grammar: Prism.languages.typescript || Prism.languages.javascript, langKey: 'typescript' }
+  }
+  if (l === 'js' || l === 'javascript' || l === 'jsx') {
+    return { grammar: Prism.languages.javascript, langKey: 'javascript' }
+  }
+  if (l === 'py' || l === 'python') return { grammar: Prism.languages.python, langKey: 'python' }
+  if (l === 'java') return { grammar: Prism.languages.java, langKey: 'java' }
+  if (l === 'c') return { grammar: Prism.languages.c, langKey: 'c' }
+  if (l === 'cpp' || l === 'c++') return { grammar: Prism.languages.cpp || Prism.languages.c, langKey: 'cpp' }
+  if (l === 'cs' || l === 'csharp' || l === 'c#') return { grammar: Prism.languages.csharp, langKey: 'csharp' }
+  if (l === 'sql') return { grammar: Prism.languages.sql, langKey: 'sql' }
+  if (l === 'sh' || l === 'bash' || l === 'shell' || l === 'zsh') return { grammar: Prism.languages.bash, langKey: 'bash' }
+  if (l === 'json') return { grammar: Prism.languages.json, langKey: 'json' }
+  if (l === 'yaml' || l === 'yml') return { grammar: Prism.languages.yaml, langKey: 'yaml' }
+  if (l === 'md' || l === 'markdown') return { grammar: Prism.languages.markdown, langKey: 'markdown' }
+  if (l === 'rs' || l === 'rust') return { grammar: Prism.languages.rust, langKey: 'rust' }
+  if (l === 'go') return { grammar: Prism.languages.go, langKey: 'go' }
+  if (Prism.languages[l]) return { grammar: Prism.languages[l], langKey: l }
+  return null
+}
+
+/** Kod bloklarını kopyalanabilir ve renklendirilmiş hâle getiren bileşen. */
 const CodeBlock: React.FC<{
   code: string
   lang?: string
   onCopy: () => void
   copied: boolean
   failed?: boolean
-}> = ({ code, lang, onCopy, copied, failed }) => (
-  <div className="my-2.5 overflow-hidden rounded-[var(--jmc-radius)] bg-[var(--jmc-code-bg)] shadow-[var(--jmc-shadow-sm)]">
-    <div className="flex items-center justify-between px-3 py-1.5">
-      <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--jmc-text-dim)]">
-        {lang || 'kod'}
-      </span>
-      <button
-        type="button"
-        onClick={onCopy}
-        aria-label={failed ? 'Kod kopyalanamadı' : copied ? 'Kod kopyalandı' : 'Kodu kopyala'}
-        className="flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] px-1.5 py-0.5 text-[10px] text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-text)]"
-      >
-        {copied ? (
-          <Check className="h-3 w-3 text-[var(--jmc-success)]" />
-        ) : failed ? (
-          <AlertCircle className="h-3 w-3 text-[var(--jmc-danger)]" />
+}> = ({ code, lang, onCopy, copied, failed }) => {
+  const highlightedHtml = React.useMemo(() => {
+    const match = getPrismGrammar(lang)
+    if (match) {
+      try {
+        return Prism.highlight(code, match.grammar, match.langKey)
+      } catch {
+        return null
+      }
+    }
+    return null
+  }, [code, lang])
+
+  return (
+    <div className="my-2.5 overflow-hidden rounded-[var(--jmc-radius)] bg-[var(--jmc-code-bg)] shadow-[var(--jmc-shadow-sm)] border border-[var(--jmc-border-subtle)]">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg)]/40">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--jmc-text-dim)]">
+          {lang || 'kod'}
+        </span>
+        <button
+          type="button"
+          onClick={onCopy}
+          aria-label={failed ? 'Kod kopyalanamadı' : copied ? 'Kod kopyalandı' : 'Kodu kopyala'}
+          className="flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] px-1.5 py-0.5 text-[10px] text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-text)]"
+        >
+          {copied ? (
+            <Check className="h-3 w-3 text-[var(--jmc-success)]" />
+          ) : failed ? (
+            <AlertCircle className="h-3 w-3 text-[var(--jmc-danger)]" />
+          ) : (
+            <Copy className="h-3 w-3" />
+          )}
+          {copied ? 'Kopyalandı' : failed ? 'Kopyalanamadı' : 'Kopyala'}
+        </button>
+      </div>
+      <pre className="overflow-x-auto p-3 font-mono text-[11px] leading-[1.6] text-[var(--jmc-text)]">
+        {highlightedHtml ? (
+          <code dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
         ) : (
-          <Copy className="h-3 w-3" />
+          <code>{code}</code>
         )}
-        {copied ? 'Kopyalandı' : failed ? 'Kopyalanamadı' : 'Kopyala'}
-      </button>
+      </pre>
     </div>
-    <pre className="overflow-x-auto px-3 pb-3 font-mono text-[11px] leading-[1.6] text-[var(--jmc-text)]">
-      <code>{code}</code>
-    </pre>
-  </div>
-)
+  )
+}
 
 export const MarkdownView: React.FC<MarkdownViewProps> = ({
   content,

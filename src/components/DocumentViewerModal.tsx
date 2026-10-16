@@ -30,7 +30,25 @@ import {
   Folder,
   FolderOpen,
   Link,
+  AlignJustify,
 } from 'lucide-react'
+import Prism from 'prismjs'
+import 'prismjs/components/prism-clike'
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-python'
+import 'prismjs/components/prism-java'
+import 'prismjs/components/prism-c'
+import 'prismjs/components/prism-cpp'
+import 'prismjs/components/prism-csharp'
+import 'prismjs/components/prism-sql'
+import 'prismjs/components/prism-bash'
+import 'prismjs/components/prism-json'
+import 'prismjs/components/prism-yaml'
+import 'prismjs/components/prism-markdown'
+import 'prismjs/components/prism-rust'
+import 'prismjs/components/prism-go'
+
 import type { Attachment, FilePreviewResult } from '../../types/jmc'
 import { MarkdownView } from './MarkdownView'
 
@@ -41,6 +59,15 @@ interface DocumentViewerModalProps {
   onClose: () => void
   onSendToAssistant?: (preview: FilePreviewResult) => void
   onNotify?: (type: 'success' | 'error' | 'info', message: string) => void
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }
 
 function formatBytes(bytes: number): string {
@@ -66,8 +93,9 @@ export function DocumentViewerModal({
   const [isFullScreen, setIsFullScreen] = useState(false)
 
   // Alt kontroller
-  const [codeWrap, setCodeWrap] = useState(true)
+  const [codeWrap, setCodeWrap] = useState(false)
   const [fontSize, setFontSize] = useState<number>(13)
+  const [lineSpacing, setLineSpacing] = useState<'compact' | 'normal' | 'relaxed'>('normal')
   const [searchQuery, setSearchQuery] = useState('')
   const [markdownMode, setMarkdownMode] = useState<'preview' | 'raw'>('preview')
   const [pdfMode, setPdfMode] = useState<'embed' | 'text'>('embed')
@@ -239,23 +267,76 @@ export function DocumentViewerModal({
     }
   }, [preview, onSendToAssistant, onClose])
 
-  // Kod satirlari ve arama
-  const codeLines = useMemo(() => {
-    if (!preview?.text || (preview.kind !== 'code' && preview.kind !== 'text' && preview.kind !== 'markdown')) {
-      return []
+  // Klavye ile slayt geçişi (Sol / Sağ Ok tuşları)
+  useEffect(() => {
+    if (!isOpen || preview?.kind !== 'pptx' || !preview.slides || preview.slides.length === 0) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        setActiveSlideIndex(i => Math.max(0, i - 1))
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        setActiveSlideIndex(i => Math.min(preview.slides!.length - 1, i + 1))
+      }
     }
-    return preview.text.split('\n')
-  }, [preview])
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isOpen, preview])
 
-  const filteredLines = useMemo(() => {
-    if (!searchQuery.trim()) return null
+  // PrismJS dil grameri eşleştirmesi
+  const prismGrammar = useMemo(() => {
+    const lang = preview?.language?.toLowerCase().trim() || ''
+    if (lang === 'ts' || lang === 'typescript' || lang === 'tsx') {
+      return { grammar: Prism.languages.typescript || Prism.languages.javascript, key: 'typescript' }
+    }
+    if (lang === 'js' || lang === 'javascript' || lang === 'jsx') {
+      return { grammar: Prism.languages.javascript, key: 'javascript' }
+    }
+    if (lang === 'py' || lang === 'python') return { grammar: Prism.languages.python, key: 'python' }
+    if (lang === 'java') return { grammar: Prism.languages.java, key: 'java' }
+    if (lang === 'c') return { grammar: Prism.languages.c, key: 'c' }
+    if (lang === 'cpp' || lang === 'c++') return { grammar: Prism.languages.cpp || Prism.languages.c, key: 'cpp' }
+    if (lang === 'cs' || lang === 'csharp' || lang === 'c#') return { grammar: Prism.languages.csharp, key: 'csharp' }
+    if (lang === 'sql') return { grammar: Prism.languages.sql, key: 'sql' }
+    if (lang === 'sh' || lang === 'bash' || lang === 'shell' || lang === 'zsh') return { grammar: Prism.languages.bash, key: 'bash' }
+    if (lang === 'json') return { grammar: Prism.languages.json, key: 'json' }
+    if (lang === 'yaml' || lang === 'yml') return { grammar: Prism.languages.yaml, key: 'yaml' }
+    if (lang === 'md' || lang === 'markdown') return { grammar: Prism.languages.markdown, key: 'markdown' }
+    if (lang === 'rs' || lang === 'rust') return { grammar: Prism.languages.rust, key: 'rust' }
+    if (lang === 'go') return { grammar: Prism.languages.go, key: 'go' }
+    if (Prism.languages[lang]) return { grammar: Prism.languages[lang], key: lang }
+    return null
+  }, [preview?.language])
+
+  // Kod satırları ve Prism renklendirmesi
+  const highlightedCodeLines = useMemo(() => {
+    if (!preview?.text || (preview.kind !== 'code' && preview.kind !== 'text')) return []
+    const lines = preview.text.split('\n')
+    return lines.map((line, idx) => {
+      let html = ''
+      if (prismGrammar) {
+        try {
+          html = Prism.highlight(line, prismGrammar.grammar, prismGrammar.key)
+        } catch {
+          html = escapeHtml(line)
+        }
+      } else {
+        html = escapeHtml(line)
+      }
+      return {
+        lineIndex: idx + 1,
+        raw: line,
+        html: html || '&nbsp;',
+      }
+    })
+  }, [preview?.text, preview?.kind, prismGrammar])
+
+  const filteredCodeRows = useMemo(() => {
+    if (!searchQuery.trim()) return highlightedCodeLines
     const q = searchQuery.toLowerCase()
-    return codeLines.map((line, idx) => ({
-      line,
-      idx: idx + 1,
-      match: line.toLowerCase().includes(q),
-    }))
-  }, [codeLines, searchQuery])
+    return highlightedCodeLines.filter(row => row.raw.toLowerCase().includes(q))
+  }, [highlightedCodeLines, searchQuery])
 
   // Tablo verisi ve filtreleme
   const filteredTableData = useMemo(() => {
@@ -511,13 +592,14 @@ export function DocumentViewerModal({
                       type="text"
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
-                      placeholder="Dosya içinde ara…"
+                      placeholder="Kod veya metin içinde ara…"
                       className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
                     />
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 text-[var(--jmc-text-muted)]">
+                <div className="flex flex-wrap items-center gap-3 text-[var(--jmc-text-muted)]">
+                  {/* Satır Kaydırma */}
                   <button
                     type="button"
                     onClick={() => setCodeWrap(prev => !prev)}
@@ -526,9 +608,29 @@ export function DocumentViewerModal({
                     }`}
                   >
                     <WrapText className="h-3.5 w-3.5" />
-                    <span>Kaydır</span>
+                    <span>{codeWrap ? 'Kaydır Açık' : 'Kaydır'}</span>
                   </button>
 
+                  {/* Satır Boşlukları (Aralığı) */}
+                  <div className="flex items-center gap-1 border-l border-[var(--jmc-border)] pl-2">
+                    <span className="text-[10px] text-[var(--jmc-text-dim)] mr-0.5">Satır:</span>
+                    {(['compact', 'normal', 'relaxed'] as const).map(spacing => (
+                      <button
+                        key={spacing}
+                        type="button"
+                        onClick={() => setLineSpacing(spacing)}
+                        className={`rounded px-1.5 py-0.5 text-[10.5px] transition-colors ${
+                          lineSpacing === spacing
+                            ? 'bg-[var(--jmc-primary)] text-white font-medium'
+                            : 'hover:bg-[var(--jmc-bg-surface)] text-[var(--jmc-text-dim)]'
+                        }`}
+                      >
+                        {spacing === 'compact' ? 'Sık' : spacing === 'normal' ? 'Normal' : 'Rahat'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Yazı Boyutu */}
                   <div className="flex items-center gap-1 border-l border-[var(--jmc-border)] pl-2">
                     <button
                       type="button"
@@ -541,7 +643,7 @@ export function DocumentViewerModal({
                     <span className="font-mono text-[10.5px]">{fontSize}px</span>
                     <button
                       type="button"
-                      onClick={() => setFontSize(s => Math.min(20, s + 1))}
+                      onClick={() => setFontSize(s => Math.min(22, s + 1))}
                       className="rounded px-1.5 py-0.5 hover:bg-[var(--jmc-bg-surface)] text-[11px]"
                       title="Yazı boyutunu büyüt"
                     >
@@ -589,78 +691,113 @@ export function DocumentViewerModal({
 
             {/* PDF Mod Değiştirici */}
             {preview.kind === 'pdf' && (
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center rounded bg-[var(--jmc-bg-surface)] p-0.5 border border-[var(--jmc-border)]">
-                  <button
-                    type="button"
-                    onClick={() => setPdfMode('embed')}
-                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-all ${
-                      pdfMode === 'embed'
-                        ? 'bg-[var(--jmc-primary)] text-white shadow-xs'
-                        : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
-                    }`}
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                    <span>PDF Görünümü</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPdfMode('text')}
-                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-all ${
-                      pdfMode === 'text'
-                        ? 'bg-[var(--jmc-primary)] text-white shadow-xs'
-                        : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
-                    }`}
-                  >
-                    <BookOpen className="h-3.5 w-3.5" />
-                    <span>Ayıklanan Metin</span>
-                  </button>
+              <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center rounded bg-[var(--jmc-bg-surface)] p-0.5 border border-[var(--jmc-border)]">
+                    <button
+                      type="button"
+                      onClick={() => setPdfMode('embed')}
+                      className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-all ${
+                        pdfMode === 'embed'
+                          ? 'bg-[var(--jmc-primary)] text-white shadow-xs'
+                          : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
+                      }`}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      <span>PDF Görünümü</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPdfMode('text')}
+                      className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-all ${
+                        pdfMode === 'text'
+                          ? 'bg-[var(--jmc-primary)] text-white shadow-xs'
+                          : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
+                      }`}
+                    >
+                      <BookOpen className="h-3.5 w-3.5" />
+                      <span>Ayıklanan Metin</span>
+                    </button>
+                  </div>
+
+                  {(downloadedPath || preview.localPath) && (
+                    <button
+                      type="button"
+                      onClick={handleOpenFile}
+                      title="PDF dosyasını sisteminizdeki varsayılan okuyucuda aç (Adobe Acrobat, Edge, Chrome)"
+                      className="inline-flex items-center gap-1 rounded bg-[var(--jmc-bg-surface)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] border border-[var(--jmc-border)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-all"
+                    >
+                      <ExternalLink className="h-3 w-3 text-rose-400" />
+                      <span>Sistem Okuyucusunda Aç</span>
+                    </button>
+                  )}
                 </div>
+
+                {pdfMode === 'text' && (
+                  <div className="relative max-w-xs flex-1">
+                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-[var(--jmc-text-dim)]" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="PDF metninde ara…"
+                      className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+                    />
+                  </div>
+                )}
+
                 <span className="text-[11px] text-[var(--jmc-text-dim)]">
                   {preview.sizeBytes ? formatBytes(preview.sizeBytes) : ''}
                 </span>
               </div>
             )}
 
-            {/* PPTX Slayt Gezinimi */}
+            {/* Word / DOCX Doküman Kontrolleri */}
+            {preview.kind === 'docx' && (
+              <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                <div className="relative max-w-xs flex-1">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-[var(--jmc-text-dim)]" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Word dokümanında ara…"
+                    className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {(downloadedPath || preview.localPath) && (
+                    <button
+                      type="button"
+                      onClick={handleOpenFile}
+                      title="Word belgesini Microsoft Word veya LibreOffice ile aç"
+                      className="inline-flex items-center gap-1 rounded bg-[var(--jmc-bg-surface)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] border border-[var(--jmc-border)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-all"
+                    >
+                      <ExternalLink className="h-3 w-3 text-blue-400" />
+                      <span>Word'de Aç</span>
+                    </button>
+                  )}
+                  <span className="text-[11px] text-[var(--jmc-text-dim)]">
+                    {preview.paragraphs?.length || 0} paragraf
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* PPTX Slayt Başlık Bilgisi (Ana Butonlar Aşağıda Sabit & Kenetlenmiştir) */}
             {preview.kind === 'pptx' && preview.slides && preview.slides.length > 0 && (
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={activeSlideIndex <= 0}
-                    onClick={() => setActiveSlideIndex(i => Math.max(0, i - 1))}
-                    className="rounded p-1 hover:bg-[var(--jmc-bg-surface)] disabled:opacity-30"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <span className="font-semibold text-[var(--jmc-text)]">
+                  <span className="rounded bg-amber-500/15 text-amber-400 px-2 py-0.5 font-semibold text-[11px]">
                     Slayt {activeSlideIndex + 1} / {preview.slides.length}
                   </span>
-                  <button
-                    type="button"
-                    disabled={activeSlideIndex >= preview.slides.length - 1}
-                    onClick={() => setActiveSlideIndex(i => Math.min(preview.slides!.length - 1, i + 1))}
-                    className="rounded p-1 hover:bg-[var(--jmc-bg-surface)] disabled:opacity-30"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
+                  <span className="text-[11px] text-[var(--jmc-text-muted)] truncate max-w-sm">
+                    {preview.slides[activeSlideIndex]?.title || 'Başlıksız'}
+                  </span>
                 </div>
-                <div className="flex items-center gap-1 max-w-md overflow-x-auto py-0.5">
-                  {preview.slides.map((s, idx) => (
-                    <button
-                      key={s.slideNumber}
-                      type="button"
-                      onClick={() => setActiveSlideIndex(idx)}
-                      className={`h-5 w-6 rounded text-[10px] font-mono transition-all ${
-                        activeSlideIndex === idx
-                          ? 'bg-[var(--jmc-primary)] text-white font-bold'
-                          : 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
-                      }`}
-                    >
-                      {idx + 1}
-                    </button>
-                  ))}
+                <div className="text-[10.5px] text-[var(--jmc-text-dim)] hidden sm:block">
+                  Klavye: ← Sol / → Sağ Ok Tuşları
                 </div>
               </div>
             )}
@@ -775,36 +912,40 @@ export function DocumentViewerModal({
 
           {!loading && !error && preview && (
             <>
-              {/* --- 1. KOD GÖRÜNTÜLEYİCİ --- */}
+              {/* --- 1. KOD GÖRÜNTÜLEYİCİ (PrismJS Sözdizimi, Eşzamanlı Satır Numaraları, Satır Aralığı) --- */}
               {preview.kind === 'code' && (
                 <div
-                  className="flex font-mono text-[12px] leading-relaxed"
+                  className="font-mono text-[12px] select-text min-h-full bg-[var(--jmc-bg)]"
                   style={{ fontSize: `${fontSize}px` }}
                 >
-                  {/* Satır Numaraları Sütunu */}
-                  <div className="select-none bg-[var(--jmc-bg-surface)]/60 px-3 py-3 text-right text-[var(--jmc-text-dim)] border-r border-[var(--jmc-border-subtle)] shrink-0">
-                    {(filteredLines || codeLines).map((item, idx) => (
-                      <div key={idx} className="h-6">
-                        {typeof item === 'object' ? item.idx : idx + 1}
-                      </div>
-                    ))}
-                  </div>
+                  <div className="w-full py-2">
+                    {filteredCodeRows.map(row => {
+                      const isMatch =
+                        searchQuery.trim().length > 0 &&
+                        row.raw.toLowerCase().includes(searchQuery.toLowerCase())
+                      const lineSpacingStyle =
+                        lineSpacing === 'compact'
+                          ? 'py-0 leading-[1.3]'
+                          : lineSpacing === 'relaxed'
+                            ? 'py-1.5 leading-[1.85]'
+                            : 'py-0.5 leading-[1.55]'
 
-                  {/* Kod İçerik Sütunu */}
-                  <div className={`flex-1 p-3 min-w-0 ${codeWrap ? 'break-words' : 'overflow-x-auto whitespace-pre'}`}>
-                    {(filteredLines || codeLines).map((item, idx) => {
-                      const text = typeof item === 'object' ? item.line : item
-                      const isMatch = typeof item === 'object' ? item.match : false
                       return (
                         <div
-                          key={idx}
-                          className={`h-6 ${
-                            isMatch
-                              ? 'bg-amber-500/20 text-amber-200 font-semibold rounded px-1'
-                              : 'text-[var(--jmc-text)]'
+                          key={row.lineIndex}
+                          className={`flex items-start transition-colors hover:bg-white/[0.04] ${lineSpacingStyle} ${
+                            isMatch ? 'bg-amber-500/15' : ''
                           }`}
                         >
-                          {text || ' '}
+                          <span className="select-none pl-3 pr-4 text-right text-[var(--jmc-text-dim)] shrink-0 min-w-[3.75rem] font-mono text-[11px] opacity-60 border-r border-[var(--jmc-border-subtle)]">
+                            {row.lineIndex}
+                          </span>
+                          <div
+                            className={`flex-1 pl-4 pr-4 min-w-0 font-mono ${
+                              codeWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre overflow-x-visible'
+                            } ${isMatch ? 'text-amber-200' : 'text-[var(--jmc-text)]'}`}
+                            dangerouslySetInnerHTML={{ __html: row.html }}
+                          />
                         </div>
                       )
                     })}
@@ -837,8 +978,25 @@ export function DocumentViewerModal({
                       className="h-full w-full border-0 bg-neutral-900"
                     />
                   ) : (
-                    <div className="p-6 max-w-3xl mx-auto whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-[var(--jmc-text)]">
-                      {preview.text || 'Bu PDF dosyasından metin ayıklanamadı. PDF Görünümünü kullanın.'}
+                    <div className="p-6 md:p-8 max-w-4xl mx-auto w-full">
+                      <div className="rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 shadow-sm">
+                        <div className="flex items-center justify-between border-b border-[var(--jmc-border-subtle)] pb-3 mb-4">
+                          <h4 className="text-[13px] font-semibold text-[var(--jmc-text)]">
+                            PDF Ayıklanan Metin İçeriği
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={handleCopy}
+                            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] border border-[var(--jmc-border)]"
+                          >
+                            {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                            <span>{copied ? 'Kopyalandı' : 'Kopyala'}</span>
+                          </button>
+                        </div>
+                        <div className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-[var(--jmc-text)] select-text">
+                          {preview.text || 'Bu PDF dosyasından metin ayıklanamadı. PDF Görünümünü kullanın.'}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -846,72 +1004,195 @@ export function DocumentViewerModal({
 
               {/* --- 4. WORD / DOCX DOKÜMAN GÖRÜNTÜLEYİCİ --- */}
               {preview.kind === 'docx' && (
-                <div className="p-8 max-w-3xl mx-auto space-y-4">
-                  <div className="rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-8 shadow-sm space-y-3.5">
-                    <h2 className="text-[17px] font-bold text-[var(--jmc-text)] border-b border-[var(--jmc-border-subtle)] pb-2.5">
-                      {preview.title}
-                    </h2>
-                    {preview.paragraphs && preview.paragraphs.length > 0 ? (
-                      preview.paragraphs.map((p, idx) => (
-                        <p key={idx} className="text-[13px] leading-relaxed text-[var(--jmc-text)]">
-                          {p}
+                <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6">
+                  <div className="rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-md space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--jmc-border-subtle)] pb-4">
+                      <div>
+                        <h2 className="text-[18px] md:text-[20px] font-bold text-[var(--jmc-text)] tracking-tight">
+                          {preview.title}
+                        </h2>
+                        <p className="text-[11.5px] text-[var(--jmc-text-dim)] mt-0.5">
+                          DOCX Dokümanı · Biçimlendirilmiş Okuma Görünümü
                         </p>
-                      ))
-                    ) : (
-                      <p className="text-[13px] leading-relaxed text-[var(--jmc-text-muted)]">
-                        {preview.text || 'İçerik bulunamadı.'}
-                      </p>
-                    )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCopy}
+                        className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
+                      >
+                        {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                        <span>{copied ? 'Kopyalandı' : 'Tüm Metni Kopyala'}</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-3.5 pt-2 select-text">
+                      {preview.paragraphs && preview.paragraphs.length > 0 ? (
+                        preview.paragraphs
+                          .filter(p => !searchQuery.trim() || p.toLowerCase().includes(searchQuery.toLowerCase()))
+                          .map((p, idx) => {
+                            const trimmed = p.trim()
+                            const isMatch = searchQuery.trim() && trimmed.toLowerCase().includes(searchQuery.toLowerCase())
+
+                            // Basit Markdown Tablo Tespiti
+                            if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.includes('|')) {
+                              const cells = trimmed
+                                .split('|')
+                                .map(c => c.trim())
+                                .filter((_, i, arr) => i > 0 && i < arr.length - 1)
+                              return (
+                                <div key={idx} className="overflow-x-auto my-3 rounded-lg border border-[var(--jmc-border)]">
+                                  <table className="w-full text-left text-[12px]">
+                                    <tbody>
+                                      <tr className="bg-[var(--jmc-bg)]/60">
+                                        {cells.map((cell, cIdx) => (
+                                          <td
+                                            key={cIdx}
+                                            className="px-3.5 py-2 border-r border-[var(--jmc-border-subtle)] last:border-0 font-medium text-[var(--jmc-text)]"
+                                          >
+                                            {cell}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )
+                            }
+
+                            // Madde İmli Paragraf
+                            if (trimmed.startsWith('•') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`flex items-start gap-2.5 pl-3 py-0.5 text-[13px] leading-relaxed ${
+                                    isMatch ? 'bg-amber-500/15 text-amber-200 rounded px-2' : 'text-[var(--jmc-text)]'
+                                  }`}
+                                >
+                                  <span className="text-[var(--jmc-primary)] font-bold select-none">•</span>
+                                  <span>{trimmed.replace(/^[•\-\*]\s*/, '')}</span>
+                                </div>
+                              )
+                            }
+
+                            // Normal Paragraf
+                            return (
+                              <p
+                                key={idx}
+                                className={`text-[13px] leading-relaxed transition-colors ${
+                                  isMatch
+                                    ? 'bg-amber-500/15 text-amber-200 font-medium rounded p-1.5'
+                                    : 'text-[var(--jmc-text)]'
+                                }`}
+                              >
+                                {trimmed}
+                              </p>
+                            )
+                          })
+                      ) : (
+                        <p className="text-[13px] leading-relaxed text-[var(--jmc-text-muted)]">
+                          {preview.text || 'İçerik bulunamadı.'}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* --- 5. POWERPOINT / PPTX SLAYT GÖRÜNTÜLEYİCİ --- */}
+              {/* --- 5. POWERPOINT / PPTX SLAYT GÖRÜNTÜLEYİCİ (Kenetlenmiş Sabit Gezinim Çubuğu) --- */}
               {preview.kind === 'pptx' && preview.slides && (
-                <div className="flex h-full flex-col items-center justify-center p-6">
-                  {preview.slides[activeSlideIndex] ? (
-                    <div className="w-full max-w-3xl aspect-[16/9] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-8 shadow-lg flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)] border-b border-[var(--jmc-border-subtle)] pb-2">
-                          <span>Slayt {activeSlideIndex + 1}</span>
-                          <span>{preview.title}</span>
+                <div className="flex h-full flex-col justify-between overflow-hidden">
+                  {/* Slayt İçerik Alanı (Ortalanmış ve Bağımsız Kaydırılabilir) */}
+                  <div className="flex-1 overflow-y-auto p-4 md:p-8 flex items-center justify-center">
+                    {preview.slides[activeSlideIndex] ? (
+                      <div className="w-full max-w-4xl min-h-[360px] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl flex flex-col justify-between transition-all">
+                        <div>
+                          <div className="flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)] border-b border-[var(--jmc-border-subtle)] pb-3">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-400 px-2.5 py-0.5 font-semibold text-[10.5px]">
+                              <Presentation className="h-3 w-3" />
+                              Slayt {activeSlideIndex + 1} / {preview.slides.length}
+                            </span>
+                            <span className="truncate max-w-xs">{preview.title}</span>
+                          </div>
+                          <h2 className="mt-5 text-[20px] md:text-[24px] font-bold text-[var(--jmc-text)] tracking-tight">
+                            {preview.slides[activeSlideIndex].title || `Slayt ${activeSlideIndex + 1}`}
+                          </h2>
+                          {preview.slides[activeSlideIndex].bullets.length > 0 ? (
+                            <ul className="mt-6 space-y-3 text-[13.5px] md:text-[14.5px] text-[var(--jmc-text)] list-disc pl-6 leading-relaxed select-text">
+                              {preview.slides[activeSlideIndex].bullets.map((bullet, bIdx) => (
+                                <li key={bIdx} className="leading-relaxed">
+                                  {bullet}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-6 text-[13px] italic text-[var(--jmc-text-dim)]">
+                              Bu slaytta madde imli metin bulunmuyor veya slayt yalnızca görsel/şema içeriyor olabilir.
+                            </p>
+                          )}
                         </div>
-                        <h2 className="mt-4 text-[20px] font-bold text-[var(--jmc-primary)]">
-                          {preview.slides[activeSlideIndex].title || 'Başlıksız Slayt'}
-                        </h2>
-                        <ul className="mt-6 space-y-2.5 text-[14px] text-[var(--jmc-text)] list-disc pl-5">
-                          {preview.slides[activeSlideIndex].bullets.map((bullet, bIdx) => (
-                            <li key={bIdx} className="leading-relaxed">
-                              {bullet}
-                            </li>
-                          ))}
-                        </ul>
+
+                        <div className="mt-8 pt-4 border-t border-[var(--jmc-border-subtle)] flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)]">
+                          <span>Klavye: ← Sol / → Sağ Ok tuşları ile gezinebilirsiniz</span>
+                          <span className="font-mono">
+                            {Math.round(((activeSlideIndex + 1) / preview.slides.length) * 100)}%
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex justify-between items-center pt-4 border-t border-[var(--jmc-border-subtle)]">
-                        <button
-                          type="button"
-                          disabled={activeSlideIndex <= 0}
-                          onClick={() => setActiveSlideIndex(i => Math.max(0, i - 1))}
-                          className="rounded px-3 py-1 bg-[var(--jmc-bg)] text-[11px] font-medium disabled:opacity-30"
-                        >
-                          Önceki
-                        </button>
-                        <span className="text-[11px] font-mono text-[var(--jmc-text-dim)]">
-                          {activeSlideIndex + 1} / {preview.slides.length}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={activeSlideIndex >= preview.slides.length - 1}
-                          onClick={() => setActiveSlideIndex(i => Math.min(preview.slides!.length - 1, i + 1))}
-                          className="rounded px-3 py-1 bg-[var(--jmc-bg)] text-[11px] font-medium disabled:opacity-30"
-                        >
-                          Sonraki
-                        </button>
-                      </div>
+                    ) : (
+                      <p className="text-[12px] text-[var(--jmc-text-muted)]">Slayt bulunamadı.</p>
+                    )}
+                  </div>
+
+                  {/* SABİT & KENETLENMİŞ ALT KONTROL ÇUBUĞU (Asla zıplamaz, içeriğe göre kaymaz) */}
+                  <div className="shrink-0 border-t border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={activeSlideIndex <= 0}
+                        onClick={() => setActiveSlideIndex(i => Math.max(0, i - 1))}
+                        title="Önceki Slayt (Sol Ok)"
+                        className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-white hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span>Önceki Slayt</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={activeSlideIndex >= preview.slides.length - 1}
+                        onClick={() => setActiveSlideIndex(i => Math.min(preview.slides!.length - 1, i + 1))}
+                        title="Sonraki Slayt (Sağ Ok)"
+                        className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-white hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
+                      >
+                        <span>Sonraki Slayt</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
                     </div>
-                  ) : (
-                    <p className="text-[12px] text-[var(--jmc-text-muted)]">Slayt bulunamadı.</p>
-                  )}
+
+                    {/* Slayt Numaraları / Hızlı Atlama Çubuğu */}
+                    <div className="flex items-center gap-1 overflow-x-auto max-w-xl py-1 no-scrollbar">
+                      {preview.slides.map((s, idx) => (
+                        <button
+                          key={s.slideNumber || idx}
+                          type="button"
+                          onClick={() => setActiveSlideIndex(idx)}
+                          title={`Slayt ${idx + 1}: ${s.title || 'Başlıksız'}`}
+                          className={`h-7 min-w-[28px] px-1.5 rounded text-[11px] font-mono transition-all ${
+                            activeSlideIndex === idx
+                              ? 'bg-[var(--jmc-primary)] text-white font-bold shadow-xs scale-105'
+                              : 'bg-[var(--jmc-bg)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] border border-[var(--jmc-border-subtle)]'
+                          }`}
+                        >
+                          {idx + 1}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[11.5px] font-semibold text-[var(--jmc-text)]">
+                        {activeSlideIndex + 1} / {preview.slides.length}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
 

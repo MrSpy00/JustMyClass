@@ -25,6 +25,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.9",
     "@types/node": "^22.13.9",
+    "@types/prismjs": "^1.26.6",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
@@ -45,6 +46,7 @@
     "vitest": "^3.0.7"
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "prismjs": "^1.30.0"
   }
 }

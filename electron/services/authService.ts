@@ -1078,6 +1078,378 @@ export class AuthService {
           return
         }
 
+function escapeHtml(str: string): string {
+  return str.replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c] || c))
+}
+
+function buildAuthSuccessHtml(account: Account): string {
+  const safeName = escapeHtml(account.displayName || 'Google Kullanıcısı')
+  const safeEmail = escapeHtml(account.email || '')
+  const safeInst = account.institution ? escapeHtml(account.institution) : ''
+
+  const institutionHtml = safeInst
+    ? `<div class="institution-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+        <span>${safeInst}</span>
+      </div>`
+    : ''
+
+  const avatarHtml = account.photoUrl
+    ? `<img src="${escapeHtml(account.photoUrl)}" class="avatar" alt="" referrerpolicy="no-referrer" />`
+    : `<div class="avatar">${safeName.charAt(0).toUpperCase()}</div>`
+
+  return `<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bağlantı Kuruldu - JustMyClass</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #080B11;
+      color: #E6EDF7;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ambient {
+      position: absolute;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, rgba(99, 102, 241, 0.08) 50%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .card {
+      position: relative;
+      z-index: 1;
+      max-width: 460px;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-radius: 24px;
+      padding: 40px 32px;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      animation: enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(16px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .icon-wrapper {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .icon-bg {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      animation: pulse 2.4s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.08); opacity: 0.4; }
+    }
+    .check-svg {
+      position: relative;
+      z-index: 2;
+      width: 40px;
+      height: 40px;
+    }
+    .check-circle {
+      stroke-dasharray: 130;
+      stroke-dashoffset: 130;
+      animation: drawCircle 0.7s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+    }
+    .check-mark {
+      stroke-dasharray: 40;
+      stroke-dashoffset: 40;
+      animation: drawCheck 0.4s 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+    }
+    @keyframes drawCircle { to { stroke-dashoffset: 0; } }
+    @keyframes drawCheck { to { stroke-dashoffset: 0; } }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #F8FAFC;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 13.5px;
+      color: #94A3B8;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .profile-pill {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #0284C7;
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 600;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .profile-info { min-width: 0; flex: 1; }
+    .profile-name {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #F1F5F9;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .profile-email {
+      font-size: 12px;
+      color: #64748B;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .institution-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(14, 165, 233, 0.12);
+      border: 1px solid rgba(14, 165, 233, 0.25);
+      color: #38BDF8;
+      font-size: 11.5px;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 20px;
+      margin-bottom: 24px;
+    }
+    .progress-track {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #10B981, #06B6D4);
+      width: 100%;
+      transform-origin: left;
+      animation: countdown 3.5s linear forwards;
+    }
+    @keyframes countdown {
+      from { transform: scaleX(1); }
+      to { transform: scaleX(0); }
+    }
+    .footer-text {
+      font-size: 12px;
+      color: #64748B;
+      margin-bottom: 24px;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      flex: 1;
+      padding: 11px 16px;
+      border-radius: 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+    }
+    .btn-primary {
+      background: #0284C7;
+      color: #ffffff;
+    }
+    .btn-primary:hover { background: #0369A1; }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.06);
+      color: #94A3B8;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); color: #F1F5F9; }
+  </style>
+</head>
+<body>
+  <div class="ambient"></div>
+  <div class="card">
+    <div class="icon-wrapper">
+      <div class="icon-bg"></div>
+      <svg class="check-svg" viewBox="0 0 52 52" fill="none">
+        <circle class="check-circle" cx="26" cy="26" r="23" stroke="#10B981" stroke-width="3" stroke-linecap="round"/>
+        <path class="check-mark" d="M16 26l7 7 13-13" stroke="#10B981" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <h1>Bağlantı Başarıyla Kuruldu</h1>
+    <p class="subtitle">Google Classroom hesabınız doğrulandı ve JustMyClass çalışma alanınıza bağlandı.</p>
+
+    ${institutionHtml}
+
+    <div class="profile-pill">
+      ${avatarHtml}
+      <div class="profile-info">
+        <div class="profile-name">${safeName}</div>
+        <div class="profile-email">${safeEmail}</div>
+      </div>
+    </div>
+
+    <div class="progress-track">
+      <div class="progress-bar"></div>
+    </div>
+    <p class="footer-text">Bu sekme <strong id="timer">3</strong> saniye içinde kapatılacaktır.</p>
+
+    <div class="actions">
+      <button type="button" class="btn btn-secondary" onclick="window.close()">Sekmeyi Kapat</button>
+      <button type="button" class="btn btn-primary" onclick="tryCloseOrFocus()">JustMyClass'e Dön</button>
+    </div>
+  </div>
+
+  <script>
+    let remaining = 3;
+    const timerEl = document.getElementById('timer');
+    const interval = setInterval(function() {
+      remaining--;
+      if (timerEl) timerEl.textContent = remaining;
+      if (remaining <= 0) {
+        clearInterval(interval);
+        tryCloseOrFocus();
+      }
+    }, 1000);
+
+    function tryCloseOrFocus() {
+      try { window.close(); } catch(e) {}
+    }
+  </script>
+</body>
+</html>`
+}
+
+function buildAuthErrorHtml(title: string, message: string): string {
+  const safeTitle = escapeHtml(title)
+  const safeMsg = escapeHtml(message)
+
+  return `<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${safeTitle} - JustMyClass</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #080B11;
+      color: #E6EDF7;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      max-width: 460px;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      backdrop-filter: blur(24px);
+      border-radius: 24px;
+      padding: 40px 32px;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+    .icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 20px;
+      border-radius: 50%;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      display: grid;
+      place-items: center;
+      color: #F87171;
+    }
+    h1 { font-size: 20px; font-weight: 700; color: #F8FAFC; margin-bottom: 10px; }
+    p { font-size: 13px; color: #94A3B8; line-height: 1.5; margin-bottom: 20px; }
+    .msg-box {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 11.5px;
+      color: #FCA5A5;
+      word-break: break-all;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      background: #EF4444;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+    }
+    .btn:hover { background: #DC2626; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    </div>
+    <h1>${safeTitle}</h1>
+    <p>Oturum açma isteği tamamlanamadı. Lütfen uygulamaya dönüp tekrar deneyin.</p>
+    <div class="msg-box">${safeMsg}</div>
+    <button type="button" class="btn" onclick="window.close()">Sekmeyi Kapat</button>
+  </div>
+</body>
+</html>`
+}
+
         void (async () => {
           try {
             const url = new URL(req.url ?? '', `http://127.0.0.1`)
@@ -1087,20 +1459,14 @@ export class AuthService {
 
             if (error) {
               res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
-              res.end(
-                `<!doctype html><meta charset="utf-8"><body style="font:15px system-ui;padding:48px;background:#0B0F17;color:#E6EDF7">` +
-                  `<h2 style="margin:0 0 8px">Giriş tamamlanamadı</h2><p style="color:#9FB0C8">${error}</p></body>`,
-              )
+              res.end(buildAuthErrorHtml('Giriş İptal Edildi', error))
               finish(() => reject(new Error(`Google yetkilendirmesi iptal edildi: ${error}`)))
               return
             }
 
             if (incomingState !== state || !code) {
               res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
-              res.end(
-                `<!doctype html><meta charset="utf-8"><body style="font:15px system-ui;padding:48px;background:#0B0F17;color:#E6EDF7">` +
-                  `<h2 style="margin:0 0 8px">Güvenlik doğrulaması başarısız</h2><p style="color:#9FB0C8">Lütfen uygulamayı kapatıp yeniden deneyin.</p></body>`,
-              )
+              res.end(buildAuthErrorHtml('Güvenlik Doğrulaması Başarısız', 'Güvenlik kodu uyuşmuyor. Lütfen uygulamayı kapatıp yeniden deneyin.'))
               finish(() => reject(new Error('Güvenlik doğrulaması başarısız oldu.')))
               return
             }
@@ -1156,23 +1522,12 @@ export class AuthService {
             this.storageService.setAccount(account)
 
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end(
-              `<!doctype html><meta charset="utf-8"><body style="font:15px system-ui;padding:48px;text-align:center;background:#0B0F17;color:#E6EDF7">` +
-                `<h2 style="margin:0 0 8px;color:#38bdf8">Bağlantı kuruldu</h2>` +
-                `<p style="color:#9FB0C8">Hesabınız (${account.displayName} - ${account.email}) başarıyla doğrulandı.</p>` +
-                `<p style="color:#64748b;font-size:13px">Bu sekmeyi kapatıp JustMyClass'e dönebilirsiniz.</p>` +
-                `<script>setTimeout(function(){try{window.close();}catch(e){}},1200);</script></body>`,
-            )
+            res.end(buildAuthSuccessHtml(account))
             finish(() => resolve(account))
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : 'Bilinmeyen hata'
             res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end(
-              `<!doctype html><meta charset="utf-8"><body style="font:15px system-ui;padding:48px;background:#0B0F17;color:#E6EDF7">` +
-                `<h2 style="margin:0 0 8px;color:#f87171">Yetkilendirme Hatası</h2>` +
-                `<p style="color:#fca5a5;word-break:break-all;font-family:monospace;background:#1e1e2e;padding:12px;border-radius:6px">${errMsg.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] || c))}</p>` +
-                `<p style="color:#9FB0C8">Uygulamaya dönüp tekrar deneyin.</p></body>`,
-            )
+            res.end(buildAuthErrorHtml('Yetkilendirme Hatası', errMsg))
             finish(() => reject(err instanceof Error ? err : new Error(errMsg)))
           }
         })()

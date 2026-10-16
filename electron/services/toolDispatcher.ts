@@ -34,96 +34,51 @@ export interface WebSearchHit {
 }
 
 /**
- * Saf Node.js (harici bağımlılıksız) PDF metin çıkarıcısı.
- * FlateDecode akışlarını decompress eder, metin bloklarını (Tj, TJ) ayıklar.
+ * Türkçe ve uluslararası karakter eşlemeleri (Windows-1254 / ISO-8859-9).
  */
-export function extractTextFromPdf(buf: Buffer): string {
-  const textChunks: string[] = []
-  const str = buf.toString('latin1')
+const TURKISH_WIN1254_MAP: Record<number, string> = {
+  0xc7: 'Ç',
+  0xe7: 'ç',
+  0xd6: 'Ö',
+  0xf6: 'ö',
+  0xdc: 'Ü',
+  0xfc: 'ü',
+  0xd0: 'Ğ',
+  0xf0: 'ğ',
+  0xdd: 'İ',
+  0xfd: 'ı',
+  0xde: 'Ş',
+  0xfe: 'ş',
+}
 
-  const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g
-  let match: RegExpExecArray | null
-
-  while ((match = streamRegex.exec(str)) !== null) {
-    const rawData = match[1]
-    let decompressed: Buffer | null = null
-
-    const dictStart = Math.max(0, match.index - 300)
-    const dictSlice = str.slice(dictStart, match.index)
-
-    if (dictSlice.includes('/FlateDecode')) {
+function decodeXmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, dec) => {
       try {
-        const streamBuffer = buf.subarray(
-          match.index + match[0].indexOf(rawData),
-          match.index + match[0].indexOf(rawData) + rawData.length,
-        )
-        decompressed = zlib.inflateSync(streamBuffer)
+        return String.fromCharCode(parseInt(dec, 10))
       } catch {
-        try {
-          const streamBuffer = buf.subarray(
-            match.index + match[0].indexOf(rawData),
-            match.index + match[0].indexOf(rawData) + rawData.length,
-          )
-          decompressed = zlib.unzipSync(streamBuffer)
-        } catch {
-          decompressed = null
-        }
+        return ''
       }
-    } else {
-      decompressed = Buffer.from(rawData, 'latin1')
-    }
-
-    if (decompressed) {
-      const streamContent = decompressed.toString('latin1')
-      const tjRegex = /\(([^)]*)\)\s*Tj/g
-      let tjMatch: RegExpExecArray | null
-      while ((tjMatch = tjRegex.exec(streamContent)) !== null) {
-        if (tjMatch[1]) textChunks.push(tjMatch[1])
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      try {
+        return String.fromCharCode(parseInt(hex, 16))
+      } catch {
+        return ''
       }
-
-      const bigTjRegex = /\[([^\]]*)\]\s*TJ/g
-      let bigTjMatch: RegExpExecArray | null
-      while ((bigTjMatch = bigTjRegex.exec(streamContent)) !== null) {
-        const inner = bigTjMatch[1]
-        const innerStrings = inner.match(/\(([^)]*)\)/g)
-        if (innerStrings) {
-          for (const s of innerStrings) {
-            textChunks.push(s.slice(1, -1))
-          }
-        }
-      }
-    }
-  }
-
-  if (textChunks.length === 0) {
-    const fallbackRegex = /\(([^)]{3,})\)/g
-    let fbMatch: RegExpExecArray | null
-    while ((fbMatch = fallbackRegex.exec(str)) !== null) {
-      const val = fbMatch[1].trim()
-      if (val.length > 3 && !val.includes('/') && !val.includes('\\')) {
-        textChunks.push(val)
-      }
-    }
-  }
-
-  return textChunks
-    .map(c =>
-      c
-        .replace(/\\([0-7]{3})/g, (_m, oct) => String.fromCharCode(parseInt(oct, 8)))
-        .replace(/\\[nrtbf]/g, ' ')
-        .replace(/\\(.)/g, '$1'),
-    )
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80_000)
+    })
 }
 
 /**
- * Saf Node.js DOCX metin çıkarıcısı.
- * DOCX bir zip arşividir; word/document.xml içindeki metin etiketlerini ayıklar.
+ * ZIP arşivi içindeki dosyaları açar (DOCX ve PPTX için harici bağımlılıksız).
  */
-export function extractTextFromDocx(buf: Buffer): string {
+export function extractZipEntries(buf: Buffer): Map<string, Buffer> {
+  const entries = new Map<string, Buffer>()
   try {
     let offset = 0
     while (offset < buf.length - 30) {
@@ -140,32 +95,432 @@ export function extractTextFromDocx(buf: Buffer): string {
         const fileName = buf.toString('utf8', offset + 30, offset + 30 + fileNameLength)
         const dataOffset = offset + 30 + fileNameLength + extraFieldLength
 
-        if (fileName === 'word/document.xml' && dataOffset + compressedSize <= buf.length) {
+        if (compressedSize > 0 && dataOffset + compressedSize <= buf.length) {
           const compData = buf.subarray(dataOffset, dataOffset + compressedSize)
-          let xmlBuffer: Buffer
+          let decomp: Buffer | null = null
           if (compressionMethod === 8) {
-            xmlBuffer = zlib.inflateRawSync(compData)
-          } else {
-            xmlBuffer = compData
+            try {
+              decomp = zlib.inflateRawSync(compData)
+            } catch {
+              try {
+                decomp = zlib.inflateSync(compData)
+              } catch {
+                decomp = null
+              }
+            }
+          } else if (compressionMethod === 0) {
+            decomp = compData
           }
-          const xml = xmlBuffer.toString('utf8')
-          const matches = xml.match(/<w:t[^>]*>(.*?)<\/w:t>/g) || []
-          return matches
-            .map(m => m.replace(/<[^>]+>/g, ''))
-            .join(' ')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .slice(0, 80_000)
+          if (decomp) {
+            entries.set(fileName, decomp)
+          }
+          offset = dataOffset + compressedSize
+          continue
         }
-        offset = dataOffset + compressedSize
-      } else {
-        offset++
       }
+      offset++
     }
   } catch {
-    /* yut */
+    /* fallback */
   }
-  return ''
+  return entries
+}
+
+/**
+ * PDF ToUnicode CMap bloklarını ayıklar ve Unicode karakter karşılıklarını haritalandırır.
+ */
+function parsePdfCMap(decompressedText: string): Map<string, string> {
+  const cmap = new Map<string, string>()
+
+  // bfchar blokları: <0001> <0041>
+  const bfCharRegex = /beginbfchar[\r\n]+([\s\S]*?)endbfchar/g
+  let bfMatch: RegExpExecArray | null
+  while ((bfMatch = bfCharRegex.exec(decompressedText)) !== null) {
+    const lines = bfMatch[1].trim().split(/\r?\n/)
+    for (const line of lines) {
+      const parts = line.match(/<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>/)
+      if (parts) {
+        const srcHex = parts[1].toLowerCase()
+        const dstHex = parts[2]
+        let uniStr = ''
+        for (let i = 0; i < dstHex.length; i += 4) {
+          uniStr += String.fromCharCode(parseInt(dstHex.slice(i, i + 4), 16))
+        }
+        cmap.set(srcHex, uniStr)
+      }
+    }
+  }
+
+  // bfrange blokları: <0001> <0005> <0041> veya <0001> <0002> [<0041> <0042>]
+  const bfRangeRegex = /beginbfrange[\r\n]+([\s\S]*?)endbfrange/g
+  let rgMatch: RegExpExecArray | null
+  while ((rgMatch = bfRangeRegex.exec(decompressedText)) !== null) {
+    const lines = rgMatch[1].trim().split(/\r?\n/)
+    for (const line of lines) {
+      const simpleRange = line.match(/<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>/)
+      if (simpleRange) {
+        const start = parseInt(simpleRange[1], 16)
+        const end = parseInt(simpleRange[2], 16)
+        let dstStart = parseInt(simpleRange[3], 16)
+        const hexLen = simpleRange[1].length
+        for (let code = start; code <= end; code++) {
+          const hexKey = code.toString(16).padStart(hexLen, '0').toLowerCase()
+          cmap.set(hexKey, String.fromCharCode(dstStart++))
+        }
+      }
+    }
+  }
+
+  return cmap
+}
+
+/**
+ * PDF literal string içeriğindeki octal, UTF-16BE ve Türkçe karakterleri çözer.
+ */
+function decodePdfLiteralString(raw: string): string {
+  // UTF-16BE BOM kontrolü: \376\377 veya \xFE\xFF
+  if (raw.startsWith('\xfe\xff') || raw.startsWith('\\376\\377')) {
+    const clean = raw.replace(/^(\xfe\xff|\\376\\377)/, '')
+    const bytes: number[] = []
+    let i = 0
+    while (i < clean.length) {
+      if (clean[i] === '\\' && i + 3 < clean.length && /^[0-7]{3}$/.test(clean.slice(i + 1, i + 4))) {
+        bytes.push(parseInt(clean.slice(i + 1, i + 4), 8))
+        i += 4
+      } else if (clean[i] === '\\' && i + 1 < clean.length) {
+        bytes.push(clean.charCodeAt(i + 1))
+        i += 2
+      } else {
+        bytes.push(clean.charCodeAt(i))
+        i++
+      }
+    }
+    let res = ''
+    for (let b = 0; b < bytes.length - 1; b += 2) {
+      res += String.fromCharCode((bytes[b] << 8) | bytes[b + 1])
+    }
+    return res
+  }
+
+  // Octal kaçış dizilerini bayt dizisine dönüştür
+  const byteList: number[] = []
+  let pos = 0
+  while (pos < raw.length) {
+    if (raw[pos] === '\\') {
+      if (pos + 3 < raw.length && /^[0-7]{3}$/.test(raw.slice(pos + 1, pos + 4))) {
+        byteList.push(parseInt(raw.slice(pos + 1, pos + 4), 8))
+        pos += 4
+      } else if (raw[pos + 1] === 'n') {
+        byteList.push(10)
+        pos += 2
+      } else if (raw[pos + 1] === 'r') {
+        byteList.push(13)
+        pos += 2
+      } else if (raw[pos + 1] === 't') {
+        byteList.push(9)
+        pos += 2
+      } else if (raw[pos + 1] === 'b') {
+        byteList.push(8)
+        pos += 2
+      } else if (raw[pos + 1] === 'f') {
+        byteList.push(12)
+        pos += 2
+      } else if (raw[pos + 1] === '(' || raw[pos + 1] === ')' || raw[pos + 1] === '\\') {
+        byteList.push(raw.charCodeAt(pos + 1))
+        pos += 2
+      } else {
+        pos++
+      }
+    } else {
+      byteList.push(raw.charCodeAt(pos))
+      pos++
+    }
+  }
+
+  // UTF-8 veya Windows-1254 (Türkçe) çözümlemesi
+  const buf = Buffer.from(byteList)
+  try {
+    const utf8Str = buf.toString('utf8')
+    if (!utf8Str.includes('\ufffd') && /[^\x00-\x7F]/.test(utf8Str)) {
+      return utf8Str
+    }
+  } catch {
+    /* fallback to win1254 */
+  }
+
+  let result = ''
+  for (const b of byteList) {
+    if (TURKISH_WIN1254_MAP[b]) {
+      result += TURKISH_WIN1254_MAP[b]
+    } else {
+      result += String.fromCharCode(b)
+    }
+  }
+  return result
+}
+
+/**
+ * Saf Node.js (harici bağımlılıksız) PDF metin çıkarıcısı.
+ * FlateDecode akışlarını decompress eder, ToUnicode CMaps, hex dizileri (<...>),
+ * literal stringler (...) ve Türkçe karakter kodlamalarını eksiksiz çözer.
+ */
+export function extractTextFromPdf(buf: Buffer): string {
+  if (!buf || buf.length < 10) return ''
+  const textChunks: string[] = []
+  const str = buf.toString('latin1')
+
+  // 1) Tüm akışları aç ve ToUnicode haritalarını çıkar
+  const decompressedStreams: string[] = []
+  const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g
+  let match: RegExpExecArray | null
+
+  while ((match = streamRegex.exec(str)) !== null) {
+    const rawData = match[1]
+    const dictStart = Math.max(0, match.index - 400)
+    const dictSlice = str.slice(dictStart, match.index)
+    let decomp: Buffer | null = null
+
+    if (dictSlice.includes('/FlateDecode')) {
+      const streamStart = match.index + match[0].indexOf(rawData)
+      const streamBuf = buf.subarray(streamStart, streamStart + rawData.length)
+      try {
+        decomp = zlib.inflateSync(streamBuf)
+      } catch {
+        try {
+          decomp = zlib.inflateRawSync(streamBuf)
+        } catch {
+          decomp = null
+        }
+      }
+    } else {
+      decomp = Buffer.from(rawData, 'latin1')
+    }
+
+    if (decomp) {
+      decompressedStreams.push(decomp.toString('latin1'))
+    }
+  }
+
+  // ToUnicode CMaps'i tüm akışlardan topla
+  const globalCMap = new Map<string, string>()
+  for (const st of decompressedStreams) {
+    if (st.includes('beginbfchar') || st.includes('beginbfrange')) {
+      const localMap = parsePdfCMap(st)
+      for (const [k, v] of localMap.entries()) {
+        globalCMap.set(k, v)
+      }
+    }
+  }
+
+  // 2) Metin operatörlerini ayıkla (Tj, TJ, ', ")
+  for (const content of decompressedStreams) {
+    // (...) Tj
+    const tjRegex = /\(([\s\S]*?)\)\s*Tj/g
+    let tjMatch: RegExpExecArray | null
+    while ((tjMatch = tjRegex.exec(content)) !== null) {
+      const decoded = decodePdfLiteralString(tjMatch[1])
+      if (decoded.trim()) textChunks.push(decoded)
+    }
+
+    // <hex> Tj
+    const hexTjRegex = /<([0-9a-fA-F]+)>\s*Tj/g
+    let hxMatch: RegExpExecArray | null
+    while ((hxMatch = hexTjRegex.exec(content)) !== null) {
+      const hex = hxMatch[1].toLowerCase()
+      if (globalCMap.has(hex)) {
+        textChunks.push(globalCMap.get(hex)!)
+      } else if (hex.length % 4 === 0) {
+        let uStr = ''
+        for (let i = 0; i < hex.length; i += 4) {
+          const chunk = hex.slice(i, i + 4)
+          uStr += globalCMap.get(chunk) || String.fromCharCode(parseInt(chunk, 16))
+        }
+        if (uStr.trim()) textChunks.push(uStr)
+      } else {
+        let uStr = ''
+        for (let i = 0; i < hex.length; i += 2) {
+          const byteVal = parseInt(hex.slice(i, i + 2), 16)
+          uStr += TURKISH_WIN1254_MAP[byteVal] || String.fromCharCode(byteVal)
+        }
+        if (uStr.trim()) textChunks.push(uStr)
+      }
+    }
+
+    // [...] TJ
+    const bigTjRegex = /\[([\s\S]*?)\]\s*TJ/g
+    let bigTjMatch: RegExpExecArray | null
+    while ((bigTjMatch = bigTjRegex.exec(content)) !== null) {
+      const inner = bigTjMatch[1]
+      const tokenRegex = /\(([\s\S]*?)\)|<([0-9a-fA-F]+)>/g
+      let tokMatch: RegExpExecArray | null
+      const lineTokens: string[] = []
+      while ((tokMatch = tokenRegex.exec(inner)) !== null) {
+        if (tokMatch[1] !== undefined) {
+          lineTokens.push(decodePdfLiteralString(tokMatch[1]))
+        } else if (tokMatch[2] !== undefined) {
+          const hex = tokMatch[2].toLowerCase()
+          if (globalCMap.has(hex)) {
+            lineTokens.push(globalCMap.get(hex)!)
+          } else if (hex.length % 4 === 0) {
+            let uStr = ''
+            for (let i = 0; i < hex.length; i += 4) {
+              const chunk = hex.slice(i, i + 4)
+              uStr += globalCMap.get(chunk) || String.fromCharCode(parseInt(chunk, 16))
+            }
+            lineTokens.push(uStr)
+          } else {
+            let uStr = ''
+            for (let i = 0; i < hex.length; i += 2) {
+              const byteVal = parseInt(hex.slice(i, i + 2), 16)
+              uStr += TURKISH_WIN1254_MAP[byteVal] || String.fromCharCode(byteVal)
+            }
+            lineTokens.push(uStr)
+          }
+        }
+      }
+      if (lineTokens.length > 0) {
+        textChunks.push(lineTokens.join(''))
+      }
+    }
+  }
+
+  // 3) Fallback
+  if (textChunks.length === 0) {
+    const fallbackRegex = /\(([^)]{3,})\)/g
+    let fbMatch: RegExpExecArray | null
+    while ((fbMatch = fallbackRegex.exec(str)) !== null) {
+      const val = fbMatch[1].trim()
+      if (val.length > 3 && !val.includes('/') && !val.includes('\\')) {
+        textChunks.push(val)
+      }
+    }
+  }
+
+  return textChunks
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80_000)
+}
+
+/**
+ * Saf Node.js DOCX metin ve tablo çıkarıcısı.
+ * word/document.xml içindeki paragrafları, tabloları, XML kaçışlarını ve Türkçe harfleri çözer.
+ */
+export function extractTextFromDocx(buf: Buffer): string {
+  try {
+    const entries = extractZipEntries(buf)
+    const docXml = entries.get('word/document.xml')
+    if (!docXml) return ''
+    const xml = docXml.toString('utf8')
+
+    const blocks: string[] = []
+    const elementRegex = /<(w:p|w:tbl)(?: [^>]*)?>([\s\S]*?)<\/\1>/g
+    let elMatch: RegExpExecArray | null
+
+    while ((elMatch = elementRegex.exec(xml)) !== null) {
+      const tag = elMatch[1]
+      const inner = elMatch[2]
+
+      if (tag === 'w:tbl') {
+        const rows: string[][] = []
+        const rowRegex = /<w:tr(?: [^>]*)?>([\s\S]*?)<\/w:tr>/g
+        let trMatch: RegExpExecArray | null
+        while ((trMatch = rowRegex.exec(inner)) !== null) {
+          const cells: string[] = []
+          const cellRegex = /<w:tc(?: [^>]*)?>([\s\S]*?)<\/w:tc>/g
+          let tcMatch: RegExpExecArray | null
+          while ((tcMatch = cellRegex.exec(trMatch[1])) !== null) {
+            const cellTextMatches = tcMatch[1].match(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g) || []
+            const cellText = cellTextMatches.map(m => m.replace(/<[^>]+>/g, '')).join('').trim()
+            cells.push(decodeXmlEntities(cellText))
+          }
+          if (cells.some(c => c.length > 0)) {
+            rows.push(cells)
+          }
+        }
+        if (rows.length > 0) {
+          blocks.push(rows.map(r => `| ${r.join(' | ')} |`).join('\n'))
+        }
+      } else if (tag === 'w:p') {
+        const isBullet = inner.includes('<w:numPr>')
+        const textRuns: string[] = []
+        const runRegex = /<w:r(?: [^>]*)?>([\s\S]*?)<\/w:r>/g
+        let rMatch: RegExpExecArray | null
+        while ((rMatch = runRegex.exec(inner)) !== null) {
+          const rXml = rMatch[1]
+          const subMatches = rXml.match(/<w:(t|tab|br)(?: [^>]*)?>([^<]*)<\/?w:\1>/g) || []
+          for (const sm of subMatches) {
+            if (sm.startsWith('<w:tab')) {
+              textRuns.push('    ')
+            } else if (sm.startsWith('<w:br')) {
+              textRuns.push('\n')
+            } else {
+              textRuns.push(sm.replace(/<[^>]+>/g, ''))
+            }
+          }
+        }
+        let pText = decodeXmlEntities(textRuns.join('')).trim()
+        if (pText.length > 0) {
+          if (isBullet) {
+            pText = `• ${pText}`
+          }
+          blocks.push(pText)
+        }
+      }
+    }
+
+    return blocks.join('\n\n').slice(0, 80_000)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Saf Node.js PPTX slayt metin çıkarıcısı.
+ * ppt/slides/slide*.xml dosyalarını sırayla okur, başlıkları ve maddeleri ayıklar.
+ */
+export function extractTextFromPptx(buf: Buffer): string {
+  try {
+    const entries = extractZipEntries(buf)
+    const slideEntries: Array<{ num: number; xml: string }> = []
+    for (const [name, data] of entries.entries()) {
+      const match = name.match(/ppt\/slides\/slide(\d+)\.xml/i)
+      if (match) {
+        slideEntries.push({ num: parseInt(match[1], 10), xml: data.toString('utf8') })
+      }
+    }
+    slideEntries.sort((a, b) => a.num - b.num)
+
+    const slideTexts: string[] = []
+    for (const slide of slideEntries) {
+      const paragraphs: string[] = []
+      const pRegex = /<a:p(?: [^>]*)?>([\s\S]*?)<\/a:p>/g
+      let pMatch: RegExpExecArray | null
+      while ((pMatch = pRegex.exec(slide.xml)) !== null) {
+        const pXml = pMatch[1]
+        const tMatches = pXml.match(/<a:t(?: [^>]*)?>([^<]*)<\/a:t>/g) || []
+        const lineText = decodeXmlEntities(tMatches.map(m => m.replace(/<[^>]+>/g, '')).join('')).trim()
+        if (lineText.length > 0) {
+          paragraphs.push(lineText)
+        }
+      }
+
+      if (paragraphs.length > 0) {
+        const title = paragraphs[0]
+        const bullets = paragraphs.slice(1)
+        let slideBlock = `[Slayt ${slide.num}: ${title}]`
+        if (bullets.length > 0) {
+          slideBlock += '\n' + bullets.map(b => `• ${b}`).join('\n')
+        }
+        slideTexts.push(slideBlock)
+      }
+    }
+
+    return slideTexts.join('\n\n').slice(0, 80_000)
+  } catch {
+    return ''
+  }
 }
 
 /**
@@ -248,7 +603,7 @@ export class ToolDispatcher {
     const lines: string[] = []
     const seen = new Set<string>()
 
-    const describe = (att: any, kind: 'odev' | 'materyal' | 'teslim', courseName?: string) => {
+    const describe = (att: any, kind: 'odev' | 'materyal' | 'teslim' | 'duyuru', courseName?: string) => {
       const id = att?.driveFileId || att?.id
       if (!id || seen.has(id)) return
       seen.add(id)
@@ -285,6 +640,9 @@ export class ToolDispatcher {
             for (const att of sub.attachments || []) describe(att, 'teslim', course.name)
           }
         }
+        for (const ann of this.storageService.getAnnouncements(course.id)) {
+          for (const att of ann.materials || []) describe(att, 'duyuru', course.name)
+        }
       }
 
       if (!lines.length) {
@@ -315,6 +673,10 @@ export class ToolDispatcher {
 
     for (const material of this.storageService.getMaterials(courseId)) {
       for (const att of material.materials || []) describe(att, 'materyal')
+    }
+
+    for (const ann of this.storageService.getAnnouncements(courseId)) {
+      for (const att of ann.materials || []) describe(att, 'duyuru')
     }
 
     if (!lines.length) {
@@ -468,6 +830,23 @@ export class ToolDispatcher {
             if (foundAttachment) break
           }
           if (foundAttachment) break
+
+          const announcements = this.storageService.getAnnouncements(course.id)
+          for (const a of announcements) {
+            for (const att of a.materials || []) {
+              if (
+                att.id === targetIdOrName ||
+                att.driveFileId === targetIdOrName ||
+                (targetIdOrName && att.title.toLowerCase().includes(targetIdOrName.toLowerCase()))
+              ) {
+                foundAttachment = att
+                foundCourseId = course.id
+                break
+              }
+            }
+            if (foundAttachment) break
+          }
+          if (foundAttachment) break
         }
 
         if (foundAttachment) {
@@ -496,6 +875,7 @@ export class ToolDispatcher {
         const title = cached.entry.title.toLowerCase()
         const mime = (cached.entry.mimeType || '').toLowerCase()
 
+        // 1) PDF
         if (mime === 'application/pdf' || title.endsWith('.pdf')) {
           const text = extractTextFromPdf(buf)
           if (!text) {
@@ -506,29 +886,63 @@ export class ToolDispatcher {
           }
           return {
             requiresApproval: false,
-            result: `[${cached.entry.title} - Çıkarılan PDF Metni]:\n${text.slice(0, 20_000)}`,
+            result: `[${cached.entry.title} - Çıkarılan PDF Metni (${text.length} karakter)]:\n${text.slice(0, 60_000)}`,
           }
         }
 
+        // 2) Word / DOCX / ODT
         if (
           mime.includes('wordprocessingml') ||
-          title.endsWith('.docx')
+          title.endsWith('.docx') ||
+          title.endsWith('.odt')
         ) {
           const text = extractTextFromDocx(buf)
           return {
             requiresApproval: false,
-            result: `[${cached.entry.title} - Çıkarılan Belge Metni]:\n${text.slice(0, 20_000)}`,
+            result: `[${cached.entry.title} - Çıkarılan Belge Metni (${text.length} karakter)]:\n${text.slice(0, 60_000)}`,
           }
         }
 
-        const isText =
-          mime.startsWith('text/') ||
-          /\.(md|txt|csv|json|ts|tsx|js|jsx|py|html|css|c|cpp|h|java|sql|sh)$/i.test(title)
-
-        if (isText) {
+        // 3) PowerPoint / Slayt (PPTX / ODP)
+        if (
+          mime.includes('presentationml') ||
+          title.endsWith('.pptx') ||
+          title.endsWith('.odp')
+        ) {
+          const text = extractTextFromPptx(buf)
           return {
             requiresApproval: false,
-            result: `[${cached.entry.title}]:\n${buf.toString('utf8').slice(0, 20_000)}`,
+            result: `[${cached.entry.title} - Çıkarılan Sunum Slaytları (${text.length} karakter)]:\n${text.slice(0, 60_000)}`,
+          }
+        }
+
+        // 4) Tablolar (CSV / TSV)
+        if (mime === 'text/csv' || title.endsWith('.csv') || title.endsWith('.tsv')) {
+          const raw = buf.toString('utf8')
+          const lines = raw.split(/\r?\n/).filter(l => l.trim().length > 0)
+          const sample = lines.slice(0, 5).join('\n')
+          const delimiter = (sample.match(/\t/g) || []).length > (sample.match(/,/g) || []).length ? '\t' : (sample.match(/;/g) || []).length > (sample.match(/,/g) || []).length ? ';' : ','
+          const maxRows = Math.min(lines.length, 300)
+          const formattedRows = lines.slice(0, maxRows).map(line => {
+            const cells = line.split(delimiter).map(c => c.trim().replace(/^"|"$/g, ''))
+            return `| ${cells.join(' | ')} |`
+          })
+          return {
+            requiresApproval: false,
+            result: `[${cached.entry.title} - Tablo Verisi (${maxRows}/${lines.length} satır)]:\n${formattedRows.join('\n')}`,
+          }
+        }
+
+        // 5) Kod ve Metin Dosyaları
+        const isText =
+          mime.startsWith('text/') ||
+          /\.(md|txt|csv|json|ts|tsx|js|jsx|py|html|css|c|cpp|h|hpp|cs|java|sql|sh|bash|ps1|go|rs|php|rb|swift|kt|dart|yaml|yml|xml|toml|ini|env)$/i.test(title)
+
+        if (isText) {
+          const text = buf.toString('utf8')
+          return {
+            requiresApproval: false,
+            result: `[${cached.entry.title} (${text.length} karakter)]:\n${text.slice(0, 60_000)}`,
           }
         }
 

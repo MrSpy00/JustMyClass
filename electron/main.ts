@@ -246,7 +246,7 @@ function applyContentSecurityPolicy(session: Session): void {
     `connect-src ${connectSrc.join(' ')}`,
     "media-src 'self' data: blob:",
     "frame-src 'self' blob: data:",
-    "object-src 'none'",
+    "object-src 'self' blob: data:",
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",
@@ -278,6 +278,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      plugins: true,
       // Preload yalnizca `contextBridge` ve `ipcRenderer` kullaniyor;
       // ikisi de sandbox icinde mevcuttur. Sandbox, renderer bir RCE
       // yerse calistirabilecegi yuzeyi belirgin sekilde daraltir.

@@ -3,7 +3,143 @@ import zlib from 'node:zlib'
 import type { Attachment, FilePreviewResult } from '../../types/jmc'
 import type { StorageService } from './storageService'
 import type { DriveService } from './driveService'
-import { extractTextFromPdf, extractTextFromDocx } from './toolDispatcher'
+import { extractTextFromPdf, extractTextFromDocx, extractTextFromPptx, extractZipEntries } from './toolDispatcher'
+
+function decodeXmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, dec) => {
+      try {
+        return String.fromCharCode(parseInt(dec, 10))
+      } catch {
+        return ''
+      }
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      try {
+        return String.fromCharCode(parseInt(hex, 16))
+      } catch {
+        return ''
+      }
+    })
+}
+
+/**
+ * DOCX icindeki paragraflari ve tablolari ayiklar.
+ */
+function extractDocxParagraphs(buf: Buffer): string[] {
+  try {
+    const entries = extractZipEntries(buf)
+    const docXml = entries.get('word/document.xml')
+    if (!docXml) return []
+    const xml = docXml.toString('utf8')
+
+    const paragraphs: string[] = []
+    const elementRegex = /<(w:p|w:tbl)(?: [^>]*)?>([\s\S]*?)<\/\1>/g
+    let elMatch: RegExpExecArray | null
+
+    while ((elMatch = elementRegex.exec(xml)) !== null) {
+      const tag = elMatch[1]
+      const inner = elMatch[2]
+
+      if (tag === 'w:tbl') {
+        const rows: string[][] = []
+        const rowRegex = /<w:tr(?: [^>]*)?>([\s\S]*?)<\/w:tr>/g
+        let trMatch: RegExpExecArray | null
+        while ((trMatch = rowRegex.exec(inner)) !== null) {
+          const cells: string[] = []
+          const cellRegex = /<w:tc(?: [^>]*)?>([\s\S]*?)<\/w:tc>/g
+          let tcMatch: RegExpExecArray | null
+          while ((tcMatch = cellRegex.exec(trMatch[1])) !== null) {
+            const cellTextMatches = tcMatch[1].match(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g) || []
+            const cellText = cellTextMatches.map(m => m.replace(/<[^>]+>/g, '')).join('').trim()
+            cells.push(decodeXmlEntities(cellText))
+          }
+          if (cells.some(c => c.length > 0)) {
+            rows.push(cells)
+          }
+        }
+        if (rows.length > 0) {
+          paragraphs.push(rows.map(r => `| ${r.join(' | ')} |`).join('\n'))
+        }
+      } else if (tag === 'w:p') {
+        const isBullet = inner.includes('<w:numPr>')
+        const textRuns: string[] = []
+        const runRegex = /<w:r(?: [^>]*)?>([\s\S]*?)<\/w:r>/g
+        let rMatch: RegExpExecArray | null
+        while ((rMatch = runRegex.exec(inner)) !== null) {
+          const rXml = rMatch[1]
+          const subMatches = rXml.match(/<w:(t|tab|br)(?: [^>]*)?>([^<]*)<\/?w:\1>/g) || []
+          for (const sm of subMatches) {
+            if (sm.startsWith('<w:tab')) {
+              textRuns.push('    ')
+            } else if (sm.startsWith('<w:br')) {
+              textRuns.push('\n')
+            } else {
+              textRuns.push(sm.replace(/<[^>]+>/g, ''))
+            }
+          }
+        }
+        let pText = decodeXmlEntities(textRuns.join('')).trim()
+        if (pText.length > 0) {
+          if (isBullet) {
+            pText = `• ${pText}`
+          }
+          paragraphs.push(pText)
+        }
+      }
+    }
+
+    return paragraphs
+  } catch {
+    return []
+  }
+}
+
+/**
+ * PPTX slaytlarini ayiklar.
+ */
+function extractPptxSlides(buf: Buffer): Array<{ slideNumber: number; title?: string; bullets: string[] }> {
+  const slides: Array<{ slideNumber: number; title?: string; bullets: string[] }> = []
+  try {
+    const entries = extractZipEntries(buf)
+    const slideEntries: Array<{ num: number; xml: string }> = []
+    for (const [name, data] of entries.entries()) {
+      const match = name.match(/ppt\/slides\/slide(\d+)\.xml/i)
+      if (match) {
+        slideEntries.push({ num: parseInt(match[1], 10), xml: data.toString('utf8') })
+      }
+    }
+    slideEntries.sort((a, b) => a.num - b.num)
+
+    for (const slide of slideEntries) {
+      const paragraphs: string[] = []
+      const pRegex = /<a:p(?: [^>]*)?>([\s\S]*?)<\/a:p>/g
+      let pMatch: RegExpExecArray | null
+      while ((pMatch = pRegex.exec(slide.xml)) !== null) {
+        const pXml = pMatch[1]
+        const tMatches = pXml.match(/<a:t(?: [^>]*)?>([^<]*)<\/a:t>/g) || []
+        const lineText = decodeXmlEntities(tMatches.map(m => m.replace(/<[^>]+>/g, '')).join('')).trim()
+        if (lineText.length > 0) {
+          paragraphs.push(lineText)
+        }
+      }
+
+      if (paragraphs.length > 0) {
+        const title = paragraphs[0]
+        const bullets = paragraphs.slice(1)
+        slides.push({ slideNumber: slide.num, title, bullets })
+      }
+    }
+  } catch {
+    /* fallback */
+  }
+  return slides
+}
 
 const CODE_EXTENSIONS: Record<string, string> = {
   '.ts': 'typescript',
@@ -116,110 +252,6 @@ function parseCsvToRows(text: string, maxRows = 500): string[][] {
   return rows
 }
 
-/**
- * DOCX icindeki paragraflari ayiklar.
- */
-function extractDocxParagraphs(buf: Buffer): string[] {
-  try {
-    let offset = 0
-    while (offset < buf.length - 30) {
-      if (
-        buf[offset] === 0x50 &&
-        buf[offset + 1] === 0x4b &&
-        buf[offset + 2] === 0x03 &&
-        buf[offset + 3] === 0x04
-      ) {
-        const compressionMethod = buf.readUInt16LE(offset + 8)
-        const compressedSize = buf.readUInt32LE(offset + 18)
-        const fileNameLength = buf.readUInt16LE(offset + 26)
-        const extraFieldLength = buf.readUInt16LE(offset + 28)
-        const fileName = buf.toString('utf8', offset + 30, offset + 30 + fileNameLength)
-        const dataOffset = offset + 30 + fileNameLength + extraFieldLength
-
-        if (fileName === 'word/document.xml' && dataOffset + compressedSize <= buf.length) {
-          const compData = buf.subarray(dataOffset, dataOffset + compressedSize)
-          const xmlBuffer = compressionMethod === 8 ? zlib.inflateRawSync(compData) : compData
-          const xml = xmlBuffer.toString('utf8')
-
-          // Paragraf bloklarina gore ayir (<w:p>...</w:p>)
-          const pRegex = /<w:p(?: [^>]*)?>([\s\S]*?)<\/w:p>/g
-          const paragraphs: string[] = []
-          let match: RegExpExecArray | null
-          while ((match = pRegex.exec(xml)) !== null) {
-            const pXml = match[1]
-            const textMatches = pXml.match(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g) || []
-            const pText = textMatches
-              .map(t => t.replace(/<[^>]+>/g, ''))
-              .join('')
-              .trim()
-            if (pText.length > 0) {
-              paragraphs.push(pText)
-            }
-          }
-          return paragraphs
-        }
-        offset = dataOffset + compressedSize
-      } else {
-        offset++
-      }
-    }
-  } catch {
-    /* fallback */
-  }
-  return []
-}
-
-/**
- * PPTX slaytlarini ayiklar.
- */
-function extractPptxSlides(buf: Buffer): Array<{ slideNumber: number; title?: string; bullets: string[] }> {
-  const slides: Array<{ slideNumber: number; title?: string; bullets: string[] }> = []
-  try {
-    const slideBuffers: Map<number, Buffer> = new Map()
-    let offset = 0
-    while (offset < buf.length - 30) {
-      if (
-        buf[offset] === 0x50 &&
-        buf[offset + 1] === 0x4b &&
-        buf[offset + 2] === 0x03 &&
-        buf[offset + 3] === 0x04
-      ) {
-        const compressionMethod = buf.readUInt16LE(offset + 8)
-        const compressedSize = buf.readUInt32LE(offset + 18)
-        const fileNameLength = buf.readUInt16LE(offset + 26)
-        const extraFieldLength = buf.readUInt16LE(offset + 28)
-        const fileName = buf.toString('utf8', offset + 30, offset + 30 + fileNameLength)
-        const dataOffset = offset + 30 + fileNameLength + extraFieldLength
-
-        const slideMatch = fileName.match(/ppt\/slides\/slide(\d+)\.xml/)
-        if (slideMatch && dataOffset + compressedSize <= buf.length) {
-          const slideNum = parseInt(slideMatch[1], 10)
-          const compData = buf.subarray(dataOffset, dataOffset + compressedSize)
-          const xmlBuffer = compressionMethod === 8 ? zlib.inflateRawSync(compData) : compData
-          slideBuffers.set(slideNum, xmlBuffer)
-        }
-        offset = dataOffset + compressedSize
-      } else {
-        offset++
-      }
-    }
-
-    const sortedNums = Array.from(slideBuffers.keys()).sort((a, b) => a - b)
-    for (const num of sortedNums) {
-      const xml = slideBuffers.get(num)!.toString('utf8')
-      const textMatches = xml.match(/<a:t(?: [^>]*)?>([^<]*)<\/a:t>/g) || []
-      const texts = textMatches.map(t => t.replace(/<[^>]+>/g, '').trim()).filter(Boolean)
-      if (texts.length > 0) {
-        const title = texts[0]
-        const bullets = texts.slice(1)
-        slides.push({ slideNumber: num, title, bullets })
-      }
-    }
-  } catch {
-    /* fallback */
-  }
-  return slides
-}
 
 export class FilePreviewService {
   constructor(
