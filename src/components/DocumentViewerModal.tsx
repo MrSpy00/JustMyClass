@@ -99,6 +99,7 @@ export function DocumentViewerModal({
   }, [attachment, courseId])
 
   useEffect(() => {
+    let cancelled = false
     if (isOpen && attachment) {
       void loadPreview()
       setActiveSlideIndex(0)
@@ -106,10 +107,25 @@ export function DocumentViewerModal({
       setImageRotation(0)
       setSearchQuery('')
       setDownloadedPath(attachment.downloadedPath || attachment.localPath)
+
+      // Disk üzerindeki indirilenler klasöründe dosya var mı kontrol et
+      if (window.jmcAPI?.checkDownloadedFile) {
+        window.jmcAPI
+          .checkDownloadedFile(attachment)
+          .then(res => {
+            if (!cancelled && res.exists && res.filePath) {
+              setDownloadedPath(res.filePath)
+            }
+          })
+          .catch(() => undefined)
+      }
     } else {
       setPreview(null)
       setError(null)
       setDownloadedPath(undefined)
+    }
+    return () => {
+      cancelled = true
     }
   }, [isOpen, attachment, loadPreview])
 
@@ -394,45 +410,59 @@ export function DocumentViewerModal({
               </button>
             )}
 
-            {/* Doğrudan İndir (İndirilenler Klasörüne) */}
-            <button
-              type="button"
-              onClick={handleDirectDownload}
-              disabled={downloading}
-              title="İndirilenler klasörüne doğrudan kaydet"
-              className="inline-flex items-center gap-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-2.5 py-1.5 text-[11px] font-medium text-white transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95 disabled:opacity-50"
-            >
-              {downloading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Download className="h-3.5 w-3.5" />
-              )}
-              <span>{downloading ? 'İndiriliyor...' : 'İndir'}</span>
-            </button>
-
-            {/* İndirilen Dosya Eylemleri: Aç & Klasörde Göster */}
-            {(downloadedPath || preview?.localPath) && (
+            {/* Akıllı İndirme ve Açma Butonları (Morphing) */}
+            {downloadedPath || preview?.localPath ? (
               <>
                 <button
                   type="button"
                   onClick={handleOpenFile}
                   title="İndirilen Dosyayı Sistem Uygulamasıyla Aç"
-                  className="inline-flex items-center gap-1 rounded-[var(--jmc-radius)] border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[11px] font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-[11.5px] font-semibold text-emerald-400 hover:bg-emerald-500/25 active:scale-95 transition-all shadow-sm"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
-                  <span className="hidden md:inline">Dosyayı Aç</span>
+                  <span>Dosyayı Aç</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleShowInFolder}
                   title="Dosyayı İndirilenler Klasöründe Göster"
-                  className="inline-flex items-center gap-1 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1.5 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2.5 py-1.5 text-[11.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] active:scale-95 transition-all"
                 >
                   <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
-                  <span className="hidden md:inline">Klasörde Göster</span>
+                  <span className="hidden sm:inline">Klasörde Göster</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDirectDownload}
+                  disabled={downloading}
+                  title="Yeniden İndir / Güncelle"
+                  className="inline-flex items-center gap-1 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1.5 text-[11px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] transition-colors disabled:opacity-50"
+                >
+                  {downloading ? (
+                    <Loader2 className="h-3 w-3 animate-spin text-[var(--jmc-primary)]" />
+                  ) : (
+                    <RotateCw className="h-3 w-3" />
+                  )}
+                  <span className="hidden lg:inline">Yeniden İndir</span>
                 </button>
               </>
+            ) : (
+              <button
+                type="button"
+                onClick={handleDirectDownload}
+                disabled={downloading}
+                title="İndirilenler klasörüne doğrudan kaydet"
+                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-semibold text-white shadow-sm transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95 disabled:opacity-50"
+              >
+                {downloading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                <span>{downloading ? 'İndiriliyor...' : 'Dosyayı İndir'}</span>
+              </button>
             )}
 
             {/* Farklı Kaydet */}

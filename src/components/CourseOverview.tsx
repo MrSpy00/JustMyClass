@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import {
   AlertCircle,
   Award,
@@ -15,6 +15,7 @@ import {
   FolderOpen,
   GraduationCap,
   Layers,
+  Loader2,
   MessageSquare,
   Paperclip,
   RefreshCw,
@@ -75,6 +76,70 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
   const [activeTab, setActiveTab] = useState<TabKey>('assignments')
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [downloadedStatusMap, setDownloadedStatusMap] = useState<Record<string, { exists: boolean; filePath?: string }>>({})
+  const [downloadingIds, setDownloadingIds] = useState<Record<string, boolean>>({})
+
+  // Disk üzerindeki indirilen dosyaları kontrol et
+  useEffect(() => {
+    let cancelled = false
+    if (!window.jmcAPI?.checkDownloadedFile) return
+
+    const allAttachments: Attachment[] = []
+    for (const ann of announcements) {
+      if (ann.materials) allAttachments.push(...ann.materials)
+    }
+    for (const mat of materials) {
+      if (mat.materials) allAttachments.push(...mat.materials)
+    }
+    for (const cw of courseWorks) {
+      if (cw.materials) allAttachments.push(...cw.materials)
+    }
+
+    if (allAttachments.length === 0) return
+
+    Promise.all(
+      allAttachments.map(async att => {
+        try {
+          const res = await window.jmcAPI.checkDownloadedFile(att)
+          return { id: att.id, res }
+        } catch {
+          return { id: att.id, res: { exists: false } }
+        }
+      }),
+    ).then(results => {
+      if (cancelled) return
+      setDownloadedStatusMap(prev => {
+        const next = { ...prev }
+        for (const item of results) {
+          if (item.res.exists) {
+            next[item.id] = item.res
+          }
+        }
+        return next
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [announcements, materials, courseWorks])
+
+  const handleDownloadItem = async (att: Attachment) => {
+    setDownloadingIds(prev => ({ ...prev, [att.id]: true }))
+    try {
+      if (onDownloadAttachment) {
+        await onDownloadAttachment(att)
+      }
+      if (window.jmcAPI?.checkDownloadedFile) {
+        const res = await window.jmcAPI.checkDownloadedFile(att)
+        if (res.exists) {
+          setDownloadedStatusMap(prev => ({ ...prev, [att.id]: res }))
+        }
+      }
+    } finally {
+      setDownloadingIds(prev => ({ ...prev, [att.id]: false }))
+    }
+  }
 
   // Konu haritası
   const topicMap = useMemo(() => {
@@ -648,38 +713,58 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                     <span>Görüntüle</span>
                                   </button>
                                 )}
-                                {mat.isLocalAvailable && (mat.downloadedPath || mat.localPath) ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(mat.downloadedPath || mat.localPath!) : window.jmcAPI?.openLocalFile(mat.localPath!))}
-                                      title="İndirilen Dosyayı Aç"
-                                      className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
-                                    >
-                                      <FolderOpen className="h-3.5 w-3.5" />
-                                      <span>Aç</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => void window.jmcAPI?.showItemInFolder?.(mat.downloadedPath || mat.localPath!)}
-                                      title="İndirilenler Klasöründe Göster"
-                                      className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
-                                    >
-                                      <Folder className="h-3.5 w-3.5 text-amber-500" />
-                                      <span className="hidden sm:inline">Klasörde</span>
-                                    </button>
-                                  </>
-                                ) : onDownloadAttachment && (mat.driveFileId || mat.alternateLink) ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => onDownloadAttachment(mat)}
-                                    title="İndir"
-                                    className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors"
-                                  >
-                                    <Download className="h-3.5 w-3.5" />
-                                    <span>İndir</span>
-                                  </button>
-                                ) : null}
+                                {(() => {
+                                  const status = downloadedStatusMap[mat.id]
+                                  const isDownloaded = Boolean(status?.exists || (mat.isLocalAvailable && (mat.downloadedPath || mat.localPath)))
+                                  const targetPath = status?.filePath || mat.downloadedPath || mat.localPath
+                                  const isDownloading = Boolean(downloadingIds[mat.id])
+
+                                  if (isDownloaded && targetPath) {
+                                    return (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(targetPath) : window.jmcAPI?.openLocalFile(targetPath))}
+                                          title="İndirilen Dosyayı Aç"
+                                          className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+                                        >
+                                          <FolderOpen className="h-3.5 w-3.5" />
+                                          <span>Aç</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void window.jmcAPI?.showItemInFolder?.(targetPath)}
+                                          title="İndirilenler Klasöründe Göster"
+                                          className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
+                                        >
+                                          <Folder className="h-3.5 w-3.5 text-amber-500" />
+                                          <span className="hidden sm:inline">Klasörde</span>
+                                        </button>
+                                      </>
+                                    )
+                                  }
+
+                                  if (onDownloadAttachment && (mat.driveFileId || mat.alternateLink)) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleDownloadItem(mat)}
+                                        disabled={isDownloading}
+                                        title="İndirilenler Klasörüne İndir"
+                                        className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors disabled:opacity-50"
+                                      >
+                                        {isDownloading ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary)]" />
+                                        ) : (
+                                          <Download className="h-3.5 w-3.5" />
+                                        )}
+                                        <span>{isDownloading ? 'İndiriliyor...' : 'İndir'}</span>
+                                      </button>
+                                    )
+                                  }
+
+                                  return null
+                                })()}
                                 {mat.alternateLink && (
                                   <button
                                     type="button"
@@ -773,38 +858,58 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                     <span>Görüntüle</span>
                                   </button>
                                 )}
-                                {att.isLocalAvailable && (att.downloadedPath || att.localPath) ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(att.downloadedPath || att.localPath!) : window.jmcAPI?.openLocalFile(att.localPath!))}
-                                      title="İndirilen Dosyayı Aç"
-                                      className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
-                                    >
-                                      <FolderOpen className="h-3.5 w-3.5" />
-                                      <span>Aç</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => void window.jmcAPI?.showItemInFolder?.(att.downloadedPath || att.localPath!)}
-                                      title="İndirilenler Klasöründe Göster"
-                                      className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
-                                    >
-                                      <Folder className="h-3.5 w-3.5 text-amber-500" />
-                                      <span className="hidden sm:inline">Klasörde</span>
-                                    </button>
-                                  </>
-                                ) : onDownloadAttachment && (att.driveFileId || att.alternateLink) ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => onDownloadAttachment(att)}
-                                    title="İndir"
-                                    className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors"
-                                  >
-                                    <Download className="h-3.5 w-3.5" />
-                                    <span>İndir</span>
-                                  </button>
-                                ) : null}
+                                {(() => {
+                                  const status = downloadedStatusMap[att.id]
+                                  const isDownloaded = Boolean(status?.exists || (att.isLocalAvailable && (att.downloadedPath || att.localPath)))
+                                  const targetPath = status?.filePath || att.downloadedPath || att.localPath
+                                  const isDownloading = Boolean(downloadingIds[att.id])
+
+                                  if (isDownloaded && targetPath) {
+                                    return (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(targetPath) : window.jmcAPI?.openLocalFile(targetPath))}
+                                          title="İndirilen Dosyayı Aç"
+                                          className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+                                        >
+                                          <FolderOpen className="h-3.5 w-3.5" />
+                                          <span>Aç</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void window.jmcAPI?.showItemInFolder?.(targetPath)}
+                                          title="İndirilenler Klasöründe Göster"
+                                          className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
+                                        >
+                                          <Folder className="h-3.5 w-3.5 text-amber-500" />
+                                          <span className="hidden sm:inline">Klasörde</span>
+                                        </button>
+                                      </>
+                                    )
+                                  }
+
+                                  if (onDownloadAttachment && (att.driveFileId || att.alternateLink)) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleDownloadItem(att)}
+                                        disabled={isDownloading}
+                                        title="İndirilenler Klasörüne İndir"
+                                        className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors disabled:opacity-50"
+                                      >
+                                        {isDownloading ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary)]" />
+                                        ) : (
+                                          <Download className="h-3.5 w-3.5" />
+                                        )}
+                                        <span>{isDownloading ? 'İndiriliyor...' : 'İndir'}</span>
+                                      </button>
+                                    )
+                                  }
+
+                                  return null
+                                })()}
                                 {att.alternateLink && (
                                   <button
                                     type="button"

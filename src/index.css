@@ -25,14 +25,16 @@
   --jmc-code-bg: #0d1219;
   --jmc-badge-bg: rgba(76, 141, 255, 0.14);
   --jmc-elevation: rgba(0, 0, 0, 0.35);
-  --jmc-shadow-sm: 0 1px 2px var(--jmc-elevation);
-  --jmc-shadow-md: 0 4px 14px var(--jmc-elevation);
-  --jmc-shadow-lg: 0 18px 48px var(--jmc-elevation);
+  --jmc-shadow-sm: 0 1px 3px 0 var(--jmc-elevation);
+  --jmc-shadow-md: 0 4px 16px -2px var(--jmc-elevation);
+  --jmc-shadow-lg: 0 14px 34px -4px var(--jmc-elevation);
+  --jmc-shadow-xl: 0 24px 60px -8px var(--jmc-elevation);
 
-  /* Ölçü sistemi */
-  --jmc-radius-sm: 6px;
-  --jmc-radius: 9px;
-  --jmc-radius-lg: 13px;
+  /* Ölçü sistemi — yumuşak, yuvarlatılmış ve modern */
+  --jmc-radius-sm: 8px;
+  --jmc-radius: 12px;
+  --jmc-radius-lg: 16px;
+  --jmc-radius-xl: 22px;
 
   --jmc-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --jmc-dur: 140ms;

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, session, type Session, dialog, clipboard } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
+import url from 'node:url'
 import { execFileSync } from 'node:child_process'
 
 import { KeyringService } from './services/keyringService'
@@ -354,26 +355,40 @@ function createWindow() {
   // Harici kaynaklardan gelen ag trafigini engelle. Tek istisna, hesap
   // fotografi icin Google'in profil resim sunucusudur.
   wc.session.webRequest.onBeforeRequest((details: { url: string }, callback: (r: { cancel: boolean }) => void) => {
-    const url = details.url
-    const devUrl = process.env.VITE_DEV_SERVER_URL
+    const reqUrl = details.url
+    const devUrl = !app.isPackaged ? process.env.VITE_DEV_SERVER_URL : undefined
     const allowed =
-      url.startsWith('file://') ||
-      (app.isPackaged ? false : url.startsWith('devtools://')) ||
-      url.startsWith('blob:') ||
-      url.startsWith('data:') ||
-      url.startsWith(PROFILE_IMAGE_ORIGIN) ||
-      (!!devUrl && !app.isPackaged && url.startsWith(devUrl))
+      reqUrl.startsWith('file:') ||
+      (!app.isPackaged && reqUrl.startsWith('devtools:')) ||
+      reqUrl.startsWith('blob:') ||
+      reqUrl.startsWith('data:') ||
+      reqUrl.startsWith(PROFILE_IMAGE_ORIGIN) ||
+      (!!devUrl && reqUrl.startsWith(devUrl))
     callback({ cancel: !allowed })
   })
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    void wc.loadURL(process.env.VITE_DEV_SERVER_URL)
+  const isDevMode = !app.isPackaged && !!process.env.VITE_DEV_SERVER_URL
+  let devUrlValid = false
+  if (isDevMode && process.env.VITE_DEV_SERVER_URL) {
+    try {
+      const parsed = new URL(process.env.VITE_DEV_SERVER_URL)
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        devUrlValid = true
+      }
+    } catch {
+      devUrlValid = false
+    }
+  }
+
+  if (isDevMode && devUrlValid) {
+    void wc.loadURL(process.env.VITE_DEV_SERVER_URL!)
   } else {
     const candidates = [
-      path.join(__dirname, '../dist-renderer/index.html'),
       path.join(app.getAppPath(), 'dist-renderer/index.html'),
-      path.join(__dirname, '../dist/index.html'),
+      path.join(__dirname, '../dist-renderer/index.html'),
+      path.join(process.cwd(), 'dist-renderer/index.html'),
       path.join(app.getAppPath(), 'dist/index.html'),
+      path.join(__dirname, '../dist/index.html'),
     ]
     const resolved = candidates.find(p => fs.existsSync(p))
     if (!resolved) {
@@ -381,29 +396,49 @@ function createWindow() {
       dialog.showErrorBox(
         'JustMyClass başlatılamadı',
         'Arayüz dosyası bulunamadı. Uygulama eksik kurulmuş görünüyor.\n\n' +
-          'Beklenen konum: dist-renderer/index.html',
+          `Beklenen konum: dist-renderer/index.html`,
       )
       app.quit()
       return
     }
+
     // Yukleme basarisiz olursa sessizce bos pencere birakma.
-    wc.on('did-fail-load', (_e, errorCode, errorDescription, failedUrl) => {
+    wc.on('did-fail-load', (_e, errorCode, errorDescription, failedUrl, isMainFrame) => {
       if (errorCode === -3) return // ERR_ABORTED: normal iptal
-      console.error('[JustMyClass] Arayuz yuklenemedi:', errorCode, errorDescription, failedUrl)
+
+      // Alt kaynaklar (resim, favicon, font) ana uygulamanin acilmasini asla engellememelidir
+      if (typeof isMainFrame === 'boolean' && !isMainFrame) {
+        console.warn('[JustMyClass] Alt kaynak yüklenemedi:', errorCode, errorDescription, failedUrl)
+        return
+      }
+
+      console.error('[JustMyClass] Ana arayüz yüklenemedi:', errorCode, errorDescription, failedUrl)
+
+      // ERR_INVALID_URL (-300) gibi durumlarda dosya URL'i ile doğrudan tekrar dene
+      try {
+        const directFileUrl = url.pathToFileURL(resolved).toString()
+        if (failedUrl !== directFileUrl) {
+          void wc.loadURL(directFileUrl)
+          return
+        }
+      } catch {
+        /* yoksay */
+      }
+
       dialog.showErrorBox(
         'JustMyClass başlatılamadı',
-        `Arayüz yüklenemedi (${errorCode} ${errorDescription}).`,
+        `Arayüz yüklenemedi (${errorCode} ${errorDescription}).\n\nAdres: ${failedUrl || resolved}`,
       )
       app.quit()
     })
-    void wc.loadFile(resolved).catch(err => {
-      console.error('[JustMyClass] Arayuz yuklenemedi:', err)
+
+    const directFileUrl = url.pathToFileURL(resolved).toString()
+    wc.loadURL(directFileUrl).catch(() => {
+      void wc.loadFile(resolved).catch(err => {
+        console.error('[JustMyClass] Arayuz yuklenemedi:', err)
+      })
     })
   }
-
-  wc.on('did-fail-load', (_e, code, description, url) => {
-    console.error(`[JustMyClass] Sayfa yuklenemedi [${code}] ${description} (${url})`)
-  })
 }
 
 function setupIpcHandlers() {
@@ -775,6 +810,76 @@ function setupIpcHandlers() {
     if (typeof targetPath !== 'string' || !targetPath) return false
     driveService.showItemInFolder(targetPath)
     return true
+  })
+
+  handle('downloads:checkFileStatus', (_e, rawAttachment: unknown) => {
+    if (!rawAttachment || typeof rawAttachment !== 'object') {
+      return { exists: false }
+    }
+    const att = rawAttachment as Record<string, unknown>
+    const downloadsFolder = getDownloadsDirectory()
+
+    // 1. Doğrudan dosya yolu verilmişse ve diskte varsa
+    const explicitPaths = [att.downloadedPath, att.localPath].filter(
+      (p): p is string => typeof p === 'string' && !!p.trim(),
+    )
+    for (const p of explicitPaths) {
+      if (fs.existsSync(p)) {
+        return { exists: true, filePath: p, fileName: path.basename(p) }
+      }
+    }
+
+    // 2. İndirilenler klasöründe başlığa göre ara
+    const title = typeof att.title === 'string' ? att.title.trim() : ''
+    if (title && fs.existsSync(downloadsFolder)) {
+      const safeTitle = title.replace(/[\\/:*?"<>|]/g, '_').trim()
+      if (safeTitle) {
+        const directPath = path.join(downloadsFolder, safeTitle)
+        if (fs.existsSync(directPath)) {
+          return { exists: true, filePath: directPath, fileName: safeTitle }
+        }
+
+        // Uzantısız veya farklı uzantılı / numaralandırılmış eşleşme
+        try {
+          const files = fs.readdirSync(downloadsFolder)
+          const baseName = path.basename(safeTitle, path.extname(safeTitle)).toLowerCase()
+          const matched = files.find(f => {
+            const fLower = f.toLowerCase()
+            const fBase = path.basename(f, path.extname(f)).toLowerCase()
+            return fLower === safeTitle.toLowerCase() || fBase === baseName || fBase.startsWith(`${baseName} (`)
+          })
+          if (matched) {
+            const matchedPath = path.join(downloadsFolder, matched)
+            return { exists: true, filePath: matchedPath, fileName: matched }
+          }
+        } catch {
+          /* klasör okuma hatası yoksayılır */
+        }
+      }
+    }
+
+    // 3. Drive File ID ile CAS önbellek başlığına göre indirilenler klasöründe ara
+    let fileId = typeof att.driveFileId === 'string' ? att.driveFileId : ''
+    if (!fileId && typeof att.alternateLink === 'string') {
+      const match = att.alternateLink.match(
+        /\/(?:file\/d\/|open\?id=|document\/d\/|spreadsheets\/d\/|presentation\/d\/)([a-zA-Z0-9_-]+)/i,
+      )
+      if (match && match[1]) fileId = match[1]
+    }
+    if (fileId && fs.existsSync(downloadsFolder)) {
+      const cached = storageService.getCachedFile(fileId)
+      if (cached?.entry?.title) {
+        const safeCached = cached.entry.title.replace(/[\\/:*?"<>|]/g, '_').trim()
+        if (safeCached) {
+          const directPath = path.join(downloadsFolder, safeCached)
+          if (fs.existsSync(directPath)) {
+            return { exists: true, filePath: directPath, fileName: safeCached }
+          }
+        }
+      }
+    }
+
+    return { exists: false }
   })
 
   // ---- Baglam -----------------------------------------------------------

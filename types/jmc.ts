@@ -553,6 +553,12 @@ export interface FilePreviewResult {
   isTruncated?: boolean
 }
 
+export interface DownloadFileStatus {
+  exists: boolean
+  filePath?: string
+  fileName?: string
+}
+
 export interface MemoryItem {
   id: string
   category: 'preference' | 'academic' | 'style' | 'rule' | 'context'
@@ -679,6 +685,7 @@ export interface JmcApi {
 
   // Drive & Files & Downloads
   downloadAttachment: (attachment: Attachment, courseId: string) => Promise<Attachment>
+  checkDownloadedFile: (attachment: Partial<Attachment>) => Promise<DownloadFileStatus>
   openLocalFile: (filePath: string) => Promise<boolean>
   saveLocalEditedFile: (fileId: string, content: string | Uint8Array) => Promise<{ newHash: string }>
   readCachedFile: (fileId: string) => Promise<Uint8Array>

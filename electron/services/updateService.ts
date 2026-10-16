@@ -399,10 +399,14 @@ export class UpdateService {
         const remoteVer = response.tag_name.replace(/^v/, '')
         const currentVer = this.status.currentVersion.replace(/^v/, '')
         if (isNewerVersion(currentVer, remoteVer)) {
-          const setupAsset = response.assets?.find(
-            (a: { name: string; browser_download_url: string }) =>
-              a.name.endsWith('-Setup-0.0.1-x64.exe') || a.name.endsWith('.exe'),
-          )
+          const setupAsset =
+            response.assets?.find(
+              (a: { name: string; browser_download_url: string }) =>
+                a.name.toLowerCase().includes('setup') && a.name.endsWith('.exe'),
+            ) ??
+            response.assets?.find(
+              (a: { name: string; browser_download_url: string }) => a.name.endsWith('.exe'),
+            )
           this.latestReleaseAssetUrl = setupAsset?.browser_download_url ?? response.html_url
           this.latestReleaseHtmlUrl = response.html_url
 

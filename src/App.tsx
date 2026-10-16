@@ -19,27 +19,27 @@ interface Toast {
   text: string
 }
 
-/** Ekranin altinda gosterilen, kapatilabilir bildirim. */
+/** Ekranın alt ortasında gösterilen, kapatılabilir yumuşak bildirim. */
 const Toast: React.FC<{ toast: Toast; onDismiss: () => void }> = ({ toast, onDismiss }) => (
   <div
     role="status"
     aria-live={toast.kind === 'error' ? 'assertive' : 'polite'}
-    className="animate-pop-in fixed bottom-6 right-6 z-[60] flex max-w-sm items-start gap-2.5 rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-surface)] px-4 py-3 text-[12px] leading-snug text-[var(--jmc-text)] shadow-[var(--jmc-shadow-lg)]"
+    className="animate-pop-in fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex max-w-md w-auto items-center gap-3 rounded-[var(--jmc-radius-lg)] border border-[var(--jmc-border)]/60 bg-[var(--jmc-bg-elevated)]/95 px-4 py-2.5 text-[12.5px] leading-snug text-[var(--jmc-text)] shadow-[var(--jmc-shadow-xl)] backdrop-blur-md pointer-events-auto transition-all"
   >
     {toast.kind === 'error' ? (
       <AlertTriangle
-        className="mt-px h-4 w-4 shrink-0 text-[var(--jmc-danger)]"
+        className="h-4 w-4 shrink-0 text-[var(--jmc-danger)]"
         aria-hidden="true"
       />
     ) : (
-      <CheckCircle2 className="mt-px h-4 w-4 shrink-0 text-[var(--jmc-success)]" aria-hidden="true" />
+      <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--jmc-success)]" aria-hidden="true" />
     )}
-    <span className="min-w-0 flex-1">{toast.text}</span>
+    <span className="min-w-0 flex-1 font-medium">{toast.text}</span>
     <button
       type="button"
       onClick={onDismiss}
       aria-label="Bildirimi kapat"
-      className="-mr-1 shrink-0 rounded p-0.5 text-[var(--jmc-text-dim)] transition-colors hover:text-[var(--jmc-text)]"
+      className="-mr-1 shrink-0 rounded-[var(--jmc-radius-sm)] p-1 text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-text)]"
     >
       <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true" fill="none">
         <path

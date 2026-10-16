@@ -121,13 +121,12 @@ export const JMC_AI_TOOLS = [
         'Öğrenci bir dosyadan veya ekten bahsettiğinde hangi dosyaların mevcut olduğunu ve fileId değerlerini görmek için bu aracı çağır.',
       parameters: {
         type: 'object',
-        properties: {},
-        // `required` BOS OLSA DA YAZILIR.
-        //
-        // Gemini `functionDeclarations` semasinda `required` alanini
-        // ZORUNLU kabul ediyor; alan tamamen yoksa API 400 döner ve
-        // Gemini'de TUM araclar calismaz. Diger saglayicilar (OpenAI,
-        // Anthropic) bos diziyi sorunsuz kabul eder.
+        properties: {
+          filter: {
+            type: 'string',
+            description: 'İsteğe bağlı dosya adı, başlık veya tür filtresi (örn: pdf, rapor, ödev)',
+          },
+        },
         required: [],
       },
     },
@@ -300,15 +299,16 @@ function toGeminiTools(): Array<{ functionDeclarations: Array<Record<string, unk
     {
       functionDeclarations: JMC_AI_TOOLS.map(tool => {
         const rawParams = tool.function.parameters as any
-        const parameters = sanitizeSchemaForGemini(rawParams || { type: 'OBJECT' })
-        if (!parameters.type) {
-          parameters.type = 'OBJECT'
-        }
-        return {
+        const decl: Record<string, unknown> = {
           name: tool.function.name,
           description: tool.function.description,
-          parameters,
         }
+        if (rawParams && rawParams.properties && Object.keys(rawParams.properties).length > 0) {
+          const sanitized = sanitizeSchemaForGemini(rawParams)
+          if (!sanitized.type) sanitized.type = 'OBJECT'
+          decl.parameters = sanitized
+        }
+        return decl
       }),
     },
   ]
@@ -1432,11 +1432,14 @@ export class AiOrchestrator {
         // HTTP istemci gunluklerine, ters vekil sunuculara ve hata
         // mesajlarina anahtari yaziyordu. Google anahtari baslikla
         // kabul ediyor; sorgu dizesi hicbir ise yaramaz.
-        const res = await providerHttp.request<any>(`${prov.baseUrl}/models`, {
-          headers: { 'x-goog-api-key': apiKey },
-          timeoutMs: 15_000,
-          maxRetries: 1,
-        })
+        const res = await providerHttp.request<any>(
+          `${prov.baseUrl}/models?key=${encodeURIComponent(apiKey)}`,
+          {
+            headers: { 'x-goog-api-key': apiKey },
+            timeoutMs: 15_000,
+            maxRetries: 1,
+          },
+        )
         const raw: any[] = Array.isArray(res?.models) ? res.models : []
         const chatCapable = raw.filter(m => {
           const methods: string[] = Array.isArray(m?.supportedGenerationMethods) ? m.supportedGenerationMethods : []
@@ -1563,15 +1566,15 @@ export class AiOrchestrator {
       return { healthy: false, latencyMs: 0, error: 'API anahtarı girilmemiş.' }
     }
 
+    const apiKey = this.vaultService.getKey(providerId)
     const probeUrl =
       prov.protocolType === 'ollama'
         ? `${prov.baseUrl}/api/tags`
         : prov.protocolType === 'gemini'
-          ? `${prov.baseUrl}/models`
+          ? `${prov.baseUrl}/models?key=${encodeURIComponent(apiKey || '')}`
           : `${prov.baseUrl}/models`
 
     const headers: Record<string, string> = {}
-    const apiKey = this.vaultService.getKey(providerId)
     if (apiKey && prov.protocolType === 'anthropic') {
       headers['x-api-key'] = apiKey
       headers['anthropic-version'] = '2023-06-01'
@@ -1757,11 +1760,10 @@ export class AiOrchestrator {
     }
 
     parts.push(
-      '',
-      'OTONOM VE KESİNTİSİZ ÇALIŞMA KURALLARI (MANDATORY):',
-      '- ASLA "Şunu yapayım mı?", "Dosyayı okuyayım mı?", "Arayayım mı?", "İncelememi ister misiniz?" gibi izin veya teyit soruları SORMA.',
-      '- İhtiyacın olan bilgi kaynakta veya dosyada ise tereddüt etmeden aracı KESİNLİKLE VE DERHAL ÇAĞIR.',
-      '- Kullanıcıya sahte veya simüle edilmiş kod/komut gösterme, komutu yapıyormuş gibi metin olarak bırakma.',
+      'OTONOM VE KESİNTİSİZ ÇALIŞMA KURALLARI (MANDATORY & STRICT):',
+      '- ASLA "Şunu yapayım mı?", "Bunu araştırmamı ister misiniz?", "Dosyayı okuyayım mı?", "Arama yapayım mı?", "İncelememi ister misiniz?" gibi izin veya teyit soruları SORMA.',
+      '- İhtiyacın olan bilgi kaynakta, dosyada veya internette ise tereddüt etmeden aracı KESİNLİKLE VE DERHAL KENDİN ÇAĞIR.',
+      '- Kullanıcıya sahte veya simüle edilmiş kod/komut gösterme, komutu yapıyormuş gibi metin olarak bırakma; aracı fiilen çalıştır.',
       '- Eğer sağlayıcın native tool_calls destekliyorsa onu kullan; desteklemiyorsa yanıtında SADECE aşağıdaki gibi bir JSON kod bloğu üret:',
       '```json',
       '{"name": "classroom_search", "arguments": {"query": "..."}}',
@@ -2629,8 +2631,13 @@ export class AiOrchestrator {
 
     if (rawTurns.length === 0) {
       rawTurns.push({ role: 'user', parts: [{ text: 'Merhaba' }] })
-    } else if (rawTurns[0].role === 'model') {
-      rawTurns.unshift({ role: 'user', parts: [{ text: 'Merhaba' }] })
+    } else {
+      if (rawTurns[0].role === 'model') {
+        rawTurns.unshift({ role: 'user', parts: [{ text: 'Merhaba' }] })
+      }
+      if (rawTurns[rawTurns.length - 1].role === 'model') {
+        rawTurns.push({ role: 'user', parts: [{ text: 'Lütfen yukarıdaki bulguları toparlayarak nihai yanıtını tamamla ve sun.' }] })
+      }
     }
 
     const contents = rawTurns
@@ -2644,9 +2651,10 @@ export class AiOrchestrator {
       geminiBody.toolConfig = { functionCallingConfig: { mode: 'AUTO' } }
     }
 
-    const cleanModelId = params.modelId.replace(/^models\//, '')
+    const cleanModelId = (params.modelId || 'gemini-2.0-flash').replace(/^models\//, '')
+    const url = `${prov.baseUrl}/models/${encodeURIComponent(cleanModelId)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`
     const res = await providerHttp.request<Response>(
-      `${prov.baseUrl}/models/${encodeURIComponent(cleanModelId)}:streamGenerateContent?alt=sse`,
+      url,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },

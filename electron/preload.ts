@@ -52,6 +52,8 @@ const api: JmcApi = {
   // Dosyalar
   downloadAttachment: (attachment: Attachment, courseId: string) =>
     ipcRenderer.invoke('drive:downloadAttachment', attachment, courseId),
+  checkDownloadedFile: (attachment: unknown) =>
+    ipcRenderer.invoke('downloads:checkFileStatus', attachment),
   openLocalFile: (filePath) => ipcRenderer.invoke('drive:openLocalFile', filePath),
   saveLocalEditedFile: (fileId, content) =>
     ipcRenderer.invoke('drive:saveLocalEditedFile', fileId, content),
