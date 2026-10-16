@@ -112,8 +112,28 @@ function extractPptxSlides(buf: Buffer): Array<{ slideNumber: number; title?: st
       const match = name.match(/ppt\/slides\/slide(\d+)\.xml/i)
       if (match) {
         slideEntries.push({ num: parseInt(match[1], 10), xml: data.toString('utf8') })
+      } else if (/ppt\/slides\/.*\.xml/i.test(name)) {
+        slideEntries.push({ num: 9999, xml: data.toString('utf8') })
       }
     }
+
+    // ODP (OpenDocument Presentation) desteği
+    if (slideEntries.length === 0 && entries.has('content.xml')) {
+      const contentXml = entries.get('content.xml')!.toString('utf8')
+      const pageRegex = /<draw:page(?: [^>]*)?>([\s\S]*?)<\/draw:page>/g
+      let pageMatch: RegExpExecArray | null
+      let pageIdx = 1
+      while ((pageMatch = pageRegex.exec(contentXml)) !== null) {
+        const pageContent = pageMatch[1]
+        const pMatches = pageContent.match(/<text:p(?: [^>]*)?>([^<]*)<\/text:p>/g) || []
+        const lines = pMatches.map(m => decodeXmlEntities(m.replace(/<[^>]+>/g, '')).trim()).filter(Boolean)
+        const title = lines[0] || `Slayt ${pageIdx}`
+        const bullets = lines.length > 1 ? lines.slice(1) : []
+        slides.push({ slideNumber: pageIdx++, title, bullets })
+      }
+      if (slides.length > 0) return slides
+    }
+
     slideEntries.sort((a, b) => a.num - b.num)
 
     for (let i = 0; i < slideEntries.length; i++) {
@@ -284,6 +304,39 @@ export class FilePreviewService {
     const fileId = attachment.driveFileId || attachment.id
     let localPath = attachment.localPath
 
+    // 0) YouTube Videosu veya Canlı Web Bağlantısı (Drive CAS indirmesi gerektirmez)
+    const isYouTube =
+      Boolean(attachment.youTubeVideoId) ||
+      (attachment.alternateLink && /(?:youtube\.com|youtu\.be)/i.test(attachment.alternateLink))
+
+    if (isYouTube) {
+      const ytId =
+        attachment.youTubeVideoId ||
+        attachment.alternateLink?.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/i)?.[1] ||
+        ''
+      return {
+        fileId: attachment.id,
+        title: attachment.title || 'YouTube Videosu',
+        mimeType: 'video/youtube',
+        sizeBytes: 0,
+        kind: 'media',
+        dataUrl: ytId ? `https://www.youtube-nocookie.com/embed/${ytId}` : attachment.alternateLink,
+        text: `YouTube Videosu: ${attachment.title || ''}\nURL: ${attachment.alternateLink || ''}`,
+      }
+    }
+
+    if (!attachment.driveFileId && attachment.alternateLink) {
+      return {
+        fileId: attachment.id,
+        title: attachment.title || 'Web Bağlantısı',
+        mimeType: 'text/html',
+        sizeBytes: 0,
+        kind: 'link',
+        dataUrl: attachment.alternateLink,
+        text: `Web Bağlantısı: ${attachment.title || ''}\nURL: ${attachment.alternateLink}`,
+      }
+    }
+
     // 1) Eger dosya henuz CAS'ta yoksa veya erisilemiyorsa, otomatik indir
     let cached = fileId ? this.storageService.getCachedFile(fileId) : null
     if (!cached && attachment.title) {
@@ -374,8 +427,32 @@ export class FilePreviewService {
     }
 
     // PowerPoint / PPTX
-    if (ext === '.pptx' || mime.includes('presentationml')) {
-      const slides = extractPptxSlides(buf)
+    if (ext === '.pptx' || mime.includes('presentationml') || ext === '.ppsx' || ext === '.potx' || ext === '.odp') {
+      let slides = extractPptxSlides(buf)
+      if (slides.length === 0) {
+        const fallbackText = extractTextFromPptx(buf)
+        if (fallbackText.trim().length > 0) {
+          const sections = fallbackText.split(/\n{2,}/)
+          slides = sections.map((sec, idx) => {
+            const lines = sec.split('\n').map(l => l.trim()).filter(Boolean)
+            return {
+              slideNumber: idx + 1,
+              title: lines[0] || `Slayt ${idx + 1}`,
+              bullets: lines.length > 1 ? lines.slice(1) : [],
+            }
+          })
+        }
+      }
+      if (slides.length === 0) {
+        slides = [{
+          slideNumber: 1,
+          title: title || 'Sunum Dosyası',
+          bullets: [
+            'Bu sunum dosyasında ayrıştırılabilir metin bulunamadı veya slaytlar görsel ağırlıklı olabilir.',
+            'Sunumun orijinal biçimini görüntülemek için "Sunum Programında Aç" veya "İndir" butonunu kullanabilirsiniz.',
+          ],
+        }]
+      }
       const text = slides
         .map(s => `[Slayt ${s.slideNumber}: ${s.title || 'Başlıksız'}]\n${s.bullets.map(b => `• ${b}`).join('\n')}`)
         .join('\n\n')

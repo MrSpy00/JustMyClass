@@ -300,11 +300,28 @@ export function extractTextFromPdf(buf: Buffer): string {
 
   while ((match = streamRegex.exec(str)) !== null) {
     const rawData = match[1]
-    const dictStart = Math.max(0, match.index - 400)
+    const objIndex = str.lastIndexOf('obj', match.index)
+    const dictStart = Math.max(0, objIndex !== -1 ? objIndex : match.index - 1200)
     const dictSlice = str.slice(dictStart, match.index)
+
+    // Resim (Image), Font programı (FontFile/Type1/CIDFont), XObject ve ikili akışları atla
+    if (
+      dictSlice.includes('/Subtype /Image') ||
+      dictSlice.includes('/Subtype/Image') ||
+      dictSlice.includes('/Type /Font') ||
+      dictSlice.includes('/Type/Font') ||
+      dictSlice.includes('/FontFile') ||
+      dictSlice.includes('/CIDFontType') ||
+      dictSlice.includes('/Length1') ||
+      dictSlice.includes('/Length2') ||
+      dictSlice.includes('/Length3')
+    ) {
+      continue
+    }
+
     let decomp: Buffer | null = null
 
-    if (dictSlice.includes('/FlateDecode')) {
+    if (dictSlice.includes('/FlateDecode') || dictSlice.includes('/Flate')) {
       const streamStart = match.index + match[0].indexOf(rawData)
       const streamBuf = buf.subarray(streamStart, streamStart + rawData.length)
       try {
@@ -316,12 +333,18 @@ export function extractTextFromPdf(buf: Buffer): string {
           decomp = null
         }
       }
-    } else {
+    } else if (!dictSlice.includes('/Filter')) {
+      // Sıkıştırılmamış ham metin akışı
       decomp = Buffer.from(rawData, 'latin1')
     }
 
-    if (decomp) {
-      decompressedStreams.push(decomp.toString('latin1'))
+    if (decomp && decomp.length > 0) {
+      const decodedStr = decomp.toString('latin1')
+      // İkili binary çöp akışlarını filtrele (kontrol karakterleri yüksek orandaysa ekleme)
+      const controlCharCount = (decodedStr.slice(0, 500).match(/[\x00-\x08\x0E-\x1F]/g) || []).length
+      if (controlCharCount < 20) {
+        decompressedStreams.push(decodedStr)
+      }
     }
   }
 
@@ -380,7 +403,7 @@ export function extractTextFromPdf(buf: Buffer): string {
           }
         }
         const line = parts.join('').trim()
-        if (line.length > 0) currentBlockLines.push(line)
+        if (line.length > 0 && !/[\x00-\x08\x0E-\x1F]/.test(line)) currentBlockLines.push(line)
       }
 
       // (...) Tj operatörleri
@@ -388,7 +411,7 @@ export function extractTextFromPdf(buf: Buffer): string {
       let sTjMatch: RegExpExecArray | null
       while ((sTjMatch = singleTjRegex.exec(textBlock)) !== null) {
         const line = decodePdfLiteralString(sTjMatch[1], globalCMap).trim()
-        if (line.length > 0) currentBlockLines.push(line)
+        if (line.length > 0 && !/[\x00-\x08\x0E-\x1F]/.test(line)) currentBlockLines.push(line)
       }
 
       // <hex> Tj operatörleri
@@ -410,7 +433,7 @@ export function extractTextFromPdf(buf: Buffer): string {
             decoded += TURKISH_WIN1254_MAP[byteVal] || String.fromCharCode(byteVal)
           }
         }
-        if (decoded.trim()) currentBlockLines.push(decoded.trim())
+        if (decoded.trim() && !/[\x00-\x08\x0E-\x1F]/.test(decoded)) currentBlockLines.push(decoded.trim())
       }
 
       if (currentBlockLines.length > 0) {
@@ -428,13 +451,19 @@ export function extractTextFromPdf(buf: Buffer): string {
     return cleaned.join('\n\n').slice(0, 80_000)
   }
 
-  // Güvenli yedek yol: FlateDecode akışlarındaki anlamlı karakter dizilerini çıkar
+  // Güvenli yedek yol: SADECE gerçek anlamlı metin içeren satırları kabul et (ikili semboller elenir)
   for (const st of decompressedStreams) {
     const fallbackMatches = st.match(/\(([^)]{4,})\)/g)
     if (fallbackMatches) {
       for (const fm of fallbackMatches) {
         const clean = fm.slice(1, -1).trim()
-        if (clean.length > 3 && !clean.includes('/') && !/[\\\[\]<>]/.test(clean)) {
+        if (
+          clean.length >= 4 &&
+          !/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(clean) &&
+          !/[<>{}\\]/.test(clean) &&
+          /[a-zA-ZçğıöşüÇĞİÖŞÜ0-9]/.test(clean) &&
+          (clean.match(/[a-zA-ZçğıöşüÇĞİÖŞÜ0-9\s]/g) || []).length / clean.length > 0.6
+        ) {
           cleaned.push(clean)
         }
       }
@@ -533,8 +562,36 @@ export function extractTextFromPptx(buf: Buffer): string {
       const match = name.match(/ppt\/slides\/slide(\d+)\.xml/i)
       if (match) {
         slideEntries.push({ num: parseInt(match[1], 10), xml: data.toString('utf8') })
+      } else if (/ppt\/slides\/.*\.xml/i.test(name)) {
+        slideEntries.push({ num: 9999, xml: data.toString('utf8') })
       }
     }
+
+    // ODP (OpenDocument Presentation) desteği
+    if (slideEntries.length === 0 && entries.has('content.xml')) {
+      const contentXml = entries.get('content.xml')!.toString('utf8')
+      const pageRegex = /<draw:page(?: [^>]*)?>([\s\S]*?)<\/draw:page>/g
+      let pageMatch: RegExpExecArray | null
+      let pageIdx = 1
+      const odpSlides: string[] = []
+      while ((pageMatch = pageRegex.exec(contentXml)) !== null) {
+        const pageContent = pageMatch[1]
+        const pMatches = pageContent.match(/<text:p(?: [^>]*)?>([^<]*)<\/text:p>/g) || []
+        const lines = pMatches.map(m => decodeXmlEntities(m.replace(/<[^>]+>/g, '')).trim()).filter(Boolean)
+        const title = lines[0] || `Slayt ${pageIdx}`
+        const bullets = lines.length > 1 ? lines.slice(1) : []
+        let block = `[Slayt ${pageIdx}: ${title}]`
+        if (bullets.length > 0) {
+          block += '\n' + bullets.map(b => `• ${b}`).join('\n')
+        }
+        odpSlides.push(block)
+        pageIdx++
+      }
+      if (odpSlides.length > 0) {
+        return odpSlides.join('\n\n').slice(0, 80_000)
+      }
+    }
+
     slideEntries.sort((a, b) => a.num - b.num)
 
     const slideTexts: string[] = []

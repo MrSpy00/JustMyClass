@@ -230,17 +230,39 @@ export class HttpClient {
 
       try {
         const fetchFn = getFetchImpl()
-        const response = await fetchFn(url, {
-          method,
-          headers: {
-            'User-Agent': this.userAgent,
-            Accept: 'application/json',
-            ...headers,
-          },
-          body: fetchBody,
-          signal: controller.signal,
-          redirect: 'follow',
-        })
+        let response: Response
+        try {
+          response = await fetchFn(url, {
+            method,
+            headers: {
+              'User-Agent': this.userAgent,
+              Accept: 'application/json',
+              ...headers,
+            },
+            body: fetchBody,
+            signal: controller.signal,
+            redirect: 'follow',
+          })
+        } catch (fetchErr) {
+          // Chromium net.fetch proxy veya ağ katmanı hatası (net::ERR_CONNECTION_REFUSED vb.) verirse
+          // doğrudan Node.js yerel fetch (undici) ile tekrar dene.
+          const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
+          if ((msg.includes('net::ERR_') || msg.includes('ECONNREFUSED') || msg.includes('Failed to fetch')) && typeof globalThis.fetch === 'function') {
+            response = await globalThis.fetch(url, {
+              method,
+              headers: {
+                'User-Agent': this.userAgent,
+                Accept: 'application/json',
+                ...headers,
+              },
+              body: fetchBody,
+              signal: controller.signal,
+              redirect: 'follow',
+            })
+          } else {
+            throw fetchErr
+          }
+        }
 
         if (response.ok) {
           if (raw) {

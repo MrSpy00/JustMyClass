@@ -1802,29 +1802,31 @@ const resetSessionUiState = useCallback(() => {
 
       {/* ---------------- Ana içerik ---------------- */}
       <main className="relative min-w-0 flex-1 overflow-hidden flex flex-col">
+        {/* Sol Panel Genişletme Sekmesi (Kenara kenetli, içerik başlıklarını örtmez) */}
         {!coursesOpen && (
           <button
             type="button"
             onClick={() => setCoursesOpen(true)}
             aria-label="Dersleri göster"
             title="Dersleri göster"
-            className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-elevated)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-text-muted)] border border-[var(--jmc-border)] shadow-[var(--jmc-shadow-md)] transition-all duration-200 hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] hover:scale-[1.02] active:scale-[0.98] animate-pop-in"
+            className="absolute left-0 top-16 z-20 flex items-center gap-1.5 rounded-r-[var(--jmc-radius)] bg-[var(--jmc-bg-elevated)] py-1.5 px-2.5 text-[11px] font-medium text-[var(--jmc-text-muted)] border-y border-r border-[var(--jmc-border)] shadow-[var(--jmc-shadow-md)] transition-all duration-150 hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] hover:bg-[var(--jmc-bg-surface)] hover:pl-3 active:scale-95 animate-pop-in select-none"
           >
             <PanelLeftOpen className="h-4 w-4 text-[var(--jmc-primary)]" />
-            <span>{t('courses.title')}</span>
-            <span className="tnum text-[10.5px] text-[var(--jmc-text-dim)]">({courses.length})</span>
+            <span className="hidden sm:inline font-medium">{t('courses.title')}</span>
+            <span className="tnum text-[10px] text-[var(--jmc-text-dim)]">({courses.length})</span>
           </button>
         )}
+        {/* Sağ Asistan Paneli Genişletme Sekmesi (Kenara kenetli, içerik eylemlerini örtmez) */}
         {!inspectorOpen && (
           <button
             type="button"
             onClick={() => setInspectorOpen(true)}
             aria-label={t('ai.expand')}
             title={t('ai.expand')}
-            className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-elevated)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-text-muted)] border border-[var(--jmc-border)] shadow-[var(--jmc-shadow-md)] transition-all duration-200 hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] hover:scale-[1.02] active:scale-[0.98] animate-pop-in"
+            className="absolute right-0 top-16 z-20 flex items-center gap-1.5 rounded-l-[var(--jmc-radius)] bg-[var(--jmc-bg-elevated)] py-1.5 px-2.5 text-[11px] font-medium text-[var(--jmc-text-muted)] border-y border-l border-[var(--jmc-border)] shadow-[var(--jmc-shadow-md)] transition-all duration-150 hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] hover:bg-[var(--jmc-bg-surface)] hover:pr-3 active:scale-95 animate-pop-in select-none"
           >
             <Sparkles className="h-4 w-4 text-[var(--jmc-primary)]" />
-            <span>{t('ai.assistant')}</span>
+            <span className="hidden sm:inline font-medium">{t('ai.assistant')}</span>
             {aiReady && (
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--jmc-success)]" />
             )}

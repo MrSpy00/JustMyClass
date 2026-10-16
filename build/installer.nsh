@@ -27,6 +27,8 @@
   WriteRegStr HKCU "Software\Classes\justmyclass" "URL Protocol" ""
   WriteRegStr HKCU "Software\Classes\justmyclass\DefaultIcon" "" "$INSTDIR\JustMyClass.exe,0"
   WriteRegStr HKCU "Software\Classes\justmyclass\shell\open\command" "" '"$INSTDIR\JustMyClass.exe" "%1"'
+  WriteRegStr HKCU "Software\Classes\Applications\JustMyClass.exe" "FriendlyAppName" "JustMyClass"
+  WriteRegStr HKLM "Software\Classes\Applications\JustMyClass.exe" "FriendlyAppName" "JustMyClass"
 !macroend
 
 !macro customUnInstall

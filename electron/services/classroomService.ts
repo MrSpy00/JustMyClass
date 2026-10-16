@@ -497,6 +497,43 @@ export class ClassroomService {
     }
 
     this.storageService.saveCourseWork(courseId, works)
+
+    // Sınıf arkadaşlarını yeni kaydedilen ödevlerin yorumlarından tekrar zenginleştir
+    if (works.length > 0) {
+      try {
+        let addedNew = false
+        for (const w of works.slice(0, 10)) {
+          try {
+            const cwCommentsRes = await googleHttp.request<any>(
+              `${API}/courses/${encodeURIComponent(courseId)}/courseWork/${encodeURIComponent(w.id)}/comments`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            )
+            const comments: any[] = cwCommentsRes?.comments || []
+            for (const c of comments) {
+              const profile = c.userProfile
+              if (profile?.id && !participants.some(p => p.userId === profile.id)) {
+                participants.push({
+                  userId: profile.id,
+                  courseId,
+                  role: 'STUDENT',
+                  fullName: profile.name?.fullName || profile.name?.givenName || 'Sınıf Arkadaşı',
+                  email: profile.emailAddress,
+                  photoUrl: profile.photoUrl,
+                })
+                addedNew = true
+              }
+            }
+          } catch {
+            /* yoksay */
+          }
+        }
+        if (addedNew) {
+          this.storageService.saveParticipants(courseId, participants)
+        }
+      } catch {
+        /* yoksay */
+      }
+    }
   }
 
   /**

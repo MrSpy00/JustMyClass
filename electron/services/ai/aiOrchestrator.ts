@@ -1204,9 +1204,15 @@ export class AiOrchestrator {
     if (!endpoints || typeof endpoints !== 'object') return
     for (const [providerId, baseUrl] of Object.entries(endpoints)) {
       const prov = this.providers.get(providerId)
-      if (prov && typeof baseUrl === 'string' && /^https?:\/\//i.test(baseUrl)) {
+      // Yalnizca yerel calisan saglayicilarin (Ollama, LM Studio vb.) adresi degistirilebilir.
+      if (prov && prov.isLocal && typeof baseUrl === 'string' && /^https?:\/\//i.test(baseUrl)) {
         prov.baseUrl = baseUrl.trim().replace(/\/+$/, '')
       }
+    }
+    // Gemini ve bulut sağlayıcıları her zaman resmi adreslerini korumalıdır.
+    const gemini = this.providers.get('gemini')
+    if (gemini) {
+      gemini.baseUrl = 'https://generativelanguage.googleapis.com/v1beta'
     }
   }
 
@@ -1362,6 +1368,9 @@ export class AiOrchestrator {
     }
     const prov = this.providers.get(providerId)
     if (!prov) throw new Error('Sağlayıcı bulunamadı.')
+    if (!prov.isLocal) {
+      throw new Error('Yalnızca yerel çalışan sağlayıcıların (Ollama, LM Studio vb.) uç nokta adresi değiştirilebilir.')
+    }
     prov.baseUrl = trimmed
     if (!isLoopbackUrl(trimmed) && prov.isLocal) {
       prov.privacyNotice =
@@ -2123,8 +2132,31 @@ export class AiOrchestrator {
       ]
     }
 
-    const finalContent = answer.trim()
+    let finalContent = answer.trim()
     const reasoningContent = reasoningParts.join('\n\n').trim() || undefined
+
+    // Model bir araç çağrısı yaptıysa ve son turda metin dönmediyse,
+    // hata fırlatmak yerine araçların sonuçlarını sentezleyip kullanıcıya sun.
+    if (!finalContent && allToolCalls.length > 0) {
+      const successfulTools = allToolCalls.filter(t => t.status === 'completed')
+      if (successfulTools.length > 0) {
+        const toolSummaries = successfulTools
+          .map(t => {
+            const rawRes = typeof t.result === 'string' ? t.result : JSON.stringify(t.result)
+            const cleanRes = rawRes.length > 1000 ? rawRes.slice(0, 1000) + '...' : rawRes
+            return `### ${t.name}\n${cleanRes}`
+          })
+          .join('\n\n')
+        finalContent = `İlgili dosyalar ve Classroom verileri incelendi:\n\n${toolSummaries}`
+      } else {
+        finalContent = 'İstenen işlem tamamlandı.'
+      }
+    }
+
+    // Eğer model yalnızca düşünme (reasoning/thought) ürettiyse onu yanıt olarak sun
+    if (!finalContent && reasoningContent) {
+      finalContent = reasoningContent
+    }
 
     // Model cevabi kesip biraktiysa (uzunluk siniri) kullanici bunu
     // bilmezse eksik yanit "bitti" sanir.

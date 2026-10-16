@@ -1367,6 +1367,8 @@ if (!app.requestSingleInstanceLock()) {
         execFileSync('cmd.exe', ['/c', regCmd], { stdio: 'ignore', timeout: 3000, windowsHide: true })
         const defCmd = `reg add "HKCU\\Software\\Classes\\justmyclass" /ve /t REG_SZ /d "JustMyClass" /f`
         execFileSync('cmd.exe', ['/c', defCmd], { stdio: 'ignore', timeout: 3000, windowsHide: true })
+        const appCmd = `reg add "HKCU\\Software\\Classes\\Applications\\JustMyClass.exe" /v FriendlyAppName /t REG_SZ /d "JustMyClass" /f`
+        execFileSync('cmd.exe', ['/c', appCmd], { stdio: 'ignore', timeout: 3000, windowsHide: true })
       } catch {
         /* yut */
       }

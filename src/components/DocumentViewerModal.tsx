@@ -1013,62 +1013,6 @@ export function DocumentViewerModal({
 
           {!loading && !error && preview && (
             <>
-              {/* --- 1. KOD GÖRÜNTÜLEYİCİ (PrismJS Sözdizimi, Eşzamanlı Satır Numaraları, Satır Aralığı) --- */}
-              {preview.kind === 'code' && (
-                <div
-                  className="font-mono text-[12px] select-text min-h-full bg-[var(--jmc-bg)]"
-                  style={{ fontSize: `${fontSize}px` }}
-                >
-                  <div className="w-full py-2">
-                    {filteredCodeRows.map(row => {
-                      const isMatch =
-                        searchQuery.trim().length > 0 &&
-                        row.raw.toLowerCase().includes(searchQuery.toLowerCase())
-                      const lineSpacingStyle =
-                        lineSpacing === 'compact'
-                          ? 'py-0 leading-[1.3]'
-                          : lineSpacing === 'relaxed'
-                            ? 'py-1.5 leading-[1.85]'
-                            : 'py-0.5 leading-[1.55]'
-
-                      return (
-                        <div
-                          key={row.lineIndex}
-                          className={`flex items-start transition-colors hover:bg-white/[0.04] ${lineSpacingStyle} ${
-                            isMatch ? 'bg-amber-500/15' : ''
-                          }`}
-                        >
-                          <span className="select-none pl-3 pr-4 text-right text-[var(--jmc-text-dim)] shrink-0 min-w-[3.75rem] font-mono text-[11px] opacity-60 border-r border-[var(--jmc-border-subtle)]">
-                            {row.lineIndex}
-                          </span>
-                          <div
-                            className={`flex-1 pl-4 pr-4 min-w-0 font-mono ${
-                              codeWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre overflow-x-visible'
-                            } ${isMatch ? 'text-amber-200' : 'text-[var(--jmc-text)]'}`}
-                            dangerouslySetInnerHTML={{ __html: row.html }}
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* --- 2. MARKDOWN GÖRÜNTÜLEYİCİ --- */}
-              {preview.kind === 'markdown' && (
-                <div className="p-6 max-w-4xl mx-auto">
-                  {markdownMode === 'preview' ? (
-                    <div className="prose prose-invert max-w-none text-[13px] leading-relaxed">
-                      <MarkdownView content={preview.text || ''} />
-                    </div>
-                  ) : (
-                    <pre className="font-mono text-[12px] leading-relaxed p-4 rounded-lg bg-[var(--jmc-bg-surface)] whitespace-pre-wrap text-[var(--jmc-text)]">
-                      {preview.text}
-                    </pre>
-                  )}
-                </div>
-              )}
-
               {/* --- 0. YOUTUBE VİDEO OYNATICI (Uygulama İçi Yerleşik, Sıfır Ekstra Paket, Üstün Performans) --- */}
               {youtubeVideoId ? (
                 <div className="flex h-full w-full flex-col items-center justify-center p-4 md:p-8 bg-black/90">
@@ -1164,17 +1108,11 @@ export function DocumentViewerModal({
                   {preview.kind === 'pdf' && (
                     <div className="h-full w-full flex flex-col">
                       {pdfMode === 'embed' && (pdfBlobUrl || preview.dataUrl) ? (
-                        <object
-                          data={pdfBlobUrl || preview.dataUrl}
-                          type="application/pdf"
+                        <iframe
+                          src={pdfBlobUrl || preview.dataUrl}
+                          title={preview.title || 'PDF Belgesi'}
                           className="h-full w-full border-0 bg-neutral-900 rounded-b-xl"
-                        >
-                          <embed
-                            src={pdfBlobUrl || preview.dataUrl}
-                            type="application/pdf"
-                            className="h-full w-full border-0 bg-neutral-900"
-                          />
-                        </object>
+                        />
                       ) : (
                         <div className="p-6 md:p-8 max-w-4xl mx-auto w-full">
                           <div className="rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 shadow-sm">
@@ -1527,7 +1465,7 @@ export function DocumentViewerModal({
                   )}
 
                   {/* --- 9. BAĞLANTI (LINK) KARTI GÖRÜNTÜLEYİCİ --- */}
-                  {(preview.kind === 'binary' || preview.kind === 'text') && attachment.alternateLink && (
+                  {(preview.kind === 'link' || ((preview.kind === 'binary' || preview.kind === 'text') && attachment.alternateLink)) && (
                     <div className="p-8 max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[350px]">
                       <div className="w-full rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-8 shadow-xl text-center space-y-4">
                         <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)]">
@@ -1535,16 +1473,16 @@ export function DocumentViewerModal({
                         </div>
                         <div>
                           <h3 className="text-[16px] font-bold text-[var(--jmc-text)]">
-                            {attachment.title}
+                            {preview.title || attachment.title}
                           </h3>
                           <p className="mt-1 font-mono text-[11px] text-[var(--jmc-text-dim)] truncate max-w-md mx-auto">
-                            {attachment.alternateLink}
+                            {attachment.alternateLink || preview.dataUrl}
                           </p>
                         </div>
                         <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
                           <button
                             type="button"
-                            onClick={() => void window.jmcAPI?.openExternalUrl(attachment.alternateLink!)}
+                            onClick={() => void window.jmcAPI?.openExternalUrl((attachment.alternateLink || preview.dataUrl)!)}
                             className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-4 py-2 text-[12px] font-semibold text-white shadow-md hover:bg-[var(--jmc-primary-hover)] active:scale-95 transition-all"
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
@@ -1558,6 +1496,16 @@ export function DocumentViewerModal({
                             {linkCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
                             <span>{linkCopied ? 'Kopyalandı' : 'Bağlantıyı Kopyala'}</span>
                           </button>
+                          {onSendToAssistant && (
+                            <button
+                              type="button"
+                              onClick={handleAnalyzeWithAssistant}
+                              className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-primary)]/30 bg-[var(--jmc-primary)]/10 px-3.5 py-2 text-[12px] font-medium text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 active:scale-95 transition-all"
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                              <span>Asistan ile İncele</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

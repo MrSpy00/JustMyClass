@@ -541,7 +541,7 @@ export interface FilePreviewResult {
   title: string
   mimeType: string
   sizeBytes: number
-  kind: 'code' | 'markdown' | 'text' | 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'csv' | 'image' | 'media' | 'binary'
+  kind: 'code' | 'markdown' | 'text' | 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'csv' | 'image' | 'media' | 'link' | 'binary'
   text?: string
   dataUrl?: string
   localPath?: string
