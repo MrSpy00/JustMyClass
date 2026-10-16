@@ -257,26 +257,31 @@ function applyContentSecurityPolicy(session: Session): void {
 
   const policy = [
     "default-src 'none'",
-    `script-src ${scriptSrc.join(' ')}`,
+    `script-src ${scriptSrc.join(' ')} chrome-extension:`,
     // Tailwind v4 gelistirmede satir ici stil enjekte eder.
-    "style-src 'self' 'unsafe-inline'",
-    "font-src 'self' data:",
-    `img-src ${imgSrc.join(' ')}`,
-    `connect-src ${connectSrc.join(' ')}`,
+    "style-src 'self' 'unsafe-inline' chrome-extension:",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    `img-src ${imgSrc.join(' ')} chrome-extension:`,
+    `connect-src ${connectSrc.join(' ')} https://*.googlevideo.com https://*.youtube.com https://*.youtube-nocookie.com`,
     "media-src 'self' data: blob: https://*.googlevideo.com",
-    "frame-src 'self' blob: data: https://www.youtube.com https://www.youtube-nocookie.com",
-    "object-src 'self' blob: data:",
+    "frame-src 'self' blob: data: chrome-extension: https://www.youtube.com https://www.youtube-nocookie.com",
+    "object-src 'self' blob: data: chrome-extension:",
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",
   ].join('; ')
 
   session.webRequest.onHeadersReceived((details, callback) => {
-    // Sadece tarayici penceresinin yukledigi sayfa ve alt cercevelere CSP ekle,
-    // net.fetch veya harici API yanitlarini degistirme.
+    // Harici video/medya cercevelerinin (YouTube vb.) kendi CSP ve basliklarini bozma
+    const isExternalMediaFrame =
+      details.resourceType === 'subFrame' &&
+      (details.url.includes('youtube.com') ||
+        details.url.includes('youtube-nocookie.com') ||
+        details.url.includes('googlevideo.com'))
+
     if (
-      details.resourceType === 'mainFrame' ||
-      details.resourceType === 'subFrame'
+      !isExternalMediaFrame &&
+      (details.resourceType === 'mainFrame' || details.resourceType === 'subFrame')
     ) {
       callback({
         responseHeaders: {
@@ -408,6 +413,8 @@ function createWindow() {
         (!app.isPackaged && reqUrl.startsWith('devtools:')) ||
         reqUrl.startsWith('blob:') ||
         reqUrl.startsWith('data:') ||
+        reqUrl.startsWith('chrome-extension:') ||
+        reqUrl.startsWith('chrome:') ||
         (!!devUrl && reqUrl.startsWith(devUrl))
 
       const isAllowedDomain =
@@ -419,7 +426,10 @@ function createWindow() {
         reqUrl.includes('youtube.com/') ||
         reqUrl.includes('youtube-nocookie.com/') ||
         reqUrl.includes('ytimg.com/') ||
-        reqUrl.includes('googlevideo.com/')
+        reqUrl.includes('googlevideo.com/') ||
+        reqUrl.includes('fonts.gstatic.com/') ||
+        reqUrl.includes('doubleclick.net/') ||
+        reqUrl.includes('google.com/')
 
       callback({ cancel: !(isAllowedScheme || isAllowedDomain) })
     },
@@ -1369,6 +1379,10 @@ if (!app.requestSingleInstanceLock()) {
         execFileSync('cmd.exe', ['/c', defCmd], { stdio: 'ignore', timeout: 3000, windowsHide: true })
         const appCmd = `reg add "HKCU\\Software\\Classes\\Applications\\JustMyClass.exe" /v FriendlyAppName /t REG_SZ /d "JustMyClass" /f`
         execFileSync('cmd.exe', ['/c', appCmd], { stdio: 'ignore', timeout: 3000, windowsHide: true })
+        const appDefCmd = `reg add "HKCU\\Software\\Classes\\Applications\\JustMyClass.exe" /ve /t REG_SZ /d "JustMyClass" /f`
+        execFileSync('cmd.exe', ['/c', appDefCmd], { stdio: 'ignore', timeout: 3000, windowsHide: true })
+        const appRelCmd = `reg add "HKCU\\Software\\Classes\\justmyclass" /v Application /t REG_SZ /d "JustMyClass.exe" /f`
+        execFileSync('cmd.exe', ['/c', appRelCmd], { stdio: 'ignore', timeout: 3000, windowsHide: true })
       } catch {
         /* yut */
       }

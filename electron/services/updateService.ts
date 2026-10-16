@@ -324,19 +324,16 @@ export class UpdateService {
     const raw = `${err?.message ?? ''}`.toLowerCase()
 
     if (raw.includes('getaddrinfo') || raw.includes('enotfound') || raw.includes('name_not_resolved')) {
-      return 'Sunucuya ulaşılamadı. Yayın adresindeki alan adı çözümlenemiyor.'
+      return 'Sunucuya ulaşılamadı. Güncelleme adresindeki alan adı çözümlenemiyor.'
     }
-    if (raw.includes('enotfound') || raw.includes('econnrefused')) {
-      return 'Sunucu yanıt vermiyor. Yayın klasörü erişilebilir değil.'
+    if (raw.includes('econnrefused')) {
+      return 'Sunucu yanıt vermiyor. Güncelleme sunucusuna ulaşılamadı.'
     }
-    if (raw.includes('404') || raw.includes('no published versions')) {
+    if (raw.includes('404') || raw.includes('no published versions') || raw.includes('latest.yml')) {
       if (!this.isCustomGenericFeed(this.configuredUrl)) {
         return 'Henüz yayınlanmış yeni bir sürüm bulunamadı veya uygulama en güncel sürümde.'
       }
-      return (
-        'Sunucuda sürüm dosyası bulunamadı. `latest.yml` dosyası, sürüm ' +
-        'klasörünün içinde olmalı ve dosya adı tam olarak `latest.yml` olmalı.'
-      )
+      return 'Özel güncelleme sunucusunda yeni bir sürüm bulunamadı. Sunucuda geçerli bir paket ve latest.yml dosyası yer almalıdır.'
     }
     if (raw.includes('certificate') || raw.includes('ssl') || raw.includes('self signed')) {
       return 'Güvenlik sertifikası geçersiz. HTTPS sertifikasını kontrol edin.'
@@ -347,7 +344,7 @@ export class UpdateService {
         'indirmesini durduruyor olabilir.'
       )
     }
-    return `Güncelleme denemesi başarısız: ${err instanceof Error ? err.message : String(err)}`
+    return `Güncelleme kontrolü: ${err instanceof Error ? err.message : String(err)}`
   }
 
   // -------------------------------------------------------------------------

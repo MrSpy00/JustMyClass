@@ -1021,13 +1021,8 @@ const UpdatePanel: React.FC<{
         </h3>
         <p className="mt-1 text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
           {tr
-            ? 'Uygulama her açılışta bu adresi sorgular. Sürüm dosyalarının (latest.yml ve ' +
-              'JustMyClass-Setup-*.exe) yüklendiği klasörün HTTPS adresini yazın. ' +
-              'Güvenlik için adres zorunlu olarak HTTPS olmalıdır — şifresiz bağlantıdan ' +
-              'güncelleme kabul edilmez. Adresi boşaltıp kaydederek güncellemeyi kapatabilirsiniz.'
-            : 'The app queries this address on every start. Enter the HTTPS URL of the folder ' +
-              'holding latest.yml and JustMyClass-Setup-*.exe. HTTPS is mandatory; clear the ' +
-              'field and save to turn updates off.'}
+            ? 'Uygulama açılışta ve denetleme yapıldığında GitHub Releases (MrSpy00/JustMyClass) üzerindeki en güncel sürümleri kontrol eder. İsteğe bağlı olarak kendi özel güncelleme sunucunuzun HTTPS adresini de girebilirsiniz.'
+            : 'The app checks for new versions via GitHub Releases (MrSpy00/JustMyClass). Optionally, you can specify a custom HTTPS feed address.'}
         </p>
         <div className="mt-2.5 flex flex-col gap-1.5 sm:flex-row">
           <input

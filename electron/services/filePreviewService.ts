@@ -345,14 +345,40 @@ export class FilePreviewService {
 
     if (!cached || !cached.absolutePath) {
       // Indirme tetikle
-      const downloaded = await this.driveService.downloadAttachment(attachment, courseId)
-      if (downloaded.localPath) {
-        localPath = downloaded.localPath
-        cached = this.storageService.getCachedFile(downloaded.driveFileId || fileId)
+      try {
+        const downloaded = await this.driveService.downloadAttachment(attachment, courseId)
+        if (downloaded.localPath) {
+          localPath = downloaded.localPath
+          cached = this.storageService.getCachedFile(downloaded.driveFileId || fileId)
+        }
+      } catch (err) {
+        if (attachment.alternateLink) {
+          return {
+            fileId: attachment.id,
+            title: attachment.title || 'Bağlantı',
+            mimeType: 'text/html',
+            sizeBytes: 0,
+            kind: 'link',
+            dataUrl: attachment.alternateLink,
+            text: `Bağlantı: ${attachment.title || ''}\nURL: ${attachment.alternateLink}`,
+          }
+        }
+        throw err
       }
     }
 
     if (!cached || !cached.absolutePath) {
+      if (attachment.alternateLink) {
+        return {
+          fileId: attachment.id,
+          title: attachment.title || 'Bağlantı',
+          mimeType: 'text/html',
+          sizeBytes: 0,
+          kind: 'link',
+          dataUrl: attachment.alternateLink,
+          text: `Bağlantı: ${attachment.title || ''}\nURL: ${attachment.alternateLink}`,
+        }
+      }
       throw new Error(`"${attachment.title}" dosyası önbelleğe alınamadı.`)
     }
 

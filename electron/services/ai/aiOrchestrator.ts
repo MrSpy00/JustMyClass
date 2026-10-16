@@ -1892,6 +1892,19 @@ export class AiOrchestrator {
     if (lower.includes('404') || lower.includes('model not found') || lower.includes('is not found for api version')) {
       return `Seçilen model ${providerName} üzerinde bulunamadı veya kullanımdan kalktı. Lütfen 'gemini-2.0-flash' veya model listesinden güncel bir model seçin.`
     }
+    if (
+      lower.includes('net::err_connection_refused') ||
+      lower.includes('econnrefused') ||
+      lower.includes('connection refused')
+    ) {
+      if (providerName.toLowerCase().includes('ollama')) {
+        return `Ollama yerel sunucusuna bağlanılamadı (Connection Refused). Lütfen Ollama uygulamasının arka planda çalıştığından (http://127.0.0.1:11434) emin olun.`
+      }
+      return `${providerName} sunucusuna bağlanılamadı (Bağlantı reddedildi / net::ERR_CONNECTION_REFUSED). Lütfen internet bağlantınızı, güvenlik duvarınızı veya VPN/proxy ayarlarınızı kontrol edin.`
+    }
+    if (lower.includes('net::err_') || lower.includes('failed to fetch')) {
+      return `${providerName} ile bağlantı kurulurken ağ hatası oluştu (${raw.slice(0, 120)}). Lütfen internet erişiminizi kontrol edin.`
+    }
     return `${providerName} isteği başarısız: ${raw.slice(0, 300)}`
   }
 
@@ -1927,8 +1940,15 @@ export class AiOrchestrator {
       key: string | undefined,
       model: string,
       chatMessages: Array<{ role: ChatRole; content: string }>,
+      toolsEnabled?: boolean,
     ): Promise<StreamOutcome> => {
-      const callParams: ChatParams = { ...params, providerId: p.id, modelId: model, messages: chatMessages }
+      const callParams: ChatParams = {
+        ...params,
+        providerId: p.id,
+        modelId: model,
+        messages: chatMessages,
+        toolsEnabled: toolsEnabled !== undefined ? toolsEnabled : params.toolsEnabled,
+      }
       if (p.protocolType === 'anthropic') {
         return this.callAnthropicStream(p, key ?? '', callParams, systemPrompt, onChunk, signal)
       } else if (p.protocolType === 'gemini') {
@@ -1945,6 +1965,7 @@ export class AiOrchestrator {
       key: string | undefined,
       model: string,
       chatMessages: Array<{ role: ChatRole; content: string }>,
+      toolsEnabled?: boolean,
     ): Promise<StreamOutcome> => {
       let currentMessages = chatMessages
       const maxRetries = 2
@@ -1952,7 +1973,7 @@ export class AiOrchestrator {
       while (true) {
         attempt++
         try {
-          return await executeStreamCall(p, key, model, currentMessages)
+          return await executeStreamCall(p, key, model, currentMessages, toolsEnabled)
         } catch (err) {
           if (signal?.aborted) throw err
           const isTransient =
@@ -2064,7 +2085,13 @@ export class AiOrchestrator {
 
       const turn = round === 0
         ? outcome
-        : await executeStreamCallWithRetry(activeProv, activeApiKey, activeModelId, conversation)
+        : await executeStreamCallWithRetry(
+            activeProv,
+            activeApiKey,
+            activeModelId,
+            conversation,
+            round >= 2 ? false : undefined,
+          )
 
       if (turn.reasoning) reasoningParts.push(turn.reasoning)
       if (round === 0) {
@@ -2167,10 +2194,14 @@ export class AiOrchestrator {
     }
 
     if (!finalContent && allToolCalls.length === 0) {
-      throw new Error(
-        'Model boş bir yanıt döndürdü. Bu genellikle modelin araç döngüsünde takıldığı veya ' +
-          'istekte kullanılamayan bir yetenek istediği anlamına gelir. Farklı bir model deneyin.',
-      )
+      if (reasoningContent) {
+        finalContent = reasoningContent
+      } else {
+        throw new Error(
+          'Model boş bir yanıt döndürdü. Bu genellikle modelin araç döngüsünde takıldığı veya ' +
+            'istekte kullanılamayan bir yetenek istediği anlamına gelir. Farklı bir model veya API anahtarı deneyin.',
+        )
+      }
     }
 
     // JustMyClassMemory arka plan çıkarımı

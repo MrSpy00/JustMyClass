@@ -49,23 +49,21 @@ function splitHighlightedHtmlLines(html: string): string[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const prefix = openTags.join('')
-    const tagRegex = /<\/?([a-zA-Z0-9]+)[^>]*>/g
+    // Yalnızca Prism'in ürettiği <span class="..."> ve </span> etiketlerini gözet
+    const tagRegex = /<span\b[^>]*>|<\/span>/g
     let match: RegExpExecArray | null
     while ((match = tagRegex.exec(line)) !== null) {
       const fullTag = match[0]
       if (fullTag.startsWith('</')) {
         openTags.pop()
-      } else if (!fullTag.endsWith('/>')) {
+      } else {
         openTags.push(fullTag)
       }
     }
     const suffix = openTags
       .slice()
       .reverse()
-      .map(t => {
-        const name = t.match(/<([a-zA-Z0-9]+)/)?.[1] || 'span'
-        return `</${name}>`
-      })
+      .map(() => '</span>')
       .join('')
 
     result.push(prefix + line + suffix)

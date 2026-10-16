@@ -16,13 +16,17 @@
 ## 🌟 Öne Çıkan Özellikler
 
 - **Yerel Öncelikli Mimari (Local-First):** Verileriniz (sınıflar, duyurular, ödevler, rubrikler, teslimler ve taslaklar) yerel cihazınızda işletim sistemi seviyesinde AES-256-GCM ile şifrelenerek saklanır.
-- **22+ Yapay Zekâ Sağlayıcısı:** Google Gemini, OpenAI, Claude (Anthropic), Groq, DeepSeek, xAI, Mistral, Ollama, LM Studio ve daha fazlası. Dinamik model keşfi ve zengin araç (tool calling) desteği.
-- **Kesintisiz Araç Yürütme (Autonomous Tool Execution):** Modeller "yapayım mı?" diye sormadan, doğrudan Google Classroom ödevlerini, duyurularını ve ders materyallerini otonom şekilde inceler, arar ve yanıtlar.
-- **İnteraktif Hoş Geldiniz Karşılama Ekranı:** İlk kuruluma özel 5 aşamalı, animasyonlu ve detaylı rehber. Google Classroom bağlantısı, API anahtarı temini ve yeteneklerin adım adım görsel sunumu (istendiğinde Ayarlar > Hakkında üzerinden tekrar açılabilir).
-- **Gelişmiş Belge Görüntüleyici ve İndirici:** PDF, Office, kod ve görsel dosyalarını uygulama içinde inceleme, tek tıkla kullanıcının İndirilenler klasörüne kaydetme, "Dosyayı Aç" ve "Klasörde Göster" entegrasyonu.
-- **Özelleştirilebilir İndirme Klasörü:** Ayarlar üzerinden varsayılan indirme konumunu seçme, klasörü doğrudan açma veya tek tıkla varsayılana sıfırlama.
-- **GitHub Releases Otomatik Güncelleme:** Doğrudan resmi GitHub deposundan (`MrSpy00/JustMyClass`) en güncel sürümleri denetleme, otomatik indirme veya taşınabilir sürüm indirme bağlantısı.
-- **16 Semantik Tema & Çift Dil:** Türkçe ve İngilizce tam dil desteği, yüksek kontrast ve göz yormayan modern tasarım dili.
+- **22+ Yapay Zekâ Sağlayıcısı & Kesintisiz Araç Yürütme:** Google Gemini, Anthropic Claude, OpenAI, Groq, DeepSeek, xAI, Mistral, Ollama ve yerel modeller. Akıllı araç yürütme (tool execution) döngüsü ve ağ bağlantı hatalarında otomatik kurtarma.
+- **Zengin Dosya & Medya Görüntüleyici:**
+  - **PDF & Dokümanlar:** Bounded akış çözümleyici ve okunabilirlik filtresiyle bozuk ikili karakterler süzülür, temiz metin ve yerleşik önizleme sağlanır.
+  - **Kod & Metin:** Prism.js tabanlı syntax highlighting, satır numaralandırması, metin içi arama ve tekilleştirilmiş kusursuz gösterim.
+  - **YouTube & Web Bağlantıları:** Doğrudan uygulama içinde YouTube oynatıcı, tarayıcıda tek tıkla açma ve panoya bağlantı kopyalama (gereksiz indirme butonları yer almaz).
+  - **Google Drive Dosyaları:** Tek tıkla İndirilenler klasörüne indirme, dosya açma ve klasörde gösterme entegrasyonu.
+- **Akıllı ve Çakışmasız Panel Yerleşimi:** Yan paneller (Dersler ve Yapay Zekâ Asistanı) kapatıldığında üst yardımcı şerit üzerinden tek tıkla geri açılabilir; hiçbir buton veya içerik örtüşmez, altında kaybolmaz.
+- **Kusursuz Windows Entegrasyonu:** Windows başlangıç ve tarayıcı protokol onaylarında yalnızca net ve sade `"JustMyClass"` olarak görünür.
+- **Karanlık Mor (Amethyst) & Siyah Yetkilendirme Sayfası:** Google Classroom OAuth 2.0 PKCE bağlantısı sırasında şık, göz alıcı siyah ve mor temalı geri dönüş ekranı.
+- **GitHub Releases Otomatik Güncelleme:** Resmi depodan (`MrSpy00/JustMyClass`) `latest.yml` ve kurulum dosyalarını denetler, doğrudan indirme ve kurma desteği sunar.
+- **16 Semantik Tema & Çift Dil:** Türkçe ve İngilizce tam dil desteği, yüksek kontrast ve modern çalışma alanı estetiği.
 
 ---
 

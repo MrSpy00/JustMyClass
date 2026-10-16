@@ -1802,35 +1802,61 @@ const resetSessionUiState = useCallback(() => {
 
       {/* ---------------- Ana içerik ---------------- */}
       <main className="relative min-w-0 flex-1 overflow-hidden flex flex-col">
-        {/* Sol Panel Genişletme Sekmesi (Kenara kenetli, içerik başlıklarını örtmez) */}
-        {!coursesOpen && (
-          <button
-            type="button"
-            onClick={() => setCoursesOpen(true)}
-            aria-label="Dersleri göster"
-            title="Dersleri göster"
-            className="absolute left-0 top-16 z-20 flex items-center gap-1.5 rounded-r-[var(--jmc-radius)] bg-[var(--jmc-bg-elevated)] py-1.5 px-2.5 text-[11px] font-medium text-[var(--jmc-text-muted)] border-y border-r border-[var(--jmc-border)] shadow-[var(--jmc-shadow-md)] transition-all duration-150 hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] hover:bg-[var(--jmc-bg-surface)] hover:pl-3 active:scale-95 animate-pop-in select-none"
-          >
-            <PanelLeftOpen className="h-4 w-4 text-[var(--jmc-primary)]" />
-            <span className="hidden sm:inline font-medium">{t('courses.title')}</span>
-            <span className="tnum text-[10px] text-[var(--jmc-text-dim)]">({courses.length})</span>
-          </button>
-        )}
-        {/* Sağ Asistan Paneli Genişletme Sekmesi (Kenara kenetli, içerik eylemlerini örtmez) */}
-        {!inspectorOpen && (
-          <button
-            type="button"
-            onClick={() => setInspectorOpen(true)}
-            aria-label={t('ai.expand')}
-            title={t('ai.expand')}
-            className="absolute right-0 top-16 z-20 flex items-center gap-1.5 rounded-l-[var(--jmc-radius)] bg-[var(--jmc-bg-elevated)] py-1.5 px-2.5 text-[11px] font-medium text-[var(--jmc-text-muted)] border-y border-l border-[var(--jmc-border)] shadow-[var(--jmc-shadow-md)] transition-all duration-150 hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] hover:bg-[var(--jmc-bg-surface)] hover:pr-3 active:scale-95 animate-pop-in select-none"
-          >
-            <Sparkles className="h-4 w-4 text-[var(--jmc-primary)]" />
-            <span className="hidden sm:inline font-medium">{t('ai.assistant')}</span>
-            {aiReady && (
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--jmc-success)]" />
-            )}
-          </button>
+        {/* Üst İnce Yardımcı / Başlık Şeridi (Bileşenleri ve butonları asla örtmez) */}
+        {(!coursesOpen || !inspectorOpen || selectedCourse) && (
+          <header className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-elevated)] px-3 text-[11.5px] select-none z-10">
+            <div className="flex items-center gap-2 min-w-0">
+              {!coursesOpen && (
+                <button
+                  type="button"
+                  onClick={() => setCoursesOpen(true)}
+                  aria-label="Dersleri göster"
+                  title="Dersleri göster"
+                  className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] active:scale-95"
+                >
+                  <PanelLeftOpen className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+                  <span>{t('courses.title')}</span>
+                  <span className="tnum text-[10px] text-[var(--jmc-text-dim)]">({courses.length})</span>
+                </button>
+              )}
+              {selectedCourse && (
+                <div className="flex items-center gap-1.5 min-w-0 text-[11.5px] text-[var(--jmc-text-muted)]">
+                  <span
+                    onClick={() => selectedWork && setSelectedWork(null)}
+                    className={`truncate font-medium ${selectedWork ? 'cursor-pointer hover:text-[var(--jmc-primary)]' : 'text-[var(--jmc-text)]'}`}
+                    title={selectedCourse.name}
+                  >
+                    {selectedCourse.name}
+                  </span>
+                  {selectedWork && (
+                    <>
+                      <span className="text-[var(--jmc-text-dim)]">/</span>
+                      <span className="truncate text-[var(--jmc-text)] font-semibold" title={selectedWork.title}>
+                        {selectedWork.title}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {!inspectorOpen && (
+                <button
+                  type="button"
+                  onClick={() => setInspectorOpen(true)}
+                  aria-label={t('ai.expand')}
+                  title={t('ai.expand')}
+                  className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] active:scale-95"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+                  <span>{t('ai.assistant')}</span>
+                  {aiReady && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--jmc-success)]" />
+                  )}
+                </button>
+              )}
+            </div>
+          </header>
         )}
         {selectedWork ? (
           <DocumentStudio

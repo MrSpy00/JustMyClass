@@ -15,6 +15,7 @@ import {
   FolderOpen,
   GraduationCap,
   Layers,
+  Link as LinkIcon,
   Loader2,
   MessageSquare,
   Paperclip,
@@ -695,107 +696,174 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                               key={mat.id}
                               className="flex items-center justify-between gap-2 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-2.5 text-[11.5px]"
                             >
-                              <div
-                                onClick={() => onPreviewAttachment && onPreviewAttachment(mat)}
-                                className={`flex items-center gap-2 min-w-0 flex-1 ${onPreviewAttachment ? 'cursor-pointer hover:text-[var(--jmc-primary)] transition-colors' : ''}`}
-                                title={onPreviewAttachment ? 'Önizlemek için tıklayın' : undefined}
-                              >
-                                {mat.youTubeVideoId ? (
-                                  <YouTubeIcon className="h-4 w-4 shrink-0 text-red-500" />
-                                ) : mat.driveFileId ? (
-                                  <FileText className="h-4 w-4 shrink-0 text-blue-500" />
-                                ) : (
-                                  <Paperclip className="h-4 w-4 shrink-0 text-[var(--jmc-text-dim)]" />
-                                )}
-                                <span className="truncate font-medium">{mat.title}</span>
-                              </div>
+                              {(() => {
+                                const isYouTube = Boolean(mat.youTubeVideoId) || (Boolean(mat.alternateLink) && /(?:youtube\.com|youtu\.be)/i.test(mat.alternateLink || ''))
+                                const isWebLink = !mat.driveFileId && Boolean(mat.alternateLink) && !isYouTube
 
-                              <div className="flex items-center gap-1 shrink-0">
-                                {onPreviewAttachment && (mat.driveFileId || mat.isLocalAvailable || mat.alternateLink) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => onPreviewAttachment(mat)}
-                                    title="Uygulama İçinde Görüntüle"
-                                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
-                                  >
-                                    <Eye className="h-3.5 w-3.5" />
-                                    <span>Görüntüle</span>
-                                  </button>
-                                )}
-                                {onInspectAttachment && (mat.driveFileId || mat.isLocalAvailable || mat.alternateLink) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => onInspectAttachment(mat)}
-                                    title="Yapay Zekâ Asistanı ile İncele"
-                                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
-                                  >
-                                    <Sparkles className="h-3 w-3" />
-                                    <span className="hidden sm:inline">İncele</span>
-                                  </button>
-                                )}
-                                {(() => {
-                                  const status = downloadedStatusMap[mat.id] || (mat.driveFileId ? downloadedStatusMap[mat.driveFileId] : undefined)
-                                  const isDownloaded = Boolean(status?.exists || (mat.isLocalAvailable && (mat.downloadedPath || mat.localPath)))
-                                  const targetPath = status?.filePath || mat.downloadedPath || mat.localPath
-                                  const isDownloading = Boolean(downloadingIds[mat.id])
+                                return (
+                                  <>
+                                    <div
+                                      onClick={() => {
+                                        if (isWebLink && mat.alternateLink) {
+                                          void window.jmcAPI?.openExternalUrl(mat.alternateLink)
+                                        } else if (onPreviewAttachment) {
+                                          onPreviewAttachment(mat)
+                                        }
+                                      }}
+                                      className={`flex items-center gap-2 min-w-0 flex-1 cursor-pointer hover:text-[var(--jmc-primary)] transition-colors`}
+                                      title={isWebLink ? 'Bağlantıyı tarayıcıda açmak için tıklayın' : 'Görüntülemek için tıklayın'}
+                                    >
+                                      {isYouTube ? (
+                                        <YouTubeIcon className="h-4 w-4 shrink-0 text-red-500" />
+                                      ) : isWebLink ? (
+                                        <LinkIcon className="h-4 w-4 shrink-0 text-indigo-400" />
+                                      ) : mat.driveFileId ? (
+                                        <FileText className="h-4 w-4 shrink-0 text-blue-500" />
+                                      ) : (
+                                        <Paperclip className="h-4 w-4 shrink-0 text-[var(--jmc-text-dim)]" />
+                                      )}
+                                      <span className="truncate font-medium">{mat.title || (isWebLink ? 'Web Bağlantısı' : 'Ek')}</span>
+                                    </div>
 
-                                  if (isDownloaded && targetPath) {
-                                    return (
-                                      <>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      {isYouTube ? (
+                                        <>
+                                          {onPreviewAttachment && (
+                                            <button
+                                              type="button"
+                                              onClick={() => onPreviewAttachment(mat)}
+                                              title="Videoyu Uygulama İçinde İzle"
+                                              className="inline-flex items-center gap-1 rounded bg-red-500/15 px-2 py-1 text-[10.5px] font-semibold text-red-400 hover:bg-red-500/25 transition-colors"
+                                            >
+                                              <Eye className="h-3.5 w-3.5" />
+                                              <span>İzle</span>
+                                            </button>
+                                          )}
+                                          {mat.alternateLink && (
+                                            <button
+                                              type="button"
+                                              onClick={() => void window.jmcAPI?.openExternalUrl(mat.alternateLink!)}
+                                              title="YouTube'da Aç"
+                                              className="rounded p-1 text-[var(--jmc-text-dim)] hover:text-red-400 hover:bg-[var(--jmc-bg)] transition-colors"
+                                            >
+                                              <ExternalLink className="h-3.5 w-3.5" />
+                                            </button>
+                                          )}
+                                        </>
+                                      ) : isWebLink ? (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => void window.jmcAPI?.openExternalUrl(mat.alternateLink!)}
+                                            title="Bağlantıyı Tarayıcıda Aç"
+                                            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
+                                          >
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                            <span>Aç</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={async () => {
+                                              await window.jmcAPI?.copyText(mat.alternateLink!)
+                                            }}
+                                            title="Bağlantıyı Kopyala"
+                                            className="rounded p-1 text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:bg-[var(--jmc-bg)] transition-colors"
+                                          >
+                                            <LinkIcon className="h-3.5 w-3.5" />
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          {onPreviewAttachment && (mat.driveFileId || mat.isLocalAvailable) && (
+                                            <button
+                                              type="button"
+                                              onClick={() => onPreviewAttachment(mat)}
+                                              title="Uygulama İçinde Görüntüle"
+                                              className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
+                                            >
+                                              <Eye className="h-3.5 w-3.5" />
+                                              <span>Görüntüle</span>
+                                            </button>
+                                          )}
+                                          {(() => {
+                                            const status = downloadedStatusMap[mat.id] || (mat.driveFileId ? downloadedStatusMap[mat.driveFileId] : undefined)
+                                            const isDownloaded = Boolean(status?.exists || (mat.isLocalAvailable && (mat.downloadedPath || mat.localPath)))
+                                            const targetPath = status?.filePath || mat.downloadedPath || mat.localPath
+                                            const isDownloading = Boolean(downloadingIds[mat.id])
+
+                                            if (isDownloaded && targetPath) {
+                                              return (
+                                                <>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(targetPath) : window.jmcAPI?.openLocalFile(targetPath))}
+                                                    title="İndirilen Dosyayı Aç"
+                                                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+                                                  >
+                                                    <FolderOpen className="h-3.5 w-3.5" />
+                                                    <span>Aç</span>
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => void window.jmcAPI?.showItemInFolder?.(targetPath)}
+                                                    title="İndirilenler Klasöründe Göster"
+                                                    className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
+                                                  >
+                                                    <Folder className="h-3.5 w-3.5 text-amber-500" />
+                                                    <span className="hidden sm:inline">Klasörde</span>
+                                                  </button>
+                                                </>
+                                              )
+                                            }
+
+                                            if (onDownloadAttachment && mat.driveFileId) {
+                                              return (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => void handleDownloadItem(mat)}
+                                                  disabled={isDownloading}
+                                                  title="İndirilenler Klasörüne İndir"
+                                                  className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors disabled:opacity-50"
+                                                >
+                                                  {isDownloading ? (
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary)]" />
+                                                  ) : (
+                                                    <Download className="h-3.5 w-3.5" />
+                                                  )}
+                                                  <span>{isDownloading ? 'İndiriliyor...' : 'İndir'}</span>
+                                                </button>
+                                              )
+                                            }
+
+                                            return null
+                                          })()}
+                                          {mat.alternateLink && (
+                                            <button
+                                              type="button"
+                                              onClick={() => void window.jmcAPI?.openExternalUrl(mat.alternateLink!)}
+                                              title="Google Drive'da Aç"
+                                              className="rounded p-1 text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:bg-[var(--jmc-bg)]"
+                                            >
+                                              <ExternalLink className="h-3.5 w-3.5" />
+                                            </button>
+                                          )}
+                                        </>
+                                      )}
+                                      {onInspectAttachment && (
                                         <button
                                           type="button"
-                                          onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(targetPath) : window.jmcAPI?.openLocalFile(targetPath))}
-                                          title="İndirilen Dosyayı Aç"
-                                          className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+                                          onClick={() => onInspectAttachment(mat)}
+                                          title="Yapay Zekâ Asistanı ile İncele"
+                                          className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
                                         >
-                                          <FolderOpen className="h-3.5 w-3.5" />
-                                          <span>Aç</span>
+                                          <Sparkles className="h-3 w-3" />
+                                          <span className="hidden sm:inline">İncele</span>
                                         </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => void window.jmcAPI?.showItemInFolder?.(targetPath)}
-                                          title="İndirilenler Klasöründe Göster"
-                                          className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
-                                        >
-                                          <Folder className="h-3.5 w-3.5 text-amber-500" />
-                                          <span className="hidden sm:inline">Klasörde</span>
-                                        </button>
-                                      </>
-                                    )
-                                  }
-
-                                  if (onDownloadAttachment && (mat.driveFileId || mat.alternateLink)) {
-                                    return (
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleDownloadItem(mat)}
-                                        disabled={isDownloading}
-                                        title="İndirilenler Klasörüne İndir"
-                                        className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors disabled:opacity-50"
-                                      >
-                                        {isDownloading ? (
-                                          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary)]" />
-                                        ) : (
-                                          <Download className="h-3.5 w-3.5" />
-                                        )}
-                                        <span>{isDownloading ? 'İndiriliyor...' : 'İndir'}</span>
-                                      </button>
-                                    )
-                                  }
-
-                                  return null
-                                })()}
-                                {mat.alternateLink && (
-                                  <button
-                                    type="button"
-                                    onClick={() => void window.jmcAPI?.openExternalUrl(mat.alternateLink!)}
-                                    title="Google Drive'da Aç"
-                                    className="rounded p-1 text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:bg-[var(--jmc-bg)]"
-                                  >
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
-                              </div>
+                                      )}
+                                    </div>
+                                  </>
+                                )
+                              })()}
                             </div>
                           ))}
                         </div>
@@ -853,107 +921,177 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                     {mat.materials.length > 0 && (
                       <div className="pt-2">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {mat.materials.map(att => (
-                            <div
-                              key={att.id}
-                              className="flex items-center justify-between gap-2 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-2.5 text-[11.5px]"
-                            >
+                          {mat.materials.map(att => {
+                            const isYouTube = Boolean(att.youTubeVideoId) || (Boolean(att.alternateLink) && /(?:youtube\.com|youtu\.be)/i.test(att.alternateLink || ''))
+                            const isWebLink = !att.driveFileId && Boolean(att.alternateLink) && !isYouTube
+
+                            return (
                               <div
-                                onClick={() => onPreviewAttachment && onPreviewAttachment(att)}
-                                className={`flex items-center gap-2 min-w-0 flex-1 ${onPreviewAttachment ? 'cursor-pointer hover:text-[var(--jmc-primary)] transition-colors' : ''}`}
-                                title={onPreviewAttachment ? 'Önizlemek için tıklayın' : undefined}
+                                key={att.id}
+                                className="flex items-center justify-between gap-2 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-2.5 text-[11.5px]"
                               >
-                                <FileText className="h-4 w-4 shrink-0 text-[var(--jmc-primary)]" />
-                                <span className="truncate font-medium">{att.title}</span>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                {onPreviewAttachment && (att.driveFileId || att.isLocalAvailable || att.alternateLink) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => onPreviewAttachment(att)}
-                                    title="Uygulama İçinde Görüntüle"
-                                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
-                                  >
-                                    <Eye className="h-3.5 w-3.5" />
-                                    <span>Görüntüle</span>
-                                  </button>
-                                )}
-                                {onInspectAttachment && (att.driveFileId || att.isLocalAvailable || att.alternateLink) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => onInspectAttachment(att)}
-                                    title="Yapay Zekâ Asistanı ile İncele"
-                                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
-                                  >
-                                    <Sparkles className="h-3 w-3" />
-                                    <span className="hidden sm:inline">İncele</span>
-                                  </button>
-                                )}
-                                {(() => {
-                                  const status = downloadedStatusMap[att.id] || (att.driveFileId ? downloadedStatusMap[att.driveFileId] : undefined)
-                                  const isDownloaded = Boolean(status?.exists || (att.isLocalAvailable && (att.downloadedPath || att.localPath)))
-                                  const targetPath = status?.filePath || att.downloadedPath || att.localPath
-                                  const isDownloading = Boolean(downloadingIds[att.id])
+                                <div
+                                  onClick={() => {
+                                    if (isWebLink && att.alternateLink) {
+                                      void window.jmcAPI?.openExternalUrl(att.alternateLink)
+                                    } else if (onPreviewAttachment) {
+                                      onPreviewAttachment(att)
+                                    }
+                                  }}
+                                  className={`flex items-center gap-2 min-w-0 flex-1 cursor-pointer hover:text-[var(--jmc-primary)] transition-colors`}
+                                  title={isWebLink ? 'Bağlantıyı tarayıcıda açmak için tıklayın' : 'Görüntülemek için tıklayın'}
+                                >
+                                  {isYouTube ? (
+                                    <YouTubeIcon className="h-4 w-4 shrink-0 text-red-500" />
+                                  ) : isWebLink ? (
+                                    <LinkIcon className="h-4 w-4 shrink-0 text-indigo-400" />
+                                  ) : att.driveFileId ? (
+                                    <FileText className="h-4 w-4 shrink-0 text-blue-500" />
+                                  ) : (
+                                    <Paperclip className="h-4 w-4 shrink-0 text-[var(--jmc-text-dim)]" />
+                                  )}
+                                  <span className="truncate font-medium">{att.title || (isWebLink ? 'Web Bağlantısı' : 'Materyal')}</span>
+                                </div>
 
-                                  if (isDownloaded && targetPath) {
-                                    return (
-                                      <>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {isYouTube ? (
+                                    <>
+                                      {onPreviewAttachment && (
                                         <button
                                           type="button"
-                                          onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(targetPath) : window.jmcAPI?.openLocalFile(targetPath))}
-                                          title="İndirilen Dosyayı Aç"
-                                          className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+                                          onClick={() => onPreviewAttachment(att)}
+                                          title="Videoyu Uygulama İçinde İzle"
+                                          className="inline-flex items-center gap-1 rounded bg-red-500/15 px-2 py-1 text-[10.5px] font-semibold text-red-400 hover:bg-red-500/25 transition-colors"
                                         >
-                                          <FolderOpen className="h-3.5 w-3.5" />
-                                          <span>Aç</span>
+                                          <Eye className="h-3.5 w-3.5" />
+                                          <span>İzle</span>
                                         </button>
+                                      )}
+                                      {att.alternateLink && (
                                         <button
                                           type="button"
-                                          onClick={() => void window.jmcAPI?.showItemInFolder?.(targetPath)}
-                                          title="İndirilenler Klasöründe Göster"
-                                          className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
+                                          onClick={() => void window.jmcAPI?.openExternalUrl(att.alternateLink!)}
+                                          title="YouTube'da Aç"
+                                          className="rounded p-1 text-[var(--jmc-text-dim)] hover:text-red-400 hover:bg-[var(--jmc-bg)] transition-colors"
                                         >
-                                          <Folder className="h-3.5 w-3.5 text-amber-500" />
-                                          <span className="hidden sm:inline">Klasörde</span>
+                                          <ExternalLink className="h-3.5 w-3.5" />
                                         </button>
-                                      </>
-                                    )
-                                  }
-
-                                  if (onDownloadAttachment && (att.driveFileId || att.alternateLink)) {
-                                    return (
+                                      )}
+                                    </>
+                                  ) : isWebLink ? (
+                                    <>
                                       <button
                                         type="button"
-                                        onClick={() => void handleDownloadItem(att)}
-                                        disabled={isDownloading}
-                                        title="İndirilenler Klasörüne İndir"
-                                        className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors disabled:opacity-50"
+                                        onClick={() => void window.jmcAPI?.openExternalUrl(att.alternateLink!)}
+                                        title="Bağlantıyı Tarayıcıda Aç"
+                                        className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2.5 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
                                       >
-                                        {isDownloading ? (
-                                          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary)]" />
-                                        ) : (
-                                          <Download className="h-3.5 w-3.5" />
-                                        )}
-                                        <span>{isDownloading ? 'İndiriliyor...' : 'İndir'}</span>
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        <span>Aç</span>
                                       </button>
-                                    )
-                                  }
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          await window.jmcAPI?.copyText(att.alternateLink!)
+                                        }}
+                                        title="Bağlantıyı Kopyala"
+                                        className="rounded p-1 text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:bg-[var(--jmc-bg)] transition-colors"
+                                      >
+                                        <LinkIcon className="h-3.5 w-3.5" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      {onPreviewAttachment && (att.driveFileId || att.isLocalAvailable) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => onPreviewAttachment(att)}
+                                          title="Uygulama İçinde Görüntüle"
+                                          className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
+                                        >
+                                          <Eye className="h-3.5 w-3.5" />
+                                          <span>Görüntüle</span>
+                                        </button>
+                                      )}
+                                      {(() => {
+                                        const status = downloadedStatusMap[att.id] || (att.driveFileId ? downloadedStatusMap[att.driveFileId] : undefined)
+                                        const isDownloaded = Boolean(status?.exists || (att.isLocalAvailable && (att.downloadedPath || att.localPath)))
+                                        const targetPath = status?.filePath || att.downloadedPath || att.localPath
+                                        const isDownloading = Boolean(downloadingIds[att.id])
 
-                                  return null
-                                })()}
-                                {att.alternateLink && (
-                                  <button
-                                    type="button"
-                                    onClick={() => void window.jmcAPI?.openExternalUrl(att.alternateLink!)}
-                                    title="Google Drive'da Aç"
-                                    className="rounded p-1 text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:bg-[var(--jmc-bg)]"
-                                  >
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
+                                        if (isDownloaded && targetPath) {
+                                          return (
+                                            <>
+                                              <button
+                                                type="button"
+                                                onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(targetPath) : window.jmcAPI?.openLocalFile(targetPath))}
+                                                title="İndirilen Dosyayı Aç"
+                                                className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+                                              >
+                                                <FolderOpen className="h-3.5 w-3.5" />
+                                                <span>Aç</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => void window.jmcAPI?.showItemInFolder?.(targetPath)}
+                                                title="İndirilenler Klasöründe Göster"
+                                                className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
+                                              >
+                                                <Folder className="h-3.5 w-3.5 text-amber-500" />
+                                                <span className="hidden sm:inline">Klasörde</span>
+                                              </button>
+                                            </>
+                                          )
+                                        }
+
+                                        if (onDownloadAttachment && att.driveFileId) {
+                                          return (
+                                            <button
+                                              type="button"
+                                              onClick={() => void handleDownloadItem(att)}
+                                              disabled={isDownloading}
+                                              title="İndirilenler Klasörüne İndir"
+                                              className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors disabled:opacity-50"
+                                            >
+                                              {isDownloading ? (
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary)]" />
+                                              ) : (
+                                                <Download className="h-3.5 w-3.5" />
+                                              )}
+                                              <span>{isDownloading ? 'İndiriliyor...' : 'İndir'}</span>
+                                            </button>
+                                          )
+                                        }
+
+                                        return null
+                                      })()}
+                                      {att.alternateLink && (
+                                        <button
+                                          type="button"
+                                          onClick={() => void window.jmcAPI?.openExternalUrl(att.alternateLink!)}
+                                          title="Google Drive'da Aç"
+                                          className="rounded p-1 text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:bg-[var(--jmc-bg)]"
+                                        >
+                                          <ExternalLink className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                  {onInspectAttachment && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onInspectAttachment(att)}
+                                      title="Yapay Zekâ Asistanı ile İncele"
+                                      className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
+                                    >
+                                      <Sparkles className="h-3 w-3" />
+                                      <span className="hidden sm:inline">İncele</span>
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     )}

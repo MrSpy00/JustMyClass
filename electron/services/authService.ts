@@ -1113,8 +1113,8 @@ function buildAuthSuccessHtml(account: Account): string {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: #080B11;
-      color: #E6EDF7;
+      background: #07050b;
+      color: #F3F0FC;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       min-height: 100vh;
       display: flex;
@@ -1126,9 +1126,9 @@ function buildAuthSuccessHtml(account: Account): string {
     }
     .ambient {
       position: absolute;
-      width: 500px;
-      height: 500px;
-      background: radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, rgba(99, 102, 241, 0.08) 50%, transparent 70%);
+      width: 540px;
+      height: 540px;
+      background: radial-gradient(circle, rgba(147, 51, 234, 0.24) 0%, rgba(124, 58, 237, 0.12) 40%, transparent 70%);
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
@@ -1140,14 +1140,14 @@ function buildAuthSuccessHtml(account: Account): string {
       z-index: 1;
       max-width: 460px;
       width: 100%;
-      background: rgba(15, 23, 42, 0.75);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
+      background: rgba(18, 14, 28, 0.88);
+      border: 1px solid rgba(168, 85, 247, 0.22);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
       border-radius: 24px;
       padding: 40px 32px;
       text-align: center;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 35px -5px rgba(139, 92, 246, 0.2);
       animation: enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
     @keyframes enter {
@@ -1167,13 +1167,13 @@ function buildAuthSuccessHtml(account: Account): string {
       position: absolute;
       inset: 0;
       border-radius: 50%;
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid rgba(16, 185, 129, 0.3);
+      background: rgba(168, 85, 247, 0.18);
+      border: 1px solid rgba(168, 85, 247, 0.4);
       animation: pulse 2.4s infinite;
     }
     @keyframes pulse {
-      0%, 100% { transform: scale(1); opacity: 0.8; }
-      50% { transform: scale(1.08); opacity: 0.4; }
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.08); opacity: 0.45; }
     }
     .check-svg {
       position: relative;
@@ -1197,12 +1197,12 @@ function buildAuthSuccessHtml(account: Account): string {
       font-size: 22px;
       font-weight: 700;
       letter-spacing: -0.02em;
-      color: #F8FAFC;
+      color: #FAF5FF;
       margin-bottom: 8px;
     }
     .subtitle {
       font-size: 13.5px;
-      color: #94A3B8;
+      color: #C4B5FD;
       line-height: 1.5;
       margin-bottom: 24px;
     }
@@ -1210,8 +1210,8 @@ function buildAuthSuccessHtml(account: Account): string {
       display: flex;
       align-items: center;
       gap: 12px;
-      background: rgba(30, 41, 59, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(28, 20, 48, 0.75);
+      border: 1px solid rgba(168, 85, 247, 0.18);
       border-radius: 14px;
       padding: 12px 16px;
       margin-bottom: 20px;
@@ -1222,26 +1222,27 @@ function buildAuthSuccessHtml(account: Account): string {
       height: 40px;
       border-radius: 50%;
       object-fit: cover;
-      background: #0284C7;
+      background: linear-gradient(135deg, #8B5CF6, #6D28D9);
       color: #fff;
       display: grid;
       place-items: center;
       font-weight: 600;
       font-size: 14px;
       flex-shrink: 0;
+      box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
     }
     .profile-info { min-width: 0; flex: 1; }
     .profile-name {
       font-size: 13.5px;
       font-weight: 600;
-      color: #F1F5F9;
+      color: #FAF5FF;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .profile-email {
       font-size: 12px;
-      color: #64748B;
+      color: #A78BFA;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1250,9 +1251,9 @@ function buildAuthSuccessHtml(account: Account): string {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(14, 165, 233, 0.12);
-      border: 1px solid rgba(14, 165, 233, 0.25);
-      color: #38BDF8;
+      background: rgba(147, 51, 234, 0.16);
+      border: 1px solid rgba(168, 85, 247, 0.32);
+      color: #DDD6FE;
       font-size: 11.5px;
       font-weight: 500;
       padding: 4px 10px;
@@ -1263,8 +1264,8 @@ function buildAuthSuccessHtml(account: Account): string {
       display: flex;
       align-items: center;
       gap: 12px;
-      background: rgba(16, 185, 129, 0.08);
-      border: 1px solid rgba(16, 185, 129, 0.22);
+      background: rgba(139, 92, 246, 0.1);
+      border: 1px solid rgba(168, 85, 247, 0.28);
       border-radius: 14px;
       padding: 14px 16px;
       margin-bottom: 22px;
@@ -1272,21 +1273,21 @@ function buildAuthSuccessHtml(account: Account): string {
     }
     .status-notice svg {
       flex-shrink: 0;
-      color: #10B981;
+      color: #A855F7;
     }
     .status-notice p {
       font-size: 13px;
       line-height: 1.5;
-      color: #E2E8F0;
+      color: #EDE9FE;
       margin: 0;
     }
     .status-notice strong {
-      color: #38BDF8;
+      color: #C084FC;
       font-weight: 600;
     }
     .footer-hint {
       font-size: 12px;
-      color: #64748B;
+      color: #8B7FA8;
       margin-bottom: 18px;
       line-height: 1.4;
     }
@@ -1310,14 +1311,14 @@ function buildAuthSuccessHtml(account: Account): string {
       border: none;
     }
     .btn-primary {
-      background: linear-gradient(135deg, #0284C7, #0369A1);
+      background: linear-gradient(135deg, #8B5CF6, #7C3AED);
       color: #ffffff;
-      box-shadow: 0 4px 16px rgba(2, 132, 199, 0.3);
+      box-shadow: 0 4px 18px rgba(124, 58, 237, 0.45);
     }
     .btn-primary:hover {
-      background: linear-gradient(135deg, #0369A1, #075985);
+      background: linear-gradient(135deg, #9333EA, #6D28D9);
       transform: translateY(-1px);
-      box-shadow: 0 6px 20px rgba(2, 132, 199, 0.4);
+      box-shadow: 0 6px 24px rgba(147, 51, 234, 0.55);
     }
   </style>
 </head>
@@ -1327,8 +1328,8 @@ function buildAuthSuccessHtml(account: Account): string {
     <div class="icon-wrapper">
       <div class="icon-bg"></div>
       <svg class="check-svg" viewBox="0 0 52 52" fill="none">
-        <circle class="check-circle" cx="26" cy="26" r="23" stroke="#10B981" stroke-width="3" stroke-linecap="round"/>
-        <path class="check-mark" d="M16 26l7 7 13-13" stroke="#10B981" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle class="check-circle" cx="26" cy="26" r="23" stroke="#A855F7" stroke-width="3" stroke-linecap="round"/>
+        <path class="check-mark" d="M16 26l7 7 13-13" stroke="#C084FC" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
 

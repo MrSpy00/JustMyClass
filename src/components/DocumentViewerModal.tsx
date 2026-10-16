@@ -85,23 +85,22 @@ function splitHighlightedHtmlLines(html: string): string[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const prefix = openTags.join('')
-    const tagRegex = /<\/?([a-zA-Z0-9]+)[^>]*>/g
+    // Yalnızca Prism'in ürettiği <span class="..."> ve </span> etiketlerini gözet
+    // Kod içindeki < veya > sembolleri Prism tarafından zaten &lt; veya &gt; yapılmıştır.
+    const tagRegex = /<span\b[^>]*>|<\/span>/g
     let match: RegExpExecArray | null
     while ((match = tagRegex.exec(line)) !== null) {
       const fullTag = match[0]
       if (fullTag.startsWith('</')) {
         openTags.pop()
-      } else if (!fullTag.endsWith('/>')) {
+      } else {
         openTags.push(fullTag)
       }
     }
     const suffix = openTags
       .slice()
       .reverse()
-      .map(t => {
-        const name = t.match(/<([a-zA-Z0-9]+)/)?.[1] || 'span'
-        return `</${name}>`
-      })
+      .map(() => '</span>')
       .join('')
 
     result.push(prefix + line + suffix)
@@ -1048,8 +1047,8 @@ export function DocumentViewerModal({
                 </div>
               ) : (
                 <>
-                  {/* --- 1. KOD GÖRÜNTÜLEYİCİ (PrismJS Sözdizimi, Eşzamanlı Satır Numaraları, Satır Aralığı) --- */}
-                  {preview.kind === 'code' && (
+                  {/* --- 1. KOD VE METİN GÖRÜNTÜLEYİCİ (PrismJS Sözdizimi, Eşzamanlı Satır Numaraları, Arama ve Satır Aralığı) --- */}
+                  {(preview.kind === 'code' || preview.kind === 'text') && (
                     <div
                       className="font-mono text-[12px] select-text min-h-full bg-[var(--jmc-bg)]"
                       style={{ fontSize: `${fontSize}px` }}
@@ -1511,8 +1510,8 @@ export function DocumentViewerModal({
                     </div>
                   )}
 
-                  {/* --- 10. DÜZ METİN / GENEL GÖRÜNTÜLEYİCİ --- */}
-                  {(preview.kind === 'text' || preview.kind === 'binary') && !attachment.alternateLink && (
+                  {/* --- 10. İKİLİ (BINARY) DOSYA BİLGİ KARTI --- */}
+                  {preview.kind === 'binary' && !attachment.alternateLink && (
                     <div className="p-6 max-w-4xl mx-auto font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap text-[var(--jmc-text)]">
                       {preview.text}
                     </div>

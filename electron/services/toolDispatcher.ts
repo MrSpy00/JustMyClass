@@ -301,7 +301,7 @@ export function extractTextFromPdf(buf: Buffer): string {
   while ((match = streamRegex.exec(str)) !== null) {
     const rawData = match[1]
     const objIndex = str.lastIndexOf('obj', match.index)
-    const dictStart = Math.max(0, objIndex !== -1 ? objIndex : match.index - 1200)
+    const dictStart = Math.max(0, objIndex !== -1 ? objIndex : match.index - 1500)
     const dictSlice = str.slice(dictStart, match.index)
 
     // Resim (Image), Font programı (FontFile/Type1/CIDFont), XObject ve ikili akışları atla
@@ -319,30 +319,43 @@ export function extractTextFromPdf(buf: Buffer): string {
       continue
     }
 
+    const isFlate =
+      dictSlice.includes('/FlateDecode') ||
+      dictSlice.includes('/Flate') ||
+      dictSlice.includes('/Filter')
+
     let decomp: Buffer | null = null
 
-    if (dictSlice.includes('/FlateDecode') || dictSlice.includes('/Flate')) {
+    if (isFlate) {
+      // /Length parametresine göre kesin boyut tespiti
+      const lenMatch = dictSlice.match(/\/Length\s+(\d+)/)
       const streamStart = match.index + match[0].indexOf(rawData)
-      const streamBuf = buf.subarray(streamStart, streamStart + rawData.length)
+      const streamLen = lenMatch ? Math.min(parseInt(lenMatch[1], 10), rawData.length) : rawData.length
+      const streamBuf = buf.subarray(streamStart, streamStart + streamLen)
+
       try {
         decomp = zlib.inflateSync(streamBuf)
       } catch {
         try {
           decomp = zlib.inflateRawSync(streamBuf)
         } catch {
+          // Açılmayan FlateDecode akışları ASLA ham ikili metin olarak eklenmez!
           decomp = null
         }
       }
     } else if (!dictSlice.includes('/Filter')) {
-      // Sıkıştırılmamış ham metin akışı
+      // Sıkıştırılmamış akış: kontrol et, ikili değilse kabul et
       decomp = Buffer.from(rawData, 'latin1')
     }
 
     if (decomp && decomp.length > 0) {
       const decodedStr = decomp.toString('latin1')
-      // İkili binary çöp akışlarını filtrele (kontrol karakterleri yüksek orandaysa ekleme)
-      const controlCharCount = (decodedStr.slice(0, 500).match(/[\x00-\x08\x0E-\x1F]/g) || []).length
-      if (controlCharCount < 20) {
+      // İkili binary çöp akışlarını filtrele:
+      // Standart PDF operatör metinleri ASCII ve Türkçe karakterlerden oluşur.
+      // Kontrol karakterleri veya kontrol dışı karakter oranı %5'ten fazlaysa atla.
+      const sample = decodedStr.slice(0, 1000)
+      const invalidChars = (sample.match(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g) || []).length
+      if (invalidChars / sample.length < 0.05) {
         decompressedStreams.push(decodedStr)
       }
     }
@@ -451,18 +464,19 @@ export function extractTextFromPdf(buf: Buffer): string {
     return cleaned.join('\n\n').slice(0, 80_000)
   }
 
-  // Güvenli yedek yol: SADECE gerçek anlamlı metin içeren satırları kabul et (ikili semboller elenir)
+  // Güvenli yedek yol: SADECE gerçek anlamlı metin içeren satırları kabul et (ikili semboller kesinlikle elenir)
   for (const st of decompressedStreams) {
     const fallbackMatches = st.match(/\(([^)]{4,})\)/g)
     if (fallbackMatches) {
       for (const fm of fallbackMatches) {
         const clean = fm.slice(1, -1).trim()
+        // Anlamlı metin oranı testi: karakterlerin en az %80'i Türkçe/İngilizce harf, rakam, noktalama ve boşluk olmalı
+        const readableChars = (clean.match(/[a-zA-ZçğıöşüÇĞİÖŞÜ0-9\s.,;:!?'"()-]/g) || []).length
         if (
           clean.length >= 4 &&
-          !/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(clean) &&
+          !/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/.test(clean) &&
           !/[<>{}\\]/.test(clean) &&
-          /[a-zA-ZçğıöşüÇĞİÖŞÜ0-9]/.test(clean) &&
-          (clean.match(/[a-zA-ZçğıöşüÇĞİÖŞÜ0-9\s]/g) || []).length / clean.length > 0.6
+          readableChars / clean.length >= 0.85
         ) {
           cleaned.push(clean)
         }
