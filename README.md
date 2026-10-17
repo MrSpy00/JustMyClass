@@ -177,6 +177,37 @@ servislerini kapsar:
 
 ---
 
+## 🔏 Kod İmzalama (SmartScreen)
+
+Windows, imzasız `.exe` dosyalarında **"Windows korumanızı sağlıyor"** uyarısı gösterir.
+Bu Microsoft'un zorunlu bir güvenlik kontrolüdür ve **uygulama tarafından kapatılamaz**.
+
+Projede imza altyapısı hazırdır: `npm run build:win` komutu
+
+1. ortamda kod imzalama sertifikası olup olmadığını denetler,
+2. varsa paketleri imzalı üretir,
+3. üretilen **her** `.exe`'nin imzasını doğrular (SmartScreen'in baktığı Authenticode),
+4. imzalama istendiği hâlde bir paket imzasız çıkarsa **derlemeyi başarısız** yapar.
+
+Sertifikayı tanımladığınız andan itibaren imza otomatik uygulanır — kod değişikliği gerekmez:
+
+```powershell
+$env:CSC_LINK         = "C:\sertifikalar\justmyclass.pfx"
+$env:CSC_KEY_PASSWORD = "<parola>"
+npm run build:win
+```
+
+Doğrulamak için: `npm run verify:sign`
+
+Ayrıntılı sertifika rehberi (EV/OV farkı, fiyat, CI kurulumu, sık karşılaşılan sorunlar):
+**[`docs/IMZA.md`](docs/IMZA.md)**
+
+> **Şu anki durum:** Sertifika alınmadığı için yayınlanan paketler **imzasızdır**
+> ve SmartScreen uyarısı gösterecektir. Kullanıcılar uyarıyı
+> **"Daha fazla bilgi" → "Yine de çalıştır"** ile geçebilir.
+
+---
+
 ## 📄 Lisans
 
 Bu proje [MIT Lisansı](LICENSE) kapsamında açık kaynak olarak lisanslanmıştır.

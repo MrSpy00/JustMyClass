@@ -1,0 +1,127 @@
+name: Release (imzalı)
+
+# Bu iş akışı `v*` etiketi push edildiğinde çalışır ve GitHub Releases'e
+# paket yükler.
+#
+# İMZA DAVRANIŞI
+# --------------
+# Depoda `CSC_LINK` / `CSC_KEY_PASSWORD` secret'ları tanımlıysa paketler
+# İMZALI üretilir ve GitHub otomatik güncelleme koruması devreye girer.
+# Secret yoksa paket İMZASIZ üretilir ve iş akışı bunu açıkça raporlar.
+#
+# Kritik kural: "secret var ama paket imzasız çıktı" durumu HATA olarak
+# işaretlenir. Böylece imzasız bir paket sessizce yayınlanamaz.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Windows paketle
+    runs-on: windows-latest
+
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@v4
+
+      - name: Node kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: pnpm kur
+        run: npm install -g pnpm@9
+
+      - name: Bagimliliklari kur
+        run: pnpm install --frozen-lockfile
+
+      # Sertifika .pfx dosyasini base64 secret'indan geri olustur.
+      # electron-builder `CSC_LINK` base64 degerini otomatik olarak
+      # indirip kullanabilir; bu adim yalnizca dosyayi diskte tutmak
+      # icindir (dogrulama betigi imzayi okumak icin dosyaya ihtiyac duyar).
+      - name: Sertifika yukle
+        if: ${{ secrets.CSC_LINK != '' }}
+        shell: pwsh
+        env:
+          CSC_LINK_B64: ${{ secrets.CSC_LINK }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($out, [Convert]::FromBase64String($env:CSC_LINK_B64))
+          "Sertifika yazildi: $out ($((Get-Item $out).Length) bayt)"
+          $env:CSC_LINK = $out
+          "CSC_LINK=$out" >> $env:GITHUB_ENV
+
+      - name: Tip denetimi
+        run: pnpm typecheck
+
+      - name: Testler
+        run: pnpm test
+
+      # `scripts/build-win.mjs` imzali/imzasiz ayrimini yapar ve
+      # uretilen HER paketin imzasini dogrular. Secret tanimliysa
+      # dogrulama basarisiz olursa burada durur.
+      - name: Paketle ve imzayi dogrula
+        shell: pwsh
+        env:
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_PUBLISHER_NAME: ${{ secrets.CSC_PUBLISHER_NAME }}
+        run: |
+          if ('${{ secrets.CSC_LINK }}' -eq '') {
+            Write-Host '::warning::CSC_LINK secret tanimli degil - paket IMZASIZ uretilecek'
+          } else {
+            Write-Host '::notice::CSC_LINK secret mevcut - paket IMZALI uretilecek'
+          }
+          pnpm run build:win
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Son imza kontrolu
+        shell: pwsh
+        run: |
+          $hasSecret = '${{ secrets.CSC_LINK }}' -ne ''
+          $signed = 0
+          $total  = 0
+          Get-ChildItem -Recurse -Path release -Filter *.exe |
+            Where-Object { $_.Name -ne '__uninstaller-nsis-justmyclass.exe' } |
+            ForEach-Object {
+              $total++
+              $s = Get-AuthenticodeSignature -LiteralPath $_.FullName
+              if ($s.Status -eq 'Valid') {
+                $signed++
+              } else {
+                Write-Host "IMZASIZ: $($_.Name) -> $($s.Status)"
+              }
+            }
+          Write-Host "Imza ozeti: $signed / $total"
+          if ($hasSecret -and $signed -ne $total) {
+            Write-Host '::error::Sertifika secret MEVCUT ama paketler imzasiz - yayinlama iptal'
+            exit 1
+          }
+          if (-not $hasSecret) {
+            Write-Host '::warning::Sertifika yok; paketler imzasiz yayinlanacak'
+          }
+
+      - name: Surumu yaz
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = '${{ github.ref_name }}'
+          if (-not $tag.StartsWith('v')) { throw "Etiket v ile baslamali: $tag" }
+          if ($tag -ne "v$v") { throw "Etiket ($tag) ile package.json surumu ($v) uyusmuyor" }
+          "Surum tutarli: $tag"
+
+      - name: Release'a yukle
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/latest.yml
+          fail_on_unmatched_files: true
+          generate_release_notes: true

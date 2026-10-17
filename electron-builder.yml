@@ -90,11 +90,40 @@ removePackageScripts: true
 # ---------------------------------------------------------------------------
 win:
   icon: build/icon.ico
-  # Imzalanmamis paketlerde Windows "SmartScreen uygulamanizi tanimiyor"
-  # uyarisi gosterir. Bu dogru davranistir: KOD IMLZASI YOKTURSA uyari
-  # dogru gelir. Imza icin CSC_LINK ortam degiskenini ayarlayin;
-  # build:sign betigi bunu otomatik kullanir (bkz. package.json).
   legalTrademarks: aegisSoft
+
+  # -------------------------------------------------------------------------
+  # KOD IMLZASI (SmartScreen)
+  # -------------------------------------------------------------------------
+  # Imzasiz paketlerde Windows "Windows korumanizi sagliyor" uyarisi gosterir.
+  # Bu dogru davranistir: kod imzalama sertifikasi olmadan bu uyariyi
+  # KALDIRMAK mumkun degildir ve bir uygulamanin kendi kullanicisinin
+  # bilgisayarinda SmartScreen'i devre disi birakmasi da dogru olmaz.
+  #
+  # Cozum sertifikadir. Sertifika olunca imzayi `scripts/build-win.mjs`
+  # UYGULAR ve her paketin gercekten imzali oldugunu DOGRULAR.
+  #
+  # `signtoolOptions.publisherName` BURAYA KASITLI OLARAK YAZILMADI.
+  # electron-builder bu degeri sertifika VAR OLMASA BILE `latest.yml`
+  # icine yazar; electron-updater da `publisherName` gordugu icin imzasiz
+  # guncellemeleri reddeder ve otomatik guncelleme sessizce calisamaz.
+  # Deger ancak gercekten imzaladigimizda komut satirindan gecirilir
+  # (bkz. scripts/build-win.mjs).
+  #
+  # `verifyUpdateCodeSignature: true` (zaten varsayilan) imzali surumlerde
+  # `latest.yml`e yayinci adini yazar; boylece kullanicinin indirdigi
+  # guncelleme dosyasi DEGISTIRILMISSE kurulum reddedilir.
+  verifyUpdateCodeSignature: true
+  signAndEditExecutable: true
+  signtoolOptions:
+    # SmartScreen SHA-256 zorunlu kildigi icin eski SHA-1 imzasi uretilmez.
+    # Iki imza uretmek dosyayi buyutur ve hicbir seye yaramaz.
+    signingHashAlgorithms:
+      - sha256
+    # Zaman damgasi: sertifika suresi dolsa bile imza gecerli kalir.
+    # Bu sunucu herhangi bir sertifikayi kabul eder.
+    timeStampServer: http://timestamp.digicert.com
+
   target:
     - target: nsis
       arch: [x64]
