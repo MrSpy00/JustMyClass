@@ -325,13 +325,29 @@ function applyContentSecurityPolicy(session: Session): void {
       })
       return
     }
+
+    // YouTube iframe ve video akışlarının hiçbir zaman engellenmemesi için:
+    const isYouTube =
+      details.url.includes('youtube.com') ||
+      details.url.includes('youtube-nocookie.com') ||
+      details.url.includes('googlevideo.com')
+
+    if (isYouTube && details.responseHeaders) {
+      const responseHeaders = { ...details.responseHeaders }
+      delete responseHeaders['x-frame-options']
+      delete responseHeaders['X-Frame-Options']
+      callback({ responseHeaders })
+      return
+    }
+
     callback({ responseHeaders: details.responseHeaders })
   })
 
   // YouTube Embed Hata 153 Çözümü:
-  // Chromium yerel file:// bağlamında iframe çalıştırırken Referer göndermez veya
-  // Origin: file:// gönderir. YouTube embed oyuncusu file:// veya eksik referer
-  // durumunda "Video oynatıcı yapılandırma hatası (153)" fırlatır.
+  // 1) file:// bağlamında Chromium Referer göndermez; YouTube embed oynatıcısı
+  //    bunu görünce 'Hata 153: Video oynatıcı yapılandırma hatası' fırlatır.
+  // 2) User-Agent içinde 'Electron/' ibaresi varsa YouTube embedleri şüpheli bularak reddeder.
+  //    Bu nedenle hedef domaine uygun Referer/Origin eklenir ve User-Agent standartlaştırılır.
   session.webRequest.onBeforeSendHeaders(
     {
       urls: [
@@ -343,9 +359,15 @@ function applyContentSecurityPolicy(session: Session): void {
     },
     (details, callback) => {
       const requestHeaders = { ...details.requestHeaders }
-      requestHeaders['Referer'] = 'https://www.youtube.com/'
-      if (!requestHeaders['Origin'] || requestHeaders['Origin'] === 'file://' || requestHeaders['Origin'] === 'null') {
-        requestHeaders['Origin'] = 'https://www.youtube.com'
+      const isNoCookie = details.url.includes('youtube-nocookie.com')
+      const targetOrigin = isNoCookie ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com'
+      requestHeaders['Referer'] = `${targetOrigin}/`
+      requestHeaders['Origin'] = targetOrigin
+
+      if (typeof requestHeaders['User-Agent'] === 'string') {
+        requestHeaders['User-Agent'] = requestHeaders['User-Agent']
+          .replace(/\s*Electron\/[^\s]+/gi, '')
+          .replace(/\s*JustMyClass\/[^\s]+/gi, '')
       }
       callback({ requestHeaders })
     },
@@ -366,7 +388,7 @@ function createWindow() {
     backgroundColor: '#0d0817',
     autoHideMenuBar: true,
     frame: false,
-    titleBarStyle: 'hidden',
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hidden' as const } : {}),
     // Cizim hazir olana kadar pencere gosterilmez; `ready-to-show`
     // olayinda gosterilir. Boylece beyaz flaş olusmaz.
     show: false,
@@ -847,7 +869,15 @@ function setupIpcHandlers() {
         },
         {
           name: 'Görseller (*.png, *.jpg, *.webp, *.gif, *.svg)',
-          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'],
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico', 'tiff'],
+        },
+        {
+          name: 'Ses ve Medya Dosyaları (*.mp3, *.wav, *.ogg, *.m4a, *.flac, *.mp4, *.webm, *.mkv)',
+          extensions: ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'webm', 'mkv', 'mov', 'avi'],
+        },
+        {
+          name: 'Arşivler ve Paketler (*.zip, *.jar, *.tar, *.gz, *.epub)',
+          extensions: ['zip', 'jar', 'tar', 'gz', 'epub', '7z', 'rar'],
         },
       ],
       properties: ['openFile'],

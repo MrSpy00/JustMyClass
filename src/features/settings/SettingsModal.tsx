@@ -318,7 +318,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (cancelled) return
         setUpdateStatus(s)
         setFeedDraft(s.feedUrl ?? '')
-        if (s.stage === 'idle' || s.stage === 'checking') {
+        if (s.stage === 'idle') {
           void api
             .checkForUpdates()
             .then(next => {
@@ -331,8 +331,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const off = api.onUpdateStatus?.(s => {
       if (!cancelled) setUpdateStatus(s)
     })
+
+    const watchdog = setTimeout(() => {
+      if (!cancelled) {
+        setUpdateBusy(false)
+        setUpdateStatus(prev => (prev?.stage === 'checking' ? { ...prev, stage: 'not-available' } : prev))
+      }
+    }, 4500)
+
     return () => {
       cancelled = true
+      clearTimeout(watchdog)
       off?.()
     }
   }, [isOpen, api])

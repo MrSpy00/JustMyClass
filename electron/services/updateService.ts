@@ -651,6 +651,85 @@ export class UpdateService {
   }
 
   /**
+   * Düz metin (latest.yml) indirmek için hızlı istek.
+   */
+  private async fetchRawText(url: string, timeoutMs = 2800): Promise<string> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      controller.abort(new Error('İstek zaman aşımına uğradı.'))
+    }, timeoutMs)
+
+    try {
+      const headers: Record<string, string> = {
+        'User-Agent': `JustMyClass/${this.status.currentVersion}`,
+      }
+      if (typeof globalThis.fetch === 'function') {
+        const res = await globalThis.fetch(url, {
+          method: 'GET',
+          headers,
+          signal: controller.signal,
+          redirect: 'follow',
+        })
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} ${res.statusText}`.trim())
+        }
+        return await res.text()
+      }
+      return await providerHttp.request<string>(url, {
+        method: 'GET',
+        headers,
+        timeoutMs,
+        maxRetries: 0,
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  /**
+   * Doğrudan GitHub Release latest.yml dosyasından (rate-limit olmadan, süper hızlı)
+   * sürüm kontrolü yapar.
+   */
+  public async checkViaLatestYml(): Promise<UpdateStatus | null> {
+    try {
+      const ymlUrl = `https://github.com/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases/latest/download/latest.yml`
+      const ymlText = await this.fetchRawText(ymlUrl, 2500)
+      if (!ymlText || !ymlText.includes('version:')) return null
+
+      const versionMatch = ymlText.match(/^version:\s*([^\s\r\n]+)/m)
+      if (!versionMatch) return null
+      const remoteVersion = versionMatch[1].trim()
+
+      const pathMatch = ymlText.match(/^path:\s*([^\s\r\n]+)/m)
+      const targetPath = pathMatch ? pathMatch[1].trim() : 'JustMyClass-Setup-0.0.1-x64.exe'
+
+      const isPortableRuntime = Boolean(process.env.PORTABLE_EXECUTABLE_FILE)
+      const assetFilename = isPortableRuntime ? 'JustMyClass-Portable-0.0.1.exe' : targetPath
+
+      if (isNewerVersion(this.status.currentVersion, remoteVersion)) {
+        this.latestReleaseAssetUrl = `https://github.com/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases/latest/download/${assetFilename}`
+        this.latestReleaseAssetName = assetFilename
+        this.patch({
+          stage: 'available',
+          availableVersion: remoteVersion,
+          error: undefined,
+        })
+        return this.getStatus()
+      }
+
+      this.patch({
+        stage: 'not-available',
+        availableVersion: undefined,
+        error: undefined,
+      })
+      return this.getStatus()
+    } catch {
+      return null
+    }
+  }
+
+  /**
    * GitHub Releases API'den en son surumu ve kriptografik SHA-256
    * asset ozetini okur (autoUpdater kullanmadan).
    */
@@ -774,12 +853,13 @@ export class UpdateService {
         hardTimer = setTimeout(() => {
           if (this.status.stage === 'checking') {
             this.patch({
-              stage: 'error',
-              error: 'Güncelleme sunucusu zamanında yanıt vermedi. Lütfen tekrar deneyin.',
+              stage: 'not-available',
+              availableVersion: undefined,
+              error: undefined,
             })
           }
           resolve(this.getStatus())
-        }, 7500)
+        }, 3800)
       })
 
       try {
@@ -796,6 +876,12 @@ export class UpdateService {
             }
             return this.getStatus()
           }
+
+          // 1) Hızlı latest.yml denetimi: GitHub API kota sınırlarına (60/saat) takılmaz
+          const fast = await this.checkViaLatestYml().catch(() => null)
+          if (fast) return fast
+
+          // 2) Yedek: GitHub Releases API
           return await this.checkViaGitHubApi()
         })()
 

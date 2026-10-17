@@ -244,7 +244,7 @@ function resolvePrismGrammar(lang: string): { grammar: Prism.Grammar; key: strin
   return null
 }
 
-import { parseYouTubeUrl } from '../lib/youtube'
+import { parseYouTubeUrl, getYouTubeEmbedUrl } from '../lib/youtube'
 
 /**
  * DOCX paragrafi: metni gosterir ve `w:hyperlink` ile gelen hedef varsa
@@ -1645,9 +1645,10 @@ export function DocumentViewerModal({
                 <div className="flex h-full w-full flex-col items-center justify-center p-4 md:p-8 bg-black/90">
                   <div className="w-full max-w-4xl aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black">
                     <iframe
-                      src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}?rel=0&autoplay=0`}
+                      src={getYouTubeEmbedUrl(youtubeVideoId, { autoplay: false })}
                       title={preview?.title || attachment?.title || 'YouTube Video'}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerPolicy="strict-origin-when-cross-origin"
                       allowFullScreen
                       className="w-full h-full border-0"
                     />

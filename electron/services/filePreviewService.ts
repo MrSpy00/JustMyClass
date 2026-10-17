@@ -1030,8 +1030,13 @@ const MEDIA_EXTENSIONS: Record<string, string> = {
   '.wav': 'audio/wav',
   '.ogg': 'audio/ogg',
   '.m4a': 'audio/mp4',
+  '.flac': 'audio/flac',
+  '.aac': 'audio/aac',
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska',
+  '.mov': 'video/quicktime',
+  '.avi': 'video/x-msvideo',
 }
 
 function parseCsvToRows(text: string, maxRows = 500): string[][] {
@@ -1629,7 +1634,19 @@ export function extractUniversalAttachmentText(
     }
   }
 
-  // 9) Kod, Yapılandırma veya Genel Metin
+  // 9) Ses ve Video Medya Dosyaları
+  if (MEDIA_EXTENSIONS[ext] || mime.startsWith('audio/') || mime.startsWith('video/')) {
+    const isAudio = ext in { '.mp3': 1, '.wav': 1, '.ogg': 1, '.m4a': 1, '.flac': 1, '.aac': 1 } || mime.startsWith('audio/')
+    return {
+      text: `[Medya Dosyası: ${fileName} (${Math.round(buf.length / 1024)} KB) - Tür: ${isAudio ? 'Ses Dosyası' : 'Video'}]`,
+      mimeType: MEDIA_EXTENSIONS[ext] || mime || (isAudio ? 'audio/mpeg' : 'video/mp4'),
+      isImage: false,
+      isPdf: false,
+      fileTypeLabel: isAudio ? 'Ses Dosyası' : 'Video Dosyası',
+    }
+  }
+
+  // 10) Kod, Yapılandırma veya Genel Metin
   const detectedLang = detectLanguage(fileName, buf.toString('utf8', 0, Math.min(buf.length, 2048)))
   const sampleSize = Math.min(buf.length, 1024)
   let isBinary = false
@@ -1641,8 +1658,9 @@ export function extractUniversalAttachmentText(
   }
 
   if (isBinary) {
+    const hexHeader = buf.subarray(0, Math.min(buf.length, 32)).toString('hex').match(/../g)?.join(' ') || ''
     return {
-      text: `[İkili (Binary) Dosya: ${fileName} (${Math.round(buf.length / 1024)} KB)]`,
+      text: `[İkili (Binary) Dosya: ${fileName} (${Math.round(buf.length / 1024)} KB) | Başlık: ${hexHeader}]`,
       mimeType: mime || 'application/octet-stream',
       isImage: false,
       isPdf: false,

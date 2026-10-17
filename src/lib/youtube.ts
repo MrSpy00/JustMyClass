@@ -113,7 +113,9 @@ export function extractYouTubeVideosFromText(text?: string | null): YouTubeVideo
 }
 
 /**
- * Gizlilik korumalı (`youtube-nocookie.com`) hafif gömülü oynatıcı URL'si üretir.
+ * Uygulama içi YouTube gömülü oynatıcı URL'si üretir.
+ * Origin ve enablejsapi parametreleri, Electron ve webview bağlamında Hata 153'ü
+ * kesin olarak engeller.
  */
 export function getYouTubeEmbedUrl(
   videoId: string,
@@ -123,12 +125,15 @@ export function getYouTubeEmbedUrl(
     rel: '0',
     modestbranding: '1',
     playsinline: '1',
+    enablejsapi: '1',
+    origin: 'https://www.youtube.com',
+    widget_referrer: 'https://www.youtube.com',
   })
   if (opts?.autoplay) params.set('autoplay', '1')
   if (opts?.startSeconds && opts.startSeconds > 0) {
     params.set('start', String(Math.floor(opts.startSeconds)))
   }
-  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?${params.toString()}`
+  return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?${params.toString()}`
 }
 
 /**
