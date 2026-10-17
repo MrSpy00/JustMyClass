@@ -72,11 +72,29 @@ toolDispatcher.setActiveContextProvider(() => activeContextService.getContext())
 
 const aiOrchestrator = new AiOrchestrator(vaultService, storageService, toolDispatcher, memoryService)
 const exportService = new ExportService(storageService)
-const updateService = new UpdateService(storageService)
 
-updateService.subscribe(status => {
-  mainWindow?.webContents.send('update:status', status)
-})
+/**
+ * UpdateService YALNIZCA `app.whenReady()` SONRASINDA kurulur.
+ *
+ * NEDEN: `new UpdateService(storageService)` constructor icinde
+ * `storageService.getSetting(...)` cagirir; bu da `getMasterKey()` ->
+ * `safeStorage` zincirini tetikler. Electron'da `safeStorage`
+ * `app.whenReady()` ONCESINDE kullanilamaz. Onceki surum servisi modul
+ * duzeyinde kurdugu icin:
+ *   1) anahtar dosyasi okunamadan yeni bir anahtar uretiliyor,
+ *   2) kullanici yeniden girdiginde tum sifreli veri okunamaz oluyor,
+ *   3) uygulama "verilerim sifirlandi" diye bildiriliyordu.
+ */
+let updateService: UpdateService | null = null
+function getUpdateService(): UpdateService {
+  if (!updateService) {
+    updateService = new UpdateService(storageService)
+    updateService.subscribe(status => {
+      mainWindow?.webContents.send('update:status', status)
+    })
+  }
+  return updateService
+}
 
 /** Dis tarayicida acilmasina izin verilen protokoller. */
 const EXTERNAL_SCHEMES = new Set(['https:', 'http:', 'mailto:'])
@@ -302,7 +320,11 @@ function createWindow() {
     minWidth: 1080,
     minHeight: 680,
     title: 'JustMyClass',
-    backgroundColor: '#0b0f16',
+    // Varsayılan tema "Neon Dreams" (siyah + mor). Önceden MAVI/LACİVERT
+    // (`#0b0f16`) idi ve pencere React boyanana kadar mavi parlıyor,
+    // sonra siyaha dönüyordu. Değer artık src/index.css bootstrap
+    // belirteçleriyle BİREBİR aynı.
+    backgroundColor: '#0d0817',
     autoHideMenuBar: true,
     // Cizim hazir olana kadar pencere gosterilmez; `ready-to-show`
     // olayinda gosterilir. Boylece beyaz flaş olusmaz.
@@ -981,15 +1003,15 @@ function setupIpcHandlers() {
   // Dogrulanmis, ayri bir kanal. Genel `system:setSetting` uzerinden
   // yazilamaz; boylece renderer HTTPS denetimi olmadan gecersiz bir
   // yayin adresi kaydedip guncellemeyi sessizce bozamaz.
-  handle('update:getStatus', () => updateService.getStatus())
+  handle('update:getStatus', () => getUpdateService().getStatus())
   handle('update:setFeedUrl', (_e, raw: unknown) => {
     if (typeof raw !== 'string') throw new Error('Geçersiz adres.')
     if (raw.length > 2048) throw new Error('Adres çok uzun.')
-    return updateService.setFeedUrl(raw)
+    return getUpdateService().setFeedUrl(raw)
   })
-  handle('update:check', () => updateService.check())
-  handle('update:download', () => updateService.download())
-  handle('update:install', () => updateService.quitAndInstall())
+  handle('update:check', () => getUpdateService().check())
+  handle('update:download', () => getUpdateService().download())
+  handle('update:install', () => getUpdateService().quitAndInstall())
 
   // ---- Yapay zeka -------------------------------------------------------
   handle('ai:getProviders', () => aiOrchestrator.getProviders())
@@ -1238,6 +1260,26 @@ function setupIpcHandlers() {
     // Yerel modellerin indirildigi klasor (Ollama vb. harici).
     temp: app.getPath('temp'),
   }))
+
+  /**
+   * "Verilerim nereye kaydediliyor ve neden kayboluyor?" sorusunun
+   * kesin cevabi. Ayarlar > Senkronizasyon ekraninda gosterilir.
+   *
+   * Salt okunur; hicbir sey yazmaz veya silmez.
+   */
+  handle('system:diagnostics', () => ({
+    version: app.getVersion(),
+    packaged: app.isPackaged,
+    portable: !!process.env.PORTABLE_EXECUTABLE_DIR,
+    dataDir: app.getPath('userData'),
+    keyring: keyringService.getKeyDiagnostics(),
+    store: storageService.getStoreHealth(),
+    vault: vaultService.getVaultHealth(),
+    security: {
+      store: storageService.getStorageSecurityInfo(),
+      vault: vaultService.describe(),
+    },
+  }))
   handle('system:wipeLocalCache', async () => {
     // Geri alinamaz ve veri kaybettirir; ana surecte dogrulanir.
     const { response } = await dialog.showMessageBox(mainWindow!, {
@@ -1420,7 +1462,7 @@ if (!app.requestSingleInstanceLock()) {
         GOSTERMEZ; yalnizca "Guncelleme hazir" rozeti belirir.
         Adres tanimli degilse hicbir ag trafigi olusmaz.
       */
-      updateService.checkInBackground()
+      getUpdateService().checkInBackground()
 
       // -------------------------------------------------------------------
       // MODEL KATALOGU OTOMATIK SENKRONU

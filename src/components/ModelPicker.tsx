@@ -67,6 +67,16 @@ interface ModelPickerProps {
   refreshing?: boolean
   /** Anahtar eksikken cagriilir. */
   onOpenProviderSettings?: () => void
+  /**
+   * Kontrollu acik/kapali durumu (istege bagli).
+   *
+   * NEDEN? Panel `createPortal` ile `document.body` uzerine cizildigi icin
+   * tetikleyicinin paneli (asistan/sag panel) DOM'dan kaldirildiginda portal
+   * ORTADA KALIYOR ve ekranda asili kaliyordu. Ust bileşen artik
+   * `open={false` gondererek paneli kapatabilir.
+   */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   emptyProviderLabel: string
   emptyModelLabel: string
 }
@@ -96,10 +106,23 @@ export function ModelPicker({
   onRefreshModels,
   refreshing = false,
   onOpenProviderSettings,
+  open: controlledOpen,
+  onOpenChange,
   emptyProviderLabel,
   emptyModelLabel,
 }: ModelPickerProps): React.ReactElement {
-  const [open, setOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const isOpen = controlledOpen ?? uncontrolledOpen
+  /** Hem kontrolsuz hem kontrollu kullanim icin tek bir yazma noktasi. */
+  const setOpen = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      const value = typeof next === 'function' ? next(isOpen) : next
+      if (value === isOpen) return
+      setUncontrolledOpen(value)
+      onOpenChange?.(value)
+    },
+    [isOpen, onOpenChange],
+  )
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -186,25 +209,25 @@ export function ModelPicker({
   const flat = useMemo(() => groups.flatMap(g => g.items), [groups])
 
   useEffect(() => {
-    if (!open) return
+    if (!isOpen) return
     setCursor(Math.max(0, flat.findIndex(m => m.id === modelId)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, providerId])
+  }, [isOpen, providerId])
 
   // Panel acildiginda veya aktif saglayici degistiginde anahtar varsa modelleri otomatik sorgula.
   useEffect(() => {
-    if (!open || !provider || !onRefreshModels || refreshing) return
+    if (!isOpen || !provider || !onRefreshModels || refreshing) return
     const usable = provider.hasKey || provider.isLocal
     if (!usable) return
     if (!autoSyncedRef.current.has(provider.id)) {
       autoSyncedRef.current.add(provider.id)
       void Promise.resolve(onRefreshModels()).catch(() => {})
     }
-  }, [open, provider, onRefreshModels, refreshing])
+  }, [isOpen, provider, onRefreshModels, refreshing])
 
   // Disari tik / Escape ile kapatma + odak geri donusu.
   useEffect(() => {
-    if (!open) return
+    if (!isOpen) return
     const onPointer = (e: MouseEvent) => {
       const target = e.target as Node
       if (rootRef.current && rootRef.current.contains(target)) return
@@ -213,11 +236,11 @@ export function ModelPicker({
     }
     document.addEventListener('mousedown', onPointer)
     return () => document.removeEventListener('mousedown', onPointer)
-  }, [open])
+  }, [isOpen])
 
   // Panel acildiginda konumu hesapla ve pencere boyutu degisirse guncelle.
   useEffect(() => {
-    if (open) {
+    if (isOpen) {
       updatePopoverPos()
       window.addEventListener('resize', updatePopoverPos)
       window.addEventListener('scroll', updatePopoverPos, true)
@@ -227,22 +250,22 @@ export function ModelPicker({
       }
     }
     return undefined
-  }, [open, updatePopoverPos])
+  }, [isOpen, updatePopoverPos])
 
   useEffect(() => {
-    if (open) {
+    if (isOpen) {
       const id = window.setTimeout(() => searchRef.current?.focus(), 0)
       return () => window.clearTimeout(id)
     }
     return undefined
-  }, [open])
+  }, [isOpen])
 
   // Imleci gorunur alanda tut.
   useEffect(() => {
-    if (!open || !listRef.current) return
+    if (!isOpen || !listRef.current) return
     const el = listRef.current.querySelector<HTMLElement>(`[data-idx="${cursor}"]`)
     el?.scrollIntoView({ block: 'nearest' })
-  }, [cursor, open])
+  }, [cursor, isOpen])
 
   const commit = useCallback(
     (id: string) => {
@@ -256,7 +279,7 @@ export function ModelPicker({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (!open) {
+      if (!isOpen) {
         if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           setOpen(true)
@@ -302,7 +325,7 @@ export function ModelPicker({
           break
       }
     },
-    [open, flat, cursor, commit],
+    [isOpen, flat, cursor, commit],
   )
 
   const handleRefresh = useCallback(async () => {
@@ -324,7 +347,7 @@ export function ModelPicker({
         type="button"
         onClick={() => setOpen(v => !v)}
         aria-haspopup="listbox"
-        aria-expanded={open}
+        aria-expanded={isOpen}
         aria-label="Saglayici ve model sec"
         title={model ? `${provider?.displayName ?? ''} — ${model.name} (${model.id})` : 'Model seçin'}
         className="group flex w-full items-center gap-2.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2.5 py-1.5 text-left shadow-[var(--jmc-shadow-sm)] transition-[border-color,box-shadow,background-color] duration-[var(--jmc-dur)] ease-[var(--jmc-ease)] hover:border-[var(--jmc-primary)]/45 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--jmc-primary)]"
@@ -360,14 +383,14 @@ export function ModelPicker({
         ) : (
           <ChevronDown
             className={`h-3.5 w-3.5 shrink-0 text-[var(--jmc-text-dim)] transition-transform duration-[var(--jmc-dur)] ease-[var(--jmc-ease)] ${
-              open ? 'rotate-180 text-[var(--jmc-primary)]' : ''
+              isOpen ? 'rotate-180 text-[var(--jmc-primary)]' : ''
             }`}
           />
         )}
       </button>
 
       {/* ---------------- PANEL (Genis & Tam Isim Gorunumlu Portal) ---------------- */}
-      {open &&
+      {isOpen &&
         createPortal(
           <div
             ref={panelRef}

@@ -55,9 +55,25 @@ import 'prismjs/components/prism-ruby'
 import 'prismjs/components/prism-kotlin'
 import 'prismjs/components/prism-swift'
 import 'prismjs/components/prism-dart'
+// Katalogda ilan edilen ama IÇE AKTARILMAMIŞ diller: `Prism.languages[lang]`
+// undefined oldugu icin dosya HIC renklendirilmeden gosteriliyordu
+// ("renkli satırlar düzgün değil" belirtisinin bir parçası).
+import 'prismjs/components/prism-lua'
+import 'prismjs/components/prism-powershell'
+import 'prismjs/components/prism-batch'
+import 'prismjs/components/prism-tcl'
+import 'prismjs/components/prism-r'
+import 'prismjs/components/prism-scala'
+import 'prismjs/components/prism-toml'
+import 'prismjs/components/prism-ini'
+import 'prismjs/components/prism-groovy'
+import 'prismjs/components/prism-diff'
+import 'prismjs/components/prism-docker'
+import 'prismjs/components/prism-graphql'
 
 import type { Attachment, FilePreviewResult } from '../../types/jmc'
 import { MarkdownView } from './MarkdownView'
+import { ClickableText } from './ClickableText'
 
 interface DocumentViewerModalProps {
   attachment: Attachment | null
@@ -108,11 +124,42 @@ function splitHighlightedHtmlLines(html: string): string[] {
   return result
 }
 
+/**
+ * Bir `data:` URL'inden `blob:` URL uretir.
+ *
+ * NEDEN AYRI FONKSIYON
+ * --------------------
+ * Onceki surum bunu `useEffect` icinde YAPIYORDU. `useEffect` ilk boyamadan
+ * SONRA calistigi icin `<iframe src={pdfBlobUrl || preview.dataUrl}>` ifadesi
+ * ilk karede `data:application/pdf;base64,...` degerini kullaniyordu ve
+ * Chromium `data:` adresinden PDF eklentisini yuklemeyi REDDEDIYOR.
+ * Sonuc: PDF bos bir cerceve olarak gorunuyor, kullanici "aciliyor ama
+ * bos" diyordu. Artik deger `useMemo` ile ILK KARAMDA hazir.
+ */
+function dataUrlToBlobUrl(dataUrl: string, mimeType: string): string | null {
+  try {
+    const commaIdx = dataUrl.indexOf(',')
+    const base64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return URL.createObjectURL(new Blob([bytes], { type: mimeType || 'application/octet-stream' }))
+  } catch {
+    return null
+  }
+}
+
 function getYouTubeVideoId(urlOrId?: string): string | null {
   if (!urlOrId) return null
   const str = urlOrId.trim()
   if (/^[a-zA-Z0-9_-]{11}$/.test(str)) return str
-  const match = str.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/i)
+  // ONCEKI SURUMDE EKSIK OLANLAR: /shorts/<id>, /live/<id>, /embed/<id>,
+  // watch?v=, watch?app=desktop&v=, youtube-nocookie.com/embed/<id>.
+  // Bu bicimlerde kimlik bulunamadigi icin gomulu video, OYNATILAMAYAN bir
+  // <audio src="https://.../embed/ID"> etiketine dustu.
+  const match = str.match(
+    /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|shorts\/|live\/|e\/)|[?&]v=)([a-zA-Z0-9_-]{11})/i,
+  )
   return match ? match[1] : null
 }
 
@@ -154,7 +201,8 @@ export function DocumentViewerModal({
     attachment?.downloadedPath || attachment?.localPath,
   )
   const [linkCopied, setLinkCopied] = useState(false)
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
+  /** PPTX için "tek tek slayt" / "tüm slaytlar (kaydırmalı)" görünümü. */
+  const [slideView, setSlideView] = useState<'single' | 'continuous'>('continuous')
 
   const youtubeVideoId = useMemo(() => {
     return (
@@ -165,36 +213,78 @@ export function DocumentViewerModal({
     )
   }, [attachment, preview])
 
-  // PDF DataUrl'i Electron/Chromium engellerine takılmaması için Blob URL'e çevir
-  useEffect(() => {
-    if (preview?.kind === 'pdf' && preview.dataUrl) {
-      if (preview.dataUrl.startsWith('blob:') || preview.dataUrl.startsWith('http')) {
-        setPdfBlobUrl(preview.dataUrl)
-        return
-      }
-      try {
-        const parts = preview.dataUrl.split(',')
-        const base64 = parts[1] || parts[0]
-        const binaryString = atob(base64)
-        const bytes = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i)
-        }
-        const blob = new Blob([bytes], { type: 'application/pdf' })
-        const url = URL.createObjectURL(blob)
-        setPdfBlobUrl(url)
-        return () => {
-          URL.revokeObjectURL(url)
-        }
-      } catch {
-        setPdfBlobUrl(preview.dataUrl)
-      }
-    } else {
-      setPdfBlobUrl(null)
-    }
+  // PDF DataUrl'i Blob URL'e çevir.
+  //
+  // ÖNCEKİ SÜRÜM DÜZELTMESİ: `useEffect` ilk boyamadan SONRA çalıştığı
+  // için iframe ilk karede `data:application/pdf;base64,…` adresini
+  // kullanıyordu; Chromium `data:` adresinden PDF eklentisini yüklemeyi
+  // reddediyor ve PDF boş çerçeve olarak görünüyordu. `useMemo` ile blob
+  // adresi İLK KAREDE hazır olur.
+  const pdfBlobUrl = useMemo(() => {
+    if (preview?.kind !== 'pdf' || !preview.dataUrl) return null
+    if (preview.dataUrl.startsWith('blob:') || preview.dataUrl.startsWith('http')) return preview.dataUrl
+    return dataUrlToBlobUrl(preview.dataUrl, 'application/pdf')
   }, [preview?.kind, preview?.dataUrl])
 
+  useEffect(() => {
+    return () => {
+      // Kapatılırken/geçişlerde belleği serbest bırak.
+      if (pdfBlobUrl?.startsWith('blob:')) URL.revokeObjectURL(pdfBlobUrl)
+    }
+  }, [pdfBlobUrl])
+
   const contentRef = useRef<HTMLDivElement | null>(null)
+
+  /* ------------------------------------------------------------------ *
+   * PPTX: "tüm slaytlar (kaydırmalı)" görünümü altyapısı
+   * ------------------------------------------------------------------ */
+  /** Kaydırmalı görünümde kaydırma kapsayıcısı (IntersectionObserver kökü). */
+  const slideScrollRef = useRef<HTMLDivElement | null>(null)
+  /** Her slayt kartının DOM referansı (kaydırma takibi için). */
+  const slideRefs = useRef<Array<HTMLDivElement | null>>([])
+
+  /**
+   * Slayta git. Tekli görünümde yalnızca dizini değiştirir; kaydırmalı
+   * görünümde karta kaydırır. Kullanıcı "slaytlar tek sayfa görünüyor"
+   * dediği için iki görünüm arasında geçiş yapılabilir olmalı.
+   */
+  const goToSlide = useCallback(
+    (idx: number) => {
+      const total = preview?.slides?.length ?? 0
+      if (total === 0) return
+      const clamped = Math.max(0, Math.min(idx, total - 1))
+      setActiveSlideIndex(clamped)
+      if (slideView === 'continuous') {
+        const el = slideRefs.current[clamped]
+        const root = slideScrollRef.current
+        if (el && root) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    },
+    [preview?.slides?.length, slideView],
+  )
+
+  // Kaydırmalı görünümde görünürlük oranı en yüksek slaytı "aktif" yap.
+  const slideCount = preview?.slides?.length ?? 0
+  const slideFileId = preview?.fileId
+  useEffect(() => {
+    if (!isOpen || slideView !== 'continuous' || slideCount === 0) return
+    const root = slideScrollRef.current
+    if (!root || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      entries => {
+        let best: IntersectionObserverEntry | null = null
+        for (const entry of entries) {
+          if (!best || entry.intersectionRatio > best.intersectionRatio) best = entry
+        }
+        if (!best || best.intersectionRatio < 0.15) return
+        const idx = Number((best.target as HTMLElement).dataset.slideIndex)
+        if (Number.isFinite(idx)) setActiveSlideIndex(prev => (prev === idx ? prev : idx))
+      },
+      { root, threshold: [0.15, 0.4, 0.7, 0.95] },
+    )
+    for (const el of slideRefs.current) if (el) observer.observe(el)
+    return () => observer.disconnect()
+  }, [isOpen, slideView, slideCount, slideFileId])
 
   // Dosya önizlemesini yukle
   const loadPreview = useCallback(async () => {
@@ -368,15 +458,15 @@ export function DocumentViewerModal({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.key === 'ArrowLeft') {
         e.preventDefault()
-        setActiveSlideIndex(i => Math.max(0, i - 1))
+        goToSlide(activeSlideIndex - 1)
       } else if (e.key === 'ArrowRight') {
         e.preventDefault()
-        setActiveSlideIndex(i => Math.min(preview.slides!.length - 1, i + 1))
+        goToSlide(activeSlideIndex + 1)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isOpen, preview])
+  }, [isOpen, preview, activeSlideIndex, goToSlide])
 
   // PrismJS dil grameri eşleştirmesi
   const prismGrammar = useMemo(() => {
@@ -449,6 +539,9 @@ export function DocumentViewerModal({
     )
     return [header, ...rows]
   }, [preview, searchQuery])
+
+  /** PPTX görüntüleyicisi için daraltılmış (nullable) referans. */
+  const slides = preview?.slides
 
   if (!isOpen) return null
 
@@ -897,7 +990,9 @@ export function DocumentViewerModal({
                   </span>
                 </div>
                 <div className="text-[10.5px] text-[var(--jmc-text-dim)] hidden sm:block">
-                  Klavye: ← Sol / → Sağ Ok Tuşları
+                  {slideView === 'continuous'
+                    ? 'Kaydırın · ← / → ile zıplayın'
+                    : 'Klavye: ← Sol / → Sağ Ok Tuşları'}
                 </div>
               </div>
             )}
@@ -1033,57 +1128,106 @@ export function DocumentViewerModal({
                         {preview?.title || attachment?.title}
                       </span>
                     </div>
-                    {attachment?.alternateLink && (
+                    {/* Yerleşik oynatıcı engellenirse (gömül oynatma kapalı, ağ
+                        kısıtı, özel video) kullanıcı tek tıkla sistem
+                        tarayıcısına geçebilsin. */}
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => void window.jmcAPI?.openExternalUrl(attachment.alternateLink!)}
+                        onClick={() =>
+                          void window.jmcAPI?.openExternalUrl(`https://www.youtube.com/watch?v=${youtubeVideoId}`)
+                        }
+                        title="Videoyu YouTube'da aç (gömül oynatıcı engellenirse)"
                         className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-white/20 bg-white/10 px-3 py-1.5 text-[11.5px] font-medium text-white hover:bg-white/20 transition-all"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
-                        <span>Tarayıcıda Aç</span>
+                        <span>Tarayıcıda İzle</span>
                       </button>
-                    )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const share = `https://www.youtube.com/watch?v=${youtubeVideoId}`
+                          void window.jmcAPI?.copyText(share)
+                          setLinkCopied(true)
+                          setTimeout(() => setLinkCopied(false), 2000)
+                        }}
+                        title="YouTube bağlantısını kopyala"
+                        className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-white/20 bg-white/10 px-3 py-1.5 text-[11.5px] font-medium text-white hover:bg-white/20 transition-all"
+                      >
+                        {linkCopied ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-400" />
+                        ) : (
+                          <Link className="h-3.5 w-3.5" />
+                        )}
+                        <span>{linkCopied ? 'Kopyalandı' : 'Bağlantıyı Kopyala'}</span>
+                      </button>
+                      {attachment?.alternateLink && (
+                        <button
+                          type="button"
+                          onClick={() => void window.jmcAPI?.openExternalUrl(attachment.alternateLink!)}
+                          className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-white/20 bg-white/10 px-3 py-1.5 text-[11.5px] font-medium text-white hover:bg-white/20 transition-all"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span>Classroom'da Aç</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ) : (
                 <>
-                  {/* --- 1. KOD VE METİN GÖRÜNTÜLEYİCİ (PrismJS Sözdizimi, Eşzamanlı Satır Numaraları, Arama ve Satır Aralığı) --- */}
+                  {/* --- 1. KOD VE METİN GÖRÜNTÜLEYİCİ (PrismJS Sözdizimi, Eşzamanlı Satır Numaraları, Arama ve Satır Aralığı) ---
+                   *
+                   * `overflow-x-auto` + `w-max/min-w-full` sarmalayıcısı eklendi:
+                   * daha önce uzun satırlar `overflow-x-visible` ile dışarı taşıyor
+                   * ve modalın `overflow-auto` kapsayıcısı tarafından KIRPILIYORDU
+                   * ("renkli satırlar düzgün değil" şikâyetinin görünüm kısmı).
+                   */}
                   {(preview.kind === 'code' || preview.kind === 'text') && (
                     <div
                       className="font-mono text-[12px] select-text min-h-full bg-[var(--jmc-bg)]"
                       style={{ fontSize: `${fontSize}px` }}
                     >
-                      <div className="w-full py-2">
-                        {filteredCodeRows.map(row => {
-                          const isMatch =
-                            searchQuery.trim().length > 0 &&
-                            row.raw.toLowerCase().includes(searchQuery.toLowerCase())
-                          const lineSpacingStyle =
-                            lineSpacing === 'compact'
-                              ? 'py-0 leading-[1.3]'
-                              : lineSpacing === 'relaxed'
-                                ? 'py-1.5 leading-[1.85]'
-                                : 'py-0.5 leading-[1.55]'
+                      <div className="w-full py-2 overflow-x-auto">
+                        <div className="w-max min-w-full">
+                          {filteredCodeRows.map(row => {
+                            const isMatch =
+                              searchQuery.trim().length > 0 &&
+                              row.raw.toLowerCase().includes(searchQuery.toLowerCase())
+                            const lineSpacingStyle =
+                              lineSpacing === 'compact'
+                                ? 'py-0 leading-[1.3]'
+                                : lineSpacing === 'relaxed'
+                                  ? 'py-1.5 leading-[1.85]'
+                                  : 'py-0.5 leading-[1.55]'
 
-                          return (
-                            <div
-                              key={row.lineIndex}
-                              className={`flex items-start transition-colors hover:bg-white/[0.04] ${lineSpacingStyle} ${
-                                isMatch ? 'bg-amber-500/15' : ''
-                              }`}
-                            >
-                              <span className="select-none pl-3 pr-4 text-right text-[var(--jmc-text-dim)] shrink-0 min-w-[3.75rem] font-mono text-[11px] opacity-60 border-r border-[var(--jmc-border-subtle)]">
-                                {row.lineIndex}
-                              </span>
+                            return (
                               <div
-                                className={`flex-1 pl-4 pr-4 min-w-0 font-mono ${
-                                  codeWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre overflow-x-visible'
-                                } ${isMatch ? 'text-amber-200' : 'text-[var(--jmc-text)]'}`}
-                                dangerouslySetInnerHTML={{ __html: row.html }}
-                              />
+                                key={row.lineIndex}
+                                className={`flex items-start transition-colors hover:bg-white/[0.04] ${lineSpacingStyle} ${
+                                  isMatch ? 'bg-amber-500/15' : ''
+                                }`}
+                              >
+                                <span className="select-none pl-3 pr-4 text-right text-[var(--jmc-text-dim)] shrink-0 min-w-[3.75rem] font-mono text-[11px] opacity-60 border-r border-[var(--jmc-border-subtle)]">
+                                  {row.lineIndex}
+                                </span>
+                                <div
+                                  className={`flex-1 pl-4 pr-6 font-mono ${
+                                    codeWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
+                                  } ${isMatch ? 'text-amber-200' : 'text-[var(--jmc-text)]'}`}
+                                  dangerouslySetInnerHTML={{ __html: row.html }}
+                                />
+                              </div>
+                            )
+                          })}
+                          {filteredCodeRows.length === 0 && (
+                            <div className="px-6 py-8 text-center text-[12px] text-[var(--jmc-text-muted)]">
+                              {searchQuery.trim()
+                                ? `"${searchQuery}" için eşleşen satır bulunamadı.`
+                                : 'Dosya boş görünüyor.'}
                             </div>
-                          )
-                        })}
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1103,15 +1247,57 @@ export function DocumentViewerModal({
                     </div>
                   )}
 
-                  {/* --- 3. PDF GÖRÜNTÜLEYİCİ (Blob URL ve Yerleşik PDF Eklentisi) --- */}
+                  {/* --- 3. PDF GÖRÜNTÜLEYİCİ (YALNIZCA Blob URL) ---
+                      *
+                      * `data:` adresi Chromium PDF eklentisini yüklemez; daha önce
+                      * `src={pdfBlobUrl || preview.dataUrl}` yazıyordu ve blob
+                      * üretilemediğinde sessizce boş çerçeve gösteriyordu. Artık
+                      * embed modu BLOB OLMAYAN durumda açıkça "açılamıyor" kartı
+                      * gösterir ve kullanıcıyı ayıklanan metne / sistem okuyucusuna
+                      * yönlendirir.
+                      */}
                   {preview.kind === 'pdf' && (
                     <div className="h-full w-full flex flex-col">
-                      {pdfMode === 'embed' && (pdfBlobUrl || preview.dataUrl) ? (
+                      {pdfMode === 'embed' && pdfBlobUrl ? (
                         <iframe
-                          src={pdfBlobUrl || preview.dataUrl}
+                          src={pdfBlobUrl}
                           title={preview.title || 'PDF Belgesi'}
                           className="h-full w-full border-0 bg-neutral-900 rounded-b-xl"
                         />
+                      ) : pdfMode === 'embed' ? (
+                        <div className="grid h-full place-items-center p-8">
+                          <div className="max-w-md space-y-4 rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-7 text-center">
+                            <FileText className="mx-auto h-10 w-10 text-rose-400" />
+                            <h4 className="text-[14px] font-semibold text-[var(--jmc-text)]">
+                              PDF Görünümü Açılamadı
+                            </h4>
+                            <p className="text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
+                              Chromium'un yerleşik PDF görüntüleyicisi bu dosyayı işleyemedi
+                              (şifreli PDF, bozuk sayfa yapısı veya desteklenmeyen sürüm).
+                              Aşağıdaki seçeneklerden birini kullanabilirsiniz.
+                            </p>
+                            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => setPdfMode('text')}
+                                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-2 text-[12px] font-semibold text-white transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95"
+                              >
+                                <BookOpen className="h-3.5 w-3.5" />
+                                <span>Ayıklanan Metni Gör</span>
+                              </button>
+                              {(downloadedPath || preview.localPath) && (
+                                <button
+                                  type="button"
+                                  onClick={handleOpenFile}
+                                  className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-2 text-[12px] font-medium text-[var(--jmc-text)] transition-all hover:border-[var(--jmc-primary)] active:scale-95"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5 text-rose-400" />
+                                  <span>Sistemde Aç</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       ) : (
                         <div className="p-6 md:p-8 max-w-4xl mx-auto w-full">
                           <div className="rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 shadow-sm">
@@ -1128,9 +1314,10 @@ export function DocumentViewerModal({
                                 <span>{copied ? 'Kopyalandı' : 'Kopyala'}</span>
                               </button>
                             </div>
-                            <div className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-[var(--jmc-text)] select-text">
-                              {preview.text || 'Bu PDF dosyasından metin ayıklanamadı. PDF Görünümünü kullanın.'}
-                            </div>
+                            <ClickableText
+                              text={preview.text || 'Bu PDF dosyasından metin ayıklanamadı. PDF Görünümünü kullanın.'}
+                              className="block font-sans text-[13px] leading-relaxed text-[var(--jmc-text)] select-text"
+                            />
                           </div>
                         </div>
                       )}
@@ -1184,7 +1371,7 @@ export function DocumentViewerModal({
                                                 key={cIdx}
                                                 className="px-3.5 py-2 border-r border-[var(--jmc-border-subtle)] last:border-0 font-medium text-[var(--jmc-text)]"
                                               >
-                                                {cell}
+                                                <ClickableText text={cell} preserveWhitespace={false} />
                                               </td>
                                             ))}
                                           </tr>
@@ -1204,7 +1391,10 @@ export function DocumentViewerModal({
                                       }`}
                                     >
                                       <span className="text-[var(--jmc-primary)] font-bold select-none">•</span>
-                                      <span>{trimmed.replace(/^[•\-\*]\s*/, '')}</span>
+                                      <ClickableText
+                                        text={trimmed.replace(/^[•\-\*]\s*/, '')}
+                                        preserveWhitespace={false}
+                                      />
                                     </div>
                                   )
                                 }
@@ -1219,49 +1409,115 @@ export function DocumentViewerModal({
                                         : 'text-[var(--jmc-text)]'
                                     }`}
                                   >
-                                    {trimmed}
+                                    <ClickableText text={trimmed} preserveWhitespace={false} />
                                   </p>
                                 )
                               })
                           ) : (
-                            <p className="text-[13px] leading-relaxed text-[var(--jmc-text-muted)]">
-                              {preview.text || 'İçerik bulunamadı.'}
-                            </p>
+                            <ClickableText
+                              text={preview.text || 'İçerik bulunamadı.'}
+                              className="block text-[13px] leading-relaxed text-[var(--jmc-text-muted)]"
+                            />
                           )}
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* --- 5. POWERPOINT / PPTX SLAYT GÖRÜNTÜLEYİCİ (Kenetlenmiş Sabit Gezinim Çubuğu, Kesilmeyen Ortalı Düzen) --- */}
-                  {preview.kind === 'pptx' && preview.slides && (
-                    <div className="flex h-full flex-col justify-between overflow-hidden">
-                      {/* Slayt İçerik Alanı (Ortalanmış ve Kesintisiz Kaydırılabilir) */}
-                      <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center">
-                        {preview.slides[activeSlideIndex] ? (
+                  {/* --- 5. POWERPOINT / PPTX SLAYT GÖRÜNTÜLEYİCİ ---
+                   *
+                   * KULLANICI ŞİKÂYETİ: "slaytlar tek sayfa olarak görünüyor".
+                   * ÇÖZÜM: `slideView` iki mod sunar —
+                   *   'continuous' (varsayılan): TÜM slaytlar tek bir kaydırmalı
+                   *     sütunda, aralarında boşlukla dizilir. Kaydırma konumu
+                   *     IntersectionObserver ile takip edilir, alt çubuktaki
+                   *     numara vurgusu ve üst bilgi çubuğu canlı güncellenir.
+                   *   'single': eski davranış — yalnızca aktif slayt.
+                   */}
+                  {preview.kind === 'pptx' && slides && (
+                    <div className="flex h-full flex-col overflow-hidden">
+                      {/* Slayt İçerik Alanı */}
+                      <div
+                        ref={slideScrollRef}
+                        className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center gap-6"
+                      >
+                        {slides.length === 0 ? (
+                          <p className="text-[12px] text-[var(--jmc-text-muted)] my-auto">
+                            Bu sunumda okunabilir slayt bulunamadı.
+                          </p>
+                        ) : slideView === 'continuous' ? (
+                          slides.map((slide, idx) => (
+                            <div
+                              key={`${slide.slideNumber || idx}-${idx}`}
+                              data-slide-index={idx}
+                              ref={el => {
+                                slideRefs.current[idx] = el
+                              }}
+                              className={`w-full max-w-4xl shrink-0 scroll-mt-4 rounded-2xl border bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl flex flex-col justify-between transition-all ${
+                                idx === activeSlideIndex
+                                  ? 'border-[var(--jmc-primary)]/70 ring-1 ring-[var(--jmc-primary)]/30'
+                                  : 'border-[var(--jmc-border)]'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)] border-b border-[var(--jmc-border-subtle)] pb-3">
+                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-400 px-2.5 py-0.5 font-semibold text-[10.5px]">
+                                    <Presentation className="h-3 w-3" />
+                                    Slayt {idx + 1} / {slides.length}
+                                  </span>
+                                  <span className="truncate max-w-xs">{preview.title}</span>
+                                </div>
+                                <h2 className="mt-5 text-[20px] md:text-[24px] font-bold text-[var(--jmc-text)] tracking-tight">
+                                  {slide.title || `Slayt ${idx + 1}`}
+                                </h2>
+                                {slide.bullets.length > 0 ? (
+                                  <ul className="mt-6 space-y-3 text-[13.5px] md:text-[14.5px] text-[var(--jmc-text)] list-disc pl-6 leading-relaxed select-text">
+                                    {slide.bullets.map((bullet, bIdx) => (
+                                      <li key={bIdx} className="leading-relaxed">
+                                        <ClickableText text={bullet} preserveWhitespace={false} />
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="mt-6 text-[13px] italic text-[var(--jmc-text-dim)]">
+                                    Bu slaytta madde imli metin bulunmuyor veya slayt yalnızca
+                                    görsel/şema içeriyor olabilir.
+                                  </p>
+                                )}
+                              </div>
+                              <div className="mt-8 pt-4 border-t border-[var(--jmc-border-subtle)] flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)]">
+                                <span>Kaydırarak tüm sunumu okuyabilirsiniz</span>
+                                <span className="font-mono">
+                                  {Math.round(((idx + 1) / slides.length) * 100)}%
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        ) : slides[activeSlideIndex] ? (
                           <div className="w-full max-w-4xl my-auto min-h-[380px] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl flex flex-col justify-between transition-all">
                             <div>
                               <div className="flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)] border-b border-[var(--jmc-border-subtle)] pb-3">
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-400 px-2.5 py-0.5 font-semibold text-[10.5px]">
                                   <Presentation className="h-3 w-3" />
-                                  Slayt {activeSlideIndex + 1} / {preview.slides.length}
+                                  Slayt {activeSlideIndex + 1} / {slides.length}
                                 </span>
                                 <span className="truncate max-w-xs">{preview.title}</span>
                               </div>
                               <h2 className="mt-5 text-[20px] md:text-[24px] font-bold text-[var(--jmc-text)] tracking-tight">
-                                {preview.slides[activeSlideIndex].title || `Slayt ${activeSlideIndex + 1}`}
+                                {slides[activeSlideIndex].title || `Slayt ${activeSlideIndex + 1}`}
                               </h2>
-                              {preview.slides[activeSlideIndex].bullets.length > 0 ? (
+                              {slides[activeSlideIndex].bullets.length > 0 ? (
                                 <ul className="mt-6 space-y-3 text-[13.5px] md:text-[14.5px] text-[var(--jmc-text)] list-disc pl-6 leading-relaxed select-text">
-                                  {preview.slides[activeSlideIndex].bullets.map((bullet, bIdx) => (
+                                  {slides[activeSlideIndex].bullets.map((bullet, bIdx) => (
                                     <li key={bIdx} className="leading-relaxed">
-                                      {bullet}
+                                      <ClickableText text={bullet} preserveWhitespace={false} />
                                     </li>
                                   ))}
                                 </ul>
                               ) : (
                                 <p className="mt-6 text-[13px] italic text-[var(--jmc-text-dim)]">
-                                  Bu slaytta madde imli metin bulunmuyor veya slayt yalnızca görsel/şema içeriyor olabilir.
+                                  Bu slaytta madde imli metin bulunmuyor veya slayt yalnızca
+                                  görsel/şema içeriyor olabilir.
                                 </p>
                               )}
                             </div>
@@ -1269,7 +1525,7 @@ export function DocumentViewerModal({
                             <div className="mt-8 pt-4 border-t border-[var(--jmc-border-subtle)] flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)]">
                               <span>Klavye: ← Sol / → Sağ Ok tuşları ile gezinebilirsiniz</span>
                               <span className="font-mono">
-                                {Math.round(((activeSlideIndex + 1) / preview.slides.length) * 100)}%
+                                {Math.round(((activeSlideIndex + 1) / slides.length) * 100)}%
                               </span>
                             </div>
                           </div>
@@ -1284,32 +1540,62 @@ export function DocumentViewerModal({
                           <button
                             type="button"
                             disabled={activeSlideIndex <= 0}
-                            onClick={() => setActiveSlideIndex(i => Math.max(0, i - 1))}
+                            onClick={() => goToSlide(activeSlideIndex - 1)}
                             title="Önceki Slayt (Sol Ok)"
                             className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-white hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
                           >
                             <ChevronLeft className="h-4 w-4" />
-                            <span>Önceki Slayt</span>
+                            <span>Önceki</span>
                           </button>
                           <button
                             type="button"
-                            disabled={activeSlideIndex >= preview.slides.length - 1}
-                            onClick={() => setActiveSlideIndex(i => Math.min(preview.slides!.length - 1, i + 1))}
+                            disabled={activeSlideIndex >= slides.length - 1}
+                            onClick={() => goToSlide(activeSlideIndex + 1)}
                             title="Sonraki Slayt (Sağ Ok)"
                             className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-white hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
                           >
-                            <span>Sonraki Slayt</span>
+                            <span>Sonraki</span>
                             <ChevronRight className="h-4 w-4" />
                           </button>
+
+                          {/* Görünüm Modu Anahtarı */}
+                          <div className="flex items-center rounded bg-[var(--jmc-bg)] p-0.5 border border-[var(--jmc-border)] ml-1">
+                            <button
+                              type="button"
+                              onClick={() => setSlideView('continuous')}
+                              title="Tüm slaytları tek sayfada kaydırarak göster"
+                              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10.5px] font-medium transition-all ${
+                                slideView === 'continuous'
+                                  ? 'bg-[var(--jmc-primary)] text-white'
+                                  : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
+                              }`}
+                            >
+                              <Layers className="h-3 w-3" />
+                              <span>Tümü</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSlideView('single')}
+                              title="Yalnızca aktif slaydı göster"
+                              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10.5px] font-medium transition-all ${
+                                slideView === 'single'
+                                  ? 'bg-[var(--jmc-primary)] text-white'
+                                  : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
+                              }`}
+                            >
+                              <AlignJustify className="h-3 w-3" />
+                              <span>Tekli</span>
+                            </button>
+                          </div>
                         </div>
 
                         {/* Slayt Numaraları / Hızlı Atlama Çubuğu */}
                         <div className="flex items-center gap-1 overflow-x-auto max-w-xl py-1 no-scrollbar">
-                          {preview.slides.map((s, idx) => (
+                          {slides.map((s, idx) => (
                             <button
                               key={s.slideNumber || idx}
                               type="button"
-                              onClick={() => setActiveSlideIndex(idx)}
+                              onClick={() => goToSlide(idx)}
                               title={`Slayt ${idx + 1}: ${s.title || 'Başlıksız'}`}
                               className={`h-7 min-w-[28px] px-1.5 rounded text-[11px] font-mono transition-all ${
                                 activeSlideIndex === idx
@@ -1324,7 +1610,7 @@ export function DocumentViewerModal({
 
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-[11.5px] font-semibold text-[var(--jmc-text)]">
-                            {activeSlideIndex + 1} / {preview.slides.length}
+                            {activeSlideIndex + 1} / {slides.length}
                           </span>
                         </div>
                       </div>
@@ -1354,7 +1640,7 @@ export function DocumentViewerModal({
                                 >
                                   {row.map((cell, cIdx) => (
                                     <td key={cIdx} className="px-3.5 py-2 text-[var(--jmc-text-muted)]">
-                                      {cell}
+                                      <ClickableText text={cell} preserveWhitespace={false} />
                                     </td>
                                   ))}
                                 </tr>
@@ -1463,8 +1749,18 @@ export function DocumentViewerModal({
                     </div>
                   )}
 
-                  {/* --- 9. BAĞLANTI (LINK) KARTI GÖRÜNTÜLEYİCİ --- */}
-                  {(preview.kind === 'link' || ((preview.kind === 'binary' || preview.kind === 'text') && attachment.alternateLink)) && (
+                  {/* --- 9. BAĞLANTI (LINK) KARTI GÖRÜNTÜLEYİCİ ---
+                   *
+                   * ÇİFT GÖSTERİM HATASI DÜZELTMESİ:
+                   * Koşul `preview.kind === 'text'` dalını da kapsıyordu. `kind`
+                   * 'text' olduğunda yukarıdaki KOD VE METİN GÖRÜNTÜLEYİCİ de
+                   * çiziliyor, dolayısıyla içerik "2 kere" basılıyordu.
+                   * Artık bağlantı kartı YALNIZCA gerçek bir bağlantı ya da
+                   * (bağlantısı olup da başka görüntüleyicisi bulunmayan) ikili
+                   * dosya için çizilir.
+                   */}
+                  {(preview.kind === 'link' ||
+                    (preview.kind === 'binary' && Boolean(attachment.alternateLink))) && (
                     <div className="p-8 max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[350px]">
                       <div className="w-full rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-8 shadow-xl text-center space-y-4">
                         <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)]">
@@ -1512,10 +1808,41 @@ export function DocumentViewerModal({
 
                   {/* --- 10. İKİLİ (BINARY) DOSYA BİLGİ KARTI --- */}
                   {preview.kind === 'binary' && !attachment.alternateLink && (
-                    <div className="p-6 max-w-4xl mx-auto font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap text-[var(--jmc-text)]">
-                      {preview.text}
+                    <div className="p-6 max-w-4xl mx-auto">
+                      <ClickableText
+                        text={preview.text || 'Bu dosya metin olarak okunamadı.'}
+                        className="block font-mono text-[12.5px] leading-relaxed text-[var(--jmc-text)]"
+                      />
                     </div>
                   )}
+
+                  {/* Hiçbir özel görüntüleyiciye düşmeyen türler için son çare. */}
+                  {preview.kind !== 'code' &&
+                    preview.kind !== 'text' &&
+                    preview.kind !== 'markdown' &&
+                    preview.kind !== 'pdf' &&
+                    preview.kind !== 'docx' &&
+                    preview.kind !== 'pptx' &&
+                    preview.kind !== 'csv' &&
+                    preview.kind !== 'xlsx' &&
+                    preview.kind !== 'image' &&
+                    preview.kind !== 'media' &&
+                    preview.kind !== 'link' &&
+                    preview.kind !== 'binary' && (
+                      <div className="p-6 max-w-4xl mx-auto space-y-3">
+                        <div className="flex items-center gap-2 text-[12px] text-[var(--jmc-text-dim)]">
+                          <AlertCircle className="h-4 w-4 text-amber-400" />
+                          <span>
+                            <strong className="text-[var(--jmc-text)]">{preview.title}</strong> için
+                            özel bir görüntüleyici yok; ham içerik aşağıda gösteriliyor.
+                          </span>
+                        </div>
+                        <ClickableText
+                          text={preview.text || 'İçerik bulunamadı.'}
+                          className="block font-mono text-[12px] leading-relaxed text-[var(--jmc-text)]"
+                        />
+                      </div>
+                    )}
                 </>
               )}
             </>

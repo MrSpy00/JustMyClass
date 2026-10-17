@@ -42,11 +42,17 @@
   ; uninstaller calisirken silmeye izin vermez.
   SetOutPath "$TEMP"
 
-  DetailPrint "JustMyClass uygulama verileri ve onbellek tamamen temizleniyor..."
-  RMDir /r "$APPDATA\JustMyClass"
-  RMDir /r "$APPDATA\justmyclass"
-  RMDir /r "$LOCALAPPDATA\JustMyClass"
-  RMDir /r "$LOCALAPPDATA\justmyclass"
+  DetailPrint "JustMyClass onbellegi (indirilen gecici dosyalar) temizleniyor..."
+  ; DIKKAT: Kullanici verisi (dersler, odevler, sohbet gecmisi, API
+  ; anahtarlari) SILINMEZ. Onceki surum burada
+  ;   RMDir /r "$APPDATA\JustMyClass"
+  ; calistiriyordu; bu, programi bir kez kaldirip yeniden kurmak
+  ; kullanicinin butun emegini ve ayarlarini geri donus olmayan sekilde
+  ; siliyordu. Belgeler (docs/KULLANIM.md) "kaldirma verileri silmez"
+  ; diyordu ama kod tersini yapiyordu.
+  ;
+  ; Verileri kalici olarak silmek icin: Ayarlar > Gizlilik > Tum verileri
+  ; temizle (bu yol onay diyalogu ister).
   RMDir /r "$LOCALAPPDATA\justmyclass-updater"
   RMDir /r "$TEMP\JustMyClass"
   RMDir /r "$TEMP\justmyclass"
@@ -89,6 +95,6 @@
   ; uninstaller.exe tamamen kapanana kadar bos $INSTDIR klasorunu silmeyebilir.
   ; Uninstaller kapandiktan ~1 saniye sonra gizli arka plan komutuyla $INSTDIR
   ; ve tum JustMyClass klasorlerinin 100% silinmesini garanti altina aliriz.
-  ExecShell "" "$SYSDIR\cmd.exe" '/C ping 127.0.0.1 -n 2 > nul & rmdir /s /q "$INSTDIR" > nul 2>&1 & rmdir /s /q "$LOCALAPPDATA\Programs\JustMyClass" > nul 2>&1 & rmdir /s /q "$LOCALAPPDATA\Programs\justmyclass" > nul 2>&1 & rmdir /s /q "$APPDATA\JustMyClass" > nul 2>&1 & rmdir /s /q "$LOCALAPPDATA\JustMyClass" > nul 2>&1 & rmdir /s /q "$LOCALAPPDATA\justmyclass-updater" > nul 2>&1' SW_HIDE
+  ExecShell "" "$SYSDIR\cmd.exe" '/C ping 127.0.0.1 -n 2 > nul & rmdir /s /q "$INSTDIR" > nul 2>&1 & rmdir /s /q "$LOCALAPPDATA\Programs\JustMyClass" > nul 2>&1 & rmdir /s /q "$LOCALAPPDATA\Programs\justmyclass" > nul 2>&1 & rmdir /s /q "$LOCALAPPDATA\justmyclass-updater" > nul 2>&1' SW_HIDE
 !macroend
 

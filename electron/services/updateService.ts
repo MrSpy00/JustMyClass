@@ -329,14 +329,24 @@ export class UpdateService {
     if (raw.includes('econnrefused')) {
       return 'Sunucu yanıt vermiyor. Güncelleme sunucusuna ulaşılamadı.'
     }
-    if (raw.includes('404') || raw.includes('no published versions') || raw.includes('latest.yml')) {
-      if (!this.isCustomGenericFeed(this.configuredUrl)) {
-        return 'Henüz yayınlanmış yeni bir sürüm bulunamadı veya uygulama en güncel sürümde.'
-      }
-      return 'Özel güncelleme sunucusunda yeni bir sürüm bulunamadı. Sunucuda geçerli bir paket ve latest.yml dosyası yer almalıdır.'
-    }
     if (raw.includes('certificate') || raw.includes('ssl') || raw.includes('self signed')) {
       return 'Güvenlik sertifikası geçersiz. HTTPS sertifikasını kontrol edin.'
+    }
+    if (raw.includes('not packed') || raw.includes('dev app')) {
+      return 'Güncelleme denetimi yalnızca kurulmuş sürümde çalışır. Bu bir hata değildir.'
+    }
+    // Paket/sürüm tanımlayıcı eksikliği.
+    //
+    // KULLANICI ŞİKÂYETİ: burada kullanıcıya "…latest.yml dosyası yer
+    // almalıdır" diye İÇ dosya adı gösteriliyordu. O dosya sürümde
+    // gerçekten var; sorun `electron-updater`'ın okuyamamasıydı. Bu yüzden
+    // artık hiçbir *.yml adı kullanıcıya iletilmiyor ve GitHub akışındaki
+    // kontrol `autoUpdater`'a bırakılmıyor (bkz. `checkViaGitHubApi`).
+    if (raw.includes('.yml') || raw.includes('no published versions') || raw.includes('404')) {
+      if (!this.isCustomGenericFeed(this.configuredUrl)) {
+        return 'Sunucudan yeni bir sürüm okunamadı. Uygulama en güncel sürümde olabilir veya yayın deposu geçici olarak erişilemiyor olabilir.'
+      }
+      return 'Özel güncelleme sunucusunda geçerli bir sürüm paketi bulunamadı. Yayın klasöründe kurulum dosyası ve sürüm tanımı birlikte bulunmalıdır.'
     }
     if (raw.includes('net::err_blocked') || raw.includes('blocked')) {
       return (
@@ -344,46 +354,30 @@ export class UpdateService {
         'indirmesini durduruyor olabilir.'
       )
     }
-    return `Güncelleme kontrolü: ${err instanceof Error ? err.message : String(err)}`
+    // Son çare: ham mesaj, ancak iç dosya adları temizlenmiş.
+    const rawMessage = err instanceof Error ? err.message : String(err)
+    return 'Güncelleme kontrolü: ' + rawMessage.replace(/[a-z0-9_-]+\.yml/gi, 'sürüm tanımı')
   }
 
   // -------------------------------------------------------------------------
   // Eylemler
   // -------------------------------------------------------------------------
 
-  /** Surumu kontrol eder. Hata ASLA atmaz; durumu `error` yazar. */
-  public async check(): Promise<UpdateStatus> {
-    this.wire()
-    this.lastCheckedAt = new Date().toISOString()
-    this.patch({ stage: 'checking', error: undefined })
-
-    // 1. Özel generic yayın adresi tanımlıysa doğrudan autoUpdater ile kontrol et
-    if (this.isCustomGenericFeed(this.configuredUrl) && this.configuredUrl) {
-      try {
-        const u = autoUpdater as unknown as { checkForUpdates: () => Promise<unknown> }
-        await u.checkForUpdates()
-      } catch (err) {
-        this.patch({
-          stage: 'error',
-          error: this.explainUpdateError(err instanceof Error ? err : new Error(String(err))),
-        })
-      }
-      return this.getStatus()
-    }
-
-    // 2. Varsayılan GitHub Releases kontrolü:
-    // Paketlemiş uygulama ise autoUpdater'ı dene
-    if (app.isPackaged) {
-      try {
-        const u = autoUpdater as unknown as { checkForUpdates: () => Promise<unknown> }
-        await u.checkForUpdates()
-        return this.getStatus()
-      } catch {
-        // Hata durumunda doğrudan GitHub API sorgusuna devam et
-      }
-    }
-
-    // Doğrudan GitHub Releases API sorgusu (Geliştirici ortamı, taşınabilir ve paketli modlarda eksiksiz çalışır)
+  /**
+   * GitHub Releases API'den en son surumu okur (autoUpdater kullanmadan).
+   *
+   * NEDEN BU YOL BIRINCIL?
+   * -----------------------
+   * `electron-updater`'in GitHub saglayicisi kontrol ederken yayindaki
+   * surum tanim dosyasini indirip ayristirir. Bu dosya okunamazsa/bozuksa/
+   * sa512 eslesmezse kontrol HATA durumuna duser ve kullaniciya ham bir dosya
+   * adi iletilir. Oysa surum bilgisi GitHub Releases API'sinde zaten VAR;
+   * dosya ayristirmaya hic gerek yok.
+   *
+   * Bu yol ayrica platforma ozgun tanim dosyalarina bagli olmadigi icin
+   * Windows/macOS/Linux arasinda tutarsizlik olusmaz.
+   */
+  private async checkViaGitHubApi(): Promise<UpdateStatus> {
     try {
       const response = await providerHttp.request<{
         tag_name: string
@@ -401,50 +395,39 @@ export class UpdateService {
         timeoutMs: 8000,
       })
 
-      if (response && response.tag_name) {
-        const remoteVer = response.tag_name.replace(/^v/, '')
-        const currentVer = this.status.currentVersion.replace(/^v/, '')
-        if (isNewerVersion(currentVer, remoteVer)) {
-          const setupAsset =
-            response.assets?.find(
-              (a: { name: string; browser_download_url: string }) =>
-                a.name.toLowerCase().includes('setup') && a.name.endsWith('.exe'),
-            ) ??
-            response.assets?.find(
-              (a: { name: string; browser_download_url: string }) => a.name.endsWith('.exe'),
-            )
-          this.latestReleaseAssetUrl = setupAsset?.browser_download_url ?? response.html_url
-          this.latestReleaseHtmlUrl = response.html_url
-
-          this.patch({
-            stage: 'available',
-            availableVersion: response.tag_name,
-            releaseDate: response.published_at,
-            releaseNotes: response.body,
-            error: undefined,
-          })
-        } else {
-          this.patch({
-            stage: 'not-available',
-            availableVersion: undefined,
-            error: undefined,
-          })
-        }
-      } else {
-        this.patch({
-          stage: 'not-available',
-          availableVersion: undefined,
-          error: undefined,
-        })
+      if (!response || !response.tag_name) {
+        this.patch({ stage: 'not-available', availableVersion: undefined, error: undefined })
+        return this.getStatus()
       }
+
+      const remoteVer = response.tag_name.replace(/^v/, '')
+      const currentVer = this.status.currentVersion.replace(/^v/, '')
+      this.latestReleaseHtmlUrl = response.html_url
+
+      if (!isNewerVersion(currentVer, remoteVer)) {
+        this.patch({ stage: 'not-available', availableVersion: undefined, error: undefined })
+        return this.getStatus()
+      }
+
+      const assets = response.assets ?? []
+      const setupAsset =
+        assets.find(a => /setup/i.test(a.name) && a.name.toLowerCase().endsWith('.exe')) ??
+        assets.find(a => a.name.toLowerCase().endsWith('.exe')) ??
+        assets.find(a => /\.dmg$|\.app\.zip$/i.test(a.name))
+      this.latestReleaseAssetUrl = setupAsset?.browser_download_url ?? response.html_url
+
+      this.patch({
+        stage: 'available',
+        availableVersion: response.tag_name,
+        releaseDate: response.published_at,
+        releaseNotes: response.body,
+        error: undefined,
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes('404')) {
-        // Henüz yayınlanmış release yoksa bu bir hata değil, güncel durumudur
-        this.patch({
-          stage: 'not-available',
-          error: undefined,
-        })
+        // Henuz yayinlanmis release yok: bu bir hata degil, guncel durumdur.
+        this.patch({ stage: 'not-available', availableVersion: undefined, error: undefined })
       } else {
         this.patch({
           stage: 'error',
@@ -452,8 +435,33 @@ export class UpdateService {
         })
       }
     }
-
     return this.getStatus()
+  }
+
+  /** Surumu kontrol eder. Hata ASLA atmaz; durumu `error` yazar. */
+  public async check(): Promise<UpdateStatus> {
+    this.wire()
+    this.lastCheckedAt = new Date().toISOString()
+    this.patch({ stage: 'checking', error: undefined })
+
+    // 1. Kullanici kendi sunucusunu tanimladiysa yalnizca oraya gider.
+    if (this.isCustomGenericFeed(this.configuredUrl) && this.configuredUrl) {
+      try {
+        const u = autoUpdater as unknown as { checkForUpdates: () => Promise<unknown> }
+        await u.checkForUpdates()
+      } catch (err) {
+        this.patch({
+          stage: 'error',
+          error: this.explainUpdateError(err instanceof Error ? err : new Error(String(err))),
+        })
+      }
+      return this.getStatus()
+    }
+
+    // 2. Varsayilan GitHub deposu: kontrol DAIMA Releases API uzerinden.
+    //    `autoUpdater` burada hicbir zaman kontrol yapmaz; boylece surum
+    //    tanim dosyasini ayristirma hatalari kullaniciya ulasmaz.
+    return this.checkViaGitHubApi()
   }
 
   /** Bulunan surumu indirir. Yalnizca `available` durumunda anlamli. */
@@ -462,23 +470,40 @@ export class UpdateService {
       return this.getStatus()
     }
 
-    // Paketlemiş veya özel adreste autoUpdater'ı dene
-    if (this.configuredUrl || app.isPackaged) {
+    // Oncelik uygulama ici indirme. Kontrol artik API uzerinden yapildigi
+    // icin once autoUpdater in kendi kontrolu tetiklenmelidir; aksi halde
+    // downloadUpdate() "once kontrol et" hatasi verir.
+    const isCustom = this.isCustomGenericFeed(this.configuredUrl)
+    if (isCustom || app.isPackaged) {
       try {
-        const u = autoUpdater as unknown as { downloadUpdate: () => Promise<unknown> }
+        const u = autoUpdater as unknown as {
+          checkForUpdates: () => Promise<unknown>
+          downloadUpdate: () => Promise<unknown>
+        }
+        await u.checkForUpdates()
         await u.downloadUpdate()
         return this.getStatus()
-      } catch {
-        // autoUpdater başarısız olursa tarayıcı indirmesine geç
+      } catch (err) {
+        // autoUpdater basarisiz olursa tarayici indirmesine dus; kullanici
+        // hicbir durumda ekranda takili kalmaz.
+        this.patch({
+          stage: 'error',
+          error: this.explainUpdateError(err instanceof Error ? err : new Error(String(err))),
+        })
       }
     }
 
+    // Yedek yol: kurulum dosyasini varsayilan tarayicida ac.
     if (this.latestReleaseAssetUrl) {
       await shell.openExternal(this.latestReleaseAssetUrl)
       this.patch({
-        stage: 'downloaded',
-        progress: 100,
-        error: undefined,
+        stage: 'available',
+        progress: undefined,
+        transferredMb: undefined,
+        totalMb: undefined,
+        error:
+          'Güncelleme dosyası tarayıcınızda indirilmeye açıldı. ' +
+          'Dosyayı indirip çalıştırarak kurulumu tamamlayabilirsiniz.',
       })
     } else if (this.latestReleaseHtmlUrl) {
       await shell.openExternal(this.latestReleaseHtmlUrl)

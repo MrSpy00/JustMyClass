@@ -195,6 +195,7 @@ const api: JmcApi = {
   getAppVersion: () => ipcRenderer.invoke('system:getAppVersion'),
   getSecurityInfo: () => ipcRenderer.invoke('system:securityInfo'),
   getDataPath: () => ipcRenderer.invoke('system:getDataPath'),
+    getStorageDiagnostics: () => ipcRenderer.invoke('system:diagnostics'),
   wipeLocalCache: () => ipcRenderer.invoke('system:wipeLocalCache'),
   wipeEverything: () => ipcRenderer.invoke('system:wipeEverything'),
   copyText: (text) => ipcRenderer.invoke('app:copyText', text),

@@ -550,7 +550,30 @@ export interface FilePreviewResult {
   paragraphs?: string[]
   slides?: Array<{ slideNumber: number; title?: string; bullets: string[] }>
   tableData?: Array<string[]>
+  /** XLSX/ODS calisma kitabi sayfa adlari. */
+  sheetNames?: string[]
   isTruncated?: boolean
+}
+
+/** Ayarlar > Senkronizasyon ekraninda gosterilen veri/depo sagligi. */
+export interface StorageDiagnostics {
+  version: string
+  packaged: boolean
+  portable: boolean
+  dataDir: string
+  keyring: {
+    dataDir: string
+    keyFilePath: string
+    keyFileExists: boolean
+    readable: boolean
+    problem: string
+    backend: string
+    hardwareProtected: boolean
+    degraded: boolean
+    description: string
+  }
+  store: { readable: boolean; writable: boolean; problem: string }
+  vault: { readable: boolean; writable: boolean; problem: string }
 }
 
 export interface DownloadFileStatus {
@@ -760,6 +783,15 @@ export interface JmcApi {
   getSecurityInfo: () => Promise<SecurityInfo>
   /** Verinin som olarak nerede durdugu (kurulum sihirbazinda gosterilir). */
   getDataPath: () => Promise<{ userData: string; temp: string }>
+  /**
+   * Depolama sagligi tanilamasi (salt okunur).
+   *
+   * Kullanicinin "verilerim nereye kaydediliyor ve neden kayboluyor?"
+   * sorusunun kesin cevabidir. Ozellikle ana anahtar okunamadiginda
+   * veritabaninin NEDEN bos gorundugunu aciklar; kullanici verisini
+   * yanlislikla silmeden once nedeni gorebilir.
+   */
+  getStorageDiagnostics: () => Promise<StorageDiagnostics>
   wipeLocalCache: () => Promise<boolean>
   /**
    * Her seyi sil: oturum, yerel veriler, indirilen dosyalar ve kasadaki

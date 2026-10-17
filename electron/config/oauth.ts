@@ -1,3 +1,4 @@
+import { resolveDataDir } from '../services/dataDir'
 import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
@@ -138,7 +139,7 @@ function readEnvClientSecret(): string {
 
 function readLocalOverride(): { clientId: string; clientSecret: string } {
   try {
-    const userDataPath = app?.getPath('userData') || path.join(process.cwd(), '.jmc_data')
+    const userDataPath = resolveDataDir()
     const filePath = path.join(userDataPath, LOCAL_OVERRIDE_FILE)
     if (!fs.existsSync(filePath)) return { clientId: '', clientSecret: '' }
     const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as {

@@ -1109,7 +1109,9 @@ function buildAuthSuccessHtml(account: Account): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bağlantı Kuruldu - JustMyClass</title>
+  <!-- Baslik TAM OLARAK "JustMyClass" olmali: kullanicinin "uygulama adi
+       baska bir sey yaziyor" sartinin bir parcasi. -->
+  <title>JustMyClass</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1373,29 +1375,58 @@ function buildAuthErrorHtml(title: string, message: string): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${safeTitle} - JustMyClass</title>
+  <!-- Baslik her zaman TAM OLARAK "JustMyClass". Onceki surum
+       "\${safeTitle} - JustMyClass" yaziyordu; kullanicinin "uygulama adi
+       baska bir sey yaziyor" sartini karsilayan yerlerden biri buydu. -->
+  <title>JustMyClass</title>
   <style>
+    /* Renk paleti buildAuthSuccessHtml ile BIREBIR ayni (siyah + mor).
+       Onceki surum burada lacivert/gri (#080B11, #E6EDF7, rgba(15,23,42),
+       #94A3B8) kullaniyordu; basarili sayfa mor iken hata sayfasi MAVI
+       kaliyor ve kullanici "fallback sayfalari siyah + mor olsun"
+       diye bildirmisti. */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: #080B11;
-      color: #E6EDF7;
+      background: #07050b;
+      color: #F3F0FC;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ambient {
+      position: absolute;
+      width: 540px;
+      height: 540px;
+      background: radial-gradient(circle, rgba(147, 51, 234, 0.22) 0%, rgba(124, 58, 237, 0.11) 40%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 0;
     }
     .card {
+      position: relative;
+      z-index: 1;
       max-width: 460px;
       width: 100%;
-      background: rgba(15, 23, 42, 0.8);
-      border: 1px solid rgba(239, 68, 68, 0.2);
-      backdrop-filter: blur(24px);
+      background: rgba(18, 14, 28, 0.88);
+      border: 1px solid rgba(168, 85, 247, 0.22);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
       border-radius: 24px;
       padding: 40px 32px;
       text-align: center;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 35px -5px rgba(139, 92, 246, 0.18);
+      animation: enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(16px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
     }
     .icon {
       width: 64px;
@@ -1403,16 +1434,16 @@ function buildAuthErrorHtml(title: string, message: string): string {
       margin: 0 auto 20px;
       border-radius: 50%;
       background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.3);
+      border: 1px solid rgba(239, 68, 68, 0.32);
       display: grid;
       place-items: center;
       color: #F87171;
     }
-    h1 { font-size: 20px; font-weight: 700; color: #F8FAFC; margin-bottom: 10px; }
-    p { font-size: 13px; color: #94A3B8; line-height: 1.5; margin-bottom: 20px; }
+    h1 { font-size: 20px; font-weight: 700; color: #FAF5FF; margin-bottom: 10px; letter-spacing: -0.02em; }
+    p { font-size: 13px; color: #B9AED4; line-height: 1.5; margin-bottom: 20px; }
     .msg-box {
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(168, 85, 247, 0.2);
       border-radius: 12px;
       padding: 12px;
       font-family: monospace;
@@ -1427,17 +1458,19 @@ function buildAuthErrorHtml(title: string, message: string): string {
       width: 100%;
       padding: 12px;
       border-radius: 12px;
-      background: #EF4444;
+      background: linear-gradient(135deg, #a855f7, #8b5cf6);
       color: #fff;
       font-size: 13px;
       font-weight: 600;
       border: none;
       cursor: pointer;
+      transition: opacity 0.15s ease;
     }
-    .btn:hover { background: #DC2626; }
+    .btn:hover { opacity: 0.9; }
   </style>
 </head>
 <body>
+  <div class="ambient"></div>
   <div class="card">
     <div class="icon">
       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -1620,6 +1653,28 @@ function buildAuthErrorHtml(title: string, message: string): string {
     }
   }
 
+  /**
+   * Oturumu kapatir.
+   *
+   * OTOMATIK OLARAK YAPILAN TEK IS: Google OAuth belirteclerini iptal eder.
+   *
+   * VERI KAYBI DUZELTMESI
+   * ---------------------
+   * Onceki surum burada `this.storageService.resetClassroomData()` cagrisini
+   * KOSULSUZ olarak calistiriyordu. O cagri tum dersleri, odevleri,
+   * teslimleri, rubrikleri, duyurulari, materyalleri, ogrenci listelerini,
+   * indirilen dosyalarin tamamini ve calisma taslaklarini siliyordu.
+   * Kullanici "Oturumu kapat" tikladiginda HICBIR uyari gosterilmeden
+   * butun emegi yok oluyordu ve kullanici "sadece cik gir yaptim, verilerim
+   * neden sifirlandi?" diye soruyordu.
+   *
+   * Artik:
+   *   • `Oturumu kapat`      -> YALNIZCA belirtecler silinir. Veriler kalir.
+   *   • `wipeCache = true`   -> Ayni zamanda indirilen dosya onbellegi silinir
+   *                             (bu islem ana surecte onay diyalogu ister).
+   *   • `system:wipeEverything` -> Tum veriler + ana anahtar silinir
+   *                             (ayrica onay diyalogu ister).
+   */
   public async logout(wipeCache = false): Promise<boolean> {
     this.cancelLogin()
     const refreshToken = this.vaultService.getKey('google_refresh_token')
@@ -1640,8 +1695,8 @@ function buildAuthErrorHtml(title: string, message: string): string {
     this.vaultService.deleteKey('google_access_token')
     this.vaultService.deleteKey('oauth_code_verifier')
     this.storageService.setAccount(null)
-    // Oturum kapatıldığında o hesaba ait sınıf, ödev ve teslim verileri her zaman sıfırlanır!
-    this.storageService.resetClassroomData()
+    // DERS/ODEV/TESLIM VERISI KORUNUR. Kullanici yeniden girdiginde ayni
+    // hesabin verisi yerinde durur ve senkronizasyon tekrar calisir.
 
     if (wipeCache) {
       this.vaultService.deleteKey('google_client_secret')

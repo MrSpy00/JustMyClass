@@ -6,25 +6,39 @@
    Renkler tema sağlayıcısı tarafından çalışma zamanında yazılır.
    Tipografi ve ölçü değerleri burada tanımlanır.
    ========================================================================== */
+/* --------------------------------------------------------------------------
+   BOOTSTRAP RENKLERİ — "Neon Dreams" (varsayılan tema, siyah + mor)
+   --------------------------------------------------------------------------
+   Bu blok tema sağlayıcısı çalışma zamanında ÜZERİNE YAZAR. Yine de ilk
+   boyamadan önceki karede kullanılır: React yüklenene kadar pencere
+   `backgroundColor` ile boyanır, ardından DOM hazır olur.
+
+   NEDEN MOR? Önceki sürümde bu blok MAVI/LACİVERT (`#0b0f16`, `#4c8dff`) idi.
+   Kullanıcı "mavi/navi yerine siyah + mor olsun" şikâyeti üzerine, uygulama
+   açılır açılmaz bir MAVI parlama görüyor ve tema yüklenince renk
+   değişiyordu. Varsayılan tema "Neon Dreams" (bg `#0d0817`, primary
+   `#a973ea`) olduğu için bootstrap da birebir aynı değerleri kullanır:
+   böylece ilk kare ile sonraki kareler arasında renk sıçraması olmaz.
+   -------------------------------------------------------------------------- */
 :root {
-  --jmc-bg: #0b0f16;
-  --jmc-bg-elevated: #11161f;
-  --jmc-bg-surface: #171d28;
-  --jmc-border: #242c3a;
-  --jmc-border-subtle: #1a212c;
-  --jmc-text: #e8edf5;
-  --jmc-text-muted: #9aa8bd;
-  --jmc-text-dim: #6f7d93;
-  --jmc-primary: #4c8dff;
-  --jmc-primary-hover: #3a7ae8;
-  --jmc-accent: #7aa7ff;
-  --jmc-accent-hover: #4c8dff;
+  --jmc-bg: #0d0817;
+  --jmc-bg-elevated: #150e26;
+  --jmc-bg-surface: #1c1435;
+  --jmc-border: #2e2350;
+  --jmc-border-subtle: #241a40;
+  --jmc-text: #efe8fb;
+  --jmc-text-muted: #b3a3d0;
+  --jmc-text-dim: #8a7bab;
+  --jmc-primary: #a973ea;
+  --jmc-primary-hover: #bd8af3;
+  --jmc-accent: #c99bf5;
+  --jmc-accent-hover: #a973ea;
   --jmc-warning: #e0a03a;
   --jmc-danger: #ef5f6b;
   --jmc-success: #3fb98a;
-  --jmc-code-bg: #0d1219;
-  --jmc-badge-bg: rgba(76, 141, 255, 0.14);
-  --jmc-elevation: rgba(0, 0, 0, 0.35);
+  --jmc-code-bg: #0a0614;
+  --jmc-badge-bg: rgba(169, 115, 234, 0.14);
+  --jmc-elevation: rgba(0, 0, 0, 0.45);
   --jmc-shadow-sm: 0 1px 3px 0 var(--jmc-elevation);
   --jmc-shadow-md: 0 4px 16px -2px var(--jmc-elevation);
   --jmc-shadow-lg: 0 14px 34px -4px var(--jmc-elevation);
@@ -394,18 +408,37 @@ textarea,
 }
 
 /* ==========================================================================
-   PrismJS Sözdizimi Vurgulama (Dark Mode & JustMyClass Teması)
+   PrismJS Sözdizimi Vurgulama
+   --------------------------------------------------------------------------
+   Renkler SABİT DEĞİLDİR: `ThemeContext` her tema değişiminde
+   `--jmc-code-*` belirteçlerini yazar (açık temada koyu tonların yerini
+   açık tonlar alır). Önceden tüm renkler slate/blue/green gibi sabit
+   değerlerdi; `Light` ve `Sand` temalarında yorum satırları zemine
+   karışıyor, kod "düz metin" gibi görünüyordu — kullanıcının "renkli
+   satırlar düzgün değil" şikâyetinin görünüm nedeni buydu.
    ========================================================================== */
+:root {
+  /* Tema yazmadan önceki kare için varsayılan (koyu tema) değerler. */
+  --jmc-code-comment: #7c89a0;
+  --jmc-code-punct: #9aa8bd;
+  --jmc-code-literal: #f2857f;
+  --jmc-code-string: #4fd6a4;
+  --jmc-code-operator: #57c7f0;
+  --jmc-code-keyword: #b18cff;
+  --jmc-code-function: #7fb0ff;
+  --jmc-code-meta: #fbbf24;
+}
+
 .token.comment,
 .token.prolog,
 .token.doctype,
 .token.cdata {
-  color: #64748b;
+  color: var(--jmc-code-comment);
   font-style: italic;
 }
 
 .token.punctuation {
-  color: #94a3b8;
+  color: var(--jmc-code-punct);
 }
 
 .token.property,
@@ -415,7 +448,7 @@ textarea,
 .token.constant,
 .token.symbol,
 .token.deleted {
-  color: #f87171;
+  color: var(--jmc-code-literal);
 }
 
 .token.selector,
@@ -424,32 +457,32 @@ textarea,
 .token.char,
 .token.builtin,
 .token.inserted {
-  color: #34d399;
+  color: var(--jmc-code-string);
 }
 
 .token.operator,
 .token.entity,
 .token.url {
-  color: #38bdf8;
+  color: var(--jmc-code-operator);
 }
 
 .token.atrule,
 .token.attr-value,
 .token.keyword {
-  color: #818cf8;
+  color: var(--jmc-code-keyword);
   font-weight: 600;
 }
 
 .token.function,
 .token.class-name {
-  color: #60a5fa;
+  color: var(--jmc-code-function);
   font-weight: 500;
 }
 
 .token.regex,
 .token.important,
 .token.variable {
-  color: #fbbf24;
+  color: var(--jmc-code-meta);
 }
 
 .token.important,

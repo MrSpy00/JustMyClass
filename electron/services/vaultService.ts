@@ -1,3 +1,4 @@
+import { resolveDataDir } from './dataDir'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -45,10 +46,13 @@ export class VaultService {
   private isLoaded = false
   /** Kasa iceriginin hangi bicimde yazildigi (migrasyon ve tanilama icin). */
   private lastFormat: 'aes-256-gcm' | 'none' = 'none'
+  /** Cozulemeyen kasa dosyasi diskte duruyor ve UZERINE YAZILAMAZ. */
+  private vaultUnreadable = false
+  private vaultUnreadableReason = ''
 
   constructor(keyring: KeyringService) {
     this.keyring = keyring
-    const userDataPath = app?.getPath('userData') || path.join(process.cwd(), '.jmc_data')
+    const userDataPath = resolveDataDir()
     if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath, { recursive: true })
     this.vaultPath = path.join(userDataPath, VAULT_FILE)
   }
@@ -61,6 +65,17 @@ export class VaultService {
 
   public getStatus() {
     return this.keyring.getStatus()
+  }
+
+  /** Kasa sagligi: cozulemeyen kasa uzerine yazilmaz. */
+  public getVaultHealth(): { readable: boolean; writable: boolean; problem: string } {
+    this.ensureLoaded()
+    const writable = !this.vaultUnreadable && this.keyring.canPersistEncryptedStores()
+    return {
+      readable: !this.vaultUnreadable,
+      writable,
+      problem: this.vaultUnreadableReason || (writable ? '' : this.keyring.getKeyDiagnostics().problem),
+    }
   }
 
   /**
@@ -116,9 +131,17 @@ private purgeLegacyArtifacts(): void {
         '[VaultService] Kasa acilamadi. Ana anahtar bu isletim sisteminde cozulemiyor olabilir; anahtarlar yeniden girilmeli.',
         err instanceof Error ? err.message : err,
       )
-      // Bozuk veya uyumsuz kasayı yedekle ve temiz bir kasa ile başla
+      // VERI KAYBI YARAN YER: Onceki surum burada `this.persist()` ile
+      // BOS bir kasa yaziyordu; anahtar duzelttiginde kullanicinin tum
+      // API anahtarlari ve Google oturumu kalici olarak yok oluyordu.
+      // Artik kasa dosyasi OLDUGU GIBI kalir, UZERINE YAZILMAZ.
+      this.vaultUnreadable = true
+      this.vaultUnreadableReason =
+        'Sifreli kasa acilamadi (' +
+        (err instanceof Error ? err.message : String(err)) +
+        '). Dosya korunuyor; uzerine yazilmadi.'
       try {
-        const backupPath = `${this.vaultPath}.corrupted.${Date.now()}`
+        const backupPath = `${this.vaultPath}.unreadable.${Date.now()}`
         fs.copyFileSync(this.vaultPath, backupPath)
       } catch {
         /* yoksay */
@@ -128,6 +151,10 @@ private purgeLegacyArtifacts(): void {
   }
 
   private persist(): void {
+    // Anahtar cozulemediyse veya kasa cozulemediyse UZERINE YAZMA.
+    if (!this.keyring.canPersistEncryptedStores() || this.vaultUnreadable) {
+      return
+    }
     try {
       const obj: Record<string, string> = {}
       for (const [k, v] of this.memoryKeys) obj[k] = v

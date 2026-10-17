@@ -213,9 +213,14 @@ export const translations: Record<Language, Record<string, string>> = {
     'settings.appearance.contrastRatio': 'Ölçülen Kontrast Oranı',
 
     // Ayarlar - Gizlilik
-    'settings.privacy.wipeTitle': 'Yerel Verileri Temizle',
-    'settings.privacy.wipeDesc': 'Cihazınızda şifrelenmiş tüm ödev, materyal ve öğrenci verilerini kalıcı olarak siler.',
-    'settings.privacy.wipeButton': 'Önbelleği Tamamen Sil',
+    // Bu anahtarlar eskiden "Önbelleği Tamamen Sil" diyordu; artık düğme
+    // "Tüm yerel verileri sil" olduğu için (ve çünkü düğme artık yalnızca
+    // önbelleği değil, indirilen dosyaları ve kasadaki anahtarları da siler)
+    // metinler düğmeyle tutarlı hâle getirildi.
+    'settings.privacy.wipeTitle': 'Verileri sil',
+    'settings.privacy.wipeDesc':
+      'Yerel sınıf kopyası, indirilen dosyalar ve kasadaki API anahtarları kalıcı olarak silinir. Google Classroom’daki veriler etkilenmez.',
+    'settings.privacy.wipeButton': 'Tüm yerel verileri sil',
 
     // Google Cloud Onboarding Modal & Rehber
     'auth.title': 'Google Classroom Bağlantısı',
@@ -534,9 +539,10 @@ export const translations: Record<Language, Record<string, string>> = {
     'settings.appearance.contrastRatio': 'Measured Contrast Ratio',
 
     // Settings - Privacy
-    'settings.privacy.wipeTitle': 'Wipe Local Cache',
-    'settings.privacy.wipeDesc': 'Irreversibly deletes all encrypted coursework, attachments, and student submissions on this device.',
-    'settings.privacy.wipeButton': 'Wipe Local Cache Now',
+    'settings.privacy.wipeTitle': 'Delete local data',
+    'settings.privacy.wipeDesc':
+      'Permanently deletes the local class copy, downloaded files, and stored API keys. Your Google Classroom data is not affected.',
+    'settings.privacy.wipeButton': 'Delete all local data',
 
     // Google Cloud Onboarding Modal & Guide
     'auth.title': 'Google Classroom Integration',

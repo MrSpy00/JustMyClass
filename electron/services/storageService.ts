@@ -1,3 +1,4 @@
+import { resolveDataDir } from './dataDir'
 import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -84,7 +85,7 @@ export class StorageService {
 
   constructor(keyring: KeyringService) {
     this.keyring = keyring
-    this.dataDir = app?.getPath('userData') || path.join(process.cwd(), '.jmc_data')
+    this.dataDir = resolveDataDir()
     this.casDir = path.join(this.dataDir, 'cas')
     this.dbPath = path.join(this.dataDir, DB_FILE)
 
@@ -93,6 +94,14 @@ export class StorageService {
   }
 
   private isLoaded = false
+
+  /**
+   * Cozulemeyen depo dosyasi diskte duruyor ve UZERINE YAZILAMAZ.
+   * Bu bayrak true iken `persist()` sessizce vazgecir; boylece kullanici
+   * verisi sessizce yok olmaz.
+   */
+  private storeUnreadable = false
+  private storeUnreadableReason = ''
 
   public ensureLoaded(): void {
     if (this.isLoaded) return
@@ -131,15 +140,23 @@ export class StorageService {
           '[StorageService] Sifreli yerel depo acilamadi:',
           err instanceof Error ? err.message : err,
         )
-        // Bozuk/çözülemeyen depoyu yedekle ve temiz bir veritabanıyla başla
+        // VERI KAYBI YARAN YER: Onceki surum burada cozulemeyen depoyu
+        // yedekleyip `this.persist()` ile UZERINE BOS BIR DEPO yaziyordu.
+        // Anahtar (yanlis Windows hesabi, bozuk kasa vb.) duzelttiginde
+        // kullanici bos bir depoyla karsi kasiyordu ve tum verileri
+        // "kaybolmus" gorunuyordu.
+        //
+        // Artik: yedek alinir, depo UZERINE YAZILMAZ ve kullaniciya
+        // acik bir hata bildirilir. Veri diskte oldugu gibi durur.
+        this.storeUnreadable = true
+        this.storeUnreadableReason =
+          'Sifreli yerel depo acilamadi (' +
+          (err instanceof Error ? err.message : String(err)) +
+          '). Verileriniz silinmedi; dosya korunuyor ve uzerine yazilmadi.'
         try {
-          const corruptedPath = `${this.dbPath}.corrupted.${Date.now()}`
+          const corruptedPath = `${this.dbPath}.unreadable.${Date.now()}`
           fs.copyFileSync(this.dbPath, corruptedPath)
-        } catch {
-          /* yoksay */
-        }
-        try {
-          this.persist()
+          console.warn(`[StorageService] Depo yedegi alindi: ${corruptedPath}`)
         } catch {
           /* yoksay */
         }
@@ -172,6 +189,19 @@ export class StorageService {
 
   public persist(): void {
     this.ensureReady()
+    // Anahtar cozulemediyse veya depo cozulemediyse UZERINE YAZMA.
+    // Yazmak, kullanicinin kurtarilabilir verisini geri donusu olmayan
+    // bir bos dosyayla degistirmek demektir.
+    if (!this.keyring.canPersistEncryptedStores()) {
+      this.storeUnreadable = true
+      this.storeUnreadableReason =
+        'Sifreleme anahtari cozulemedigi icin verilerinizin uzerine yazilmadi. ' +
+        'Eski Windows hesabinizla tekrar giris yaparsaniz veriler geri gelir.'
+      return
+    }
+    if (this.storeUnreadable) {
+      return
+    }
     try {
       const plain = Buffer.from(JSON.stringify(this.db), 'utf8')
       const cipher = aesEncrypt(this.ensureKey(), plain)
@@ -181,6 +211,16 @@ export class StorageService {
     } catch (err) {
       console.error('[StorageService] Sifreli depo yazilamadi:', err instanceof Error ? err.message : err)
       throw err
+    }
+  }
+
+  /** Depo/anahtar okunamaz durumda mi? Kullaniciya acikca bildirilir. */
+  public getStoreHealth(): { readable: boolean; writable: boolean; problem: string } {
+    this.ensureReady()
+    return {
+      readable: !this.storeUnreadable,
+      writable: !this.storeUnreadable && this.keyring.canPersistEncryptedStores(),
+      problem: this.storeUnreadableReason || (this.keyring.canPersistEncryptedStores() ? '' : this.keyring.getKeyDiagnostics().problem),
     }
   }
 

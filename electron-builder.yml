@@ -130,8 +130,18 @@ nsis:
   # Kurulum bitince uygulamayi ac (kapatilabilir).
   runAfterFinish: true
 
-  # Kaldirirken kullanici verisini, onbellegi ve kurulum klasorunu tamamen sil.
-  deleteAppDataOnUninstall: true
+  # Kaldirma sirasinda kullanici verisi SILINMEZ.
+  #
+  # VERI KAYBI DUZELTMESI: deger `true` idi. Bu ayar, kaldirma sihirbazinda
+  # %APPDATA%\JustMyClass klasorunu (sifreli veritabani, API kasasi,
+  # sohbet gecmisi, indirilen dosyalar) toptan siliyordu. Programi bir kez
+  # kaldirip yeniden kurmak kullanicinin butun emegini geri donussuz
+  # olarak yok ediyordu - kullanici "verilerim neden sifirlandi?" diye
+  # sordu. Simdi veriler kalir.
+  #
+  # Kalici olarak silmek icin: Ayarlar > Gizlilik > Tum verileri temizle
+  # (bu yol iki kez onay ister ve ana anahtari da yok eder).
+  deleteAppDataOnUninstall: false
   include: build/installer.nsh
 
   # Kurulum sihirbazi dili: Turkce + Ingilizce.
@@ -141,7 +151,9 @@ nsis:
   language: '1055' # varsayilan: Turkce (1055)
 
   # Kaldirma sihirbazinda ayri bir onay sayfasi.
-  uninstallDisplayName: JustMyClass ${version}
+  # Sürüm numarası EKLENMEZ: kullanıcı "uygulama adı tam olarak JustMyClass
+  # olsun" diye belirtti; "JustMyClass 0.0.1" yazıyordu.
+  uninstallDisplayName: JustMyClass
 
   # Fark paketi uretme: uygulama ~120 MB, fark paketi bu boyutta
   # pratik kazanc saglamaz ama kurulum dosyasini buyutur.
@@ -180,7 +192,8 @@ mac:
   artifactName: JustMyClass-${version}-${arch}.${ext}
 
 dmg:
-  title: JustMyClass ${version}
+  # macOS DMG penceresi basligi: sürüm numarası eklenmez.
+  title: JustMyClass
   contents:
     - x: 140
       y: 190

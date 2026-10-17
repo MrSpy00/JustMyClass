@@ -235,7 +235,7 @@ describe('StorageService', () => {
     expect(fs.existsSync(saved.absolutePath)).toBe(false)
   })
 
-  it('bozuk veya cozulemeyen depo dosyasi karsisinda cokmez ve kendini onarir', () => {
+  it('bozuk depo dosyasi karsisinda cokmez, veriyi silmez ve nedeni bildirir', () => {
     const dbFile = path.join(USER_DATA, 'classroom.store.v2')
     fs.writeFileSync(dbFile, Buffer.from('bu-gecersiz-ve-bozuk-bir-veri-blokudur-aes-gcm-cozemez'))
 
@@ -243,9 +243,19 @@ describe('StorageService', () => {
     expect(() => freshStorage.getCourses()).not.toThrow()
     expect(freshStorage.getCourses()).toEqual([])
 
-    // Bozuk dosya .corrupted olarak yedeklenmiş olmalıdır
+    // VERI KAYBI YARAN YER: eski surum cozulemeyen depoyu yedekleyip
+    // UZERINE BOS BIR DEPO yaziyordu. Anahtar duzeltilince kullanici
+    // bos bir depoyla karsi kasiyor ve tum verilerini kaybolmus saniyordu.
+    // Artik: yedek alinir, depo UZERINE YAZILMAZ ve neden bildirilir.
+    const health = freshStorage.getStoreHealth()
+    expect(health.readable).toBe(false)
+    expect(health.writable).toBe(false)
+    expect(health.problem).not.toBe('')
+
     const files = fs.readdirSync(USER_DATA)
-    const corruptedBackup = files.find(f => f.startsWith('classroom.store.v2.corrupted'))
-    expect(corruptedBackup).toBeDefined()
+    const backup = files.find(f => f.startsWith('classroom.store.v2.unreadable.'))
+    expect(backup).toBeDefined()
+    // Orijinal dosya yerinde durmali: veri yok edilmemis olmali.
+    expect(fs.existsSync(dbFile)).toBe(true)
   })
 })

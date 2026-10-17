@@ -2,6 +2,7 @@ import zlib from 'node:zlib'
 import { StorageService } from './storageService'
 import { VaultService } from './vaultService'
 import { providerHttp } from './httpClient'
+import { extractXlsxSheets } from './filePreviewService'
 import type { DriveService } from './driveService'
 import type { ActiveContext } from '../../types/jmc'
 
@@ -51,6 +52,86 @@ const TURKISH_WIN1254_MAP: Record<number, string> = {
   0xfe: 'ş',
 }
 
+/**
+ * CP1252 / WinAnsi 0x80-0x9F bandı.
+ *
+ * PDF'te varsayılan kodlama budur ve KROMLU TIRNAK (0x91/0x92/0x93/0x94),
+ * TIRE (0x96 kisa, 0x97 uzun), UÇ NOKTA (0x85), MADDE İŞARETİ (0x95) ve
+ * KROMLU TEK TIRNAKLAR bu aralıkta yer alır.
+ *
+ * ONCEKI SURUMUN HATASI: bu baytlar oldukları gibi bırakılıyordu. Sonraki
+ * "kontrol karakteri var" filtresi de satiri (dolayısıyla SAYFAYI) tamamen
+ * düşürüyordu. Sonuç: tırnak ve tire ile dolu Türkçe sayfaların metni hiç
+ * çıkmıyordu. Artık doğru Unicode karşılıklarına çevriliyor.
+ */
+const WINANSI_HIGH_MAP: Record<number, string> = {
+  0x80: '\u20AC', // €
+  0x82: '\u201A', // ‚
+  0x83: '\u0192', // ƒ
+  0x84: '\u201E', // „
+  0x85: '\u2026', // …
+  0x86: '\u2020', // †
+  0x87: '\u2021', // ‡
+  0x88: '\u02C6', // ˆ
+  0x89: '\u2030', // ‰
+  0x8a: '\u0160', // Š
+  0x8b: '\u2039', // ‹
+  0x8c: '\u0152', // Œ
+  0x8e: '\u017D', // Ž
+  0x91: '\u2018', // '
+  0x92: '\u2019', // '
+  0x93: '\u201C', // "
+  0x94: '\u201D', // "
+  0x95: '\u2022', // •
+  0x96: '\u2013', // –
+  0x97: '\u2014', // —
+  0x98: '\u02DC', // ˜
+  0x99: '\u2122', // ™
+  0x9a: '\u0161', // š
+  0x9b: '\u203A', // ›
+  0x9c: '\u0153', // œ
+  0x9e: '\u017E', // ž
+  0x9f: '\u0178', // Ÿ
+}
+
+/** Tek bir PDF metin baytini doğru karaktere cevirir (once Turkce, sonra WinAnsi). */
+function pdfByteToChar(b: number): string {
+  return TURKISH_WIN1254_MAP[b] ?? WINANSI_HIGH_MAP[b] ?? String.fromCharCode(b)
+}
+
+/**
+ * PDF metin satırındaki kontrol baytlarını temizler.
+ *
+ * ONCEKI SURUMUN HATASI: `!/[\x00-\x08\x0E-\x1F]/.test(line)` ile
+ * "satırda kontrol karakteri varsa satırı TAMAMEN at" kuralı vardı. Tek bir
+ * bozuk bayt (ör. PDF üreticisinin ham 0x13/0x14 yazdığı tire) yüzünden
+ * satır, dolayısıyla BT...ET bloğu, dolayısıyla SAYFA tamamen kayboluyordu.
+ *
+ * Artık: kontrol baytları önce WinAnsi karşılıklarına çevrilir, karşılığı
+ * olmayanlar boşluğa dönüştürülür. Satır yalnızca GERÇEKTEN boşaldığında atılır.
+ */
+function scrubPdfText(s: string): string {
+  let out = ''
+  for (const ch of s) {
+    const code = ch.charCodeAt(0)
+    if (code === 9 || code === 10 || code === 13) {
+      out += ch
+      continue
+    }
+    // Dikey tab / form feed PDF metninde satır kırılmasıdır
+    if (code === 0x0b || code === 0x0c) {
+      out += '\n'
+      continue
+    }
+    if (code >= 0x20 && code !== 0x7f) {
+      out += ch
+      continue
+    }
+    out += WINANSI_HIGH_MAP[code] ?? ' '
+  }
+  return out.replace(/[ \t]{2,}/g, ' ').trim()
+}
+
 function decodeXmlEntities(str: string): string {
   return str
     .replace(/&amp;/g, '&')
@@ -75,61 +156,243 @@ function decodeXmlEntities(str: string): string {
 }
 
 /**
- * ZIP arşivi içindeki dosyaları açar (DOCX ve PPTX için harici bağımlılıksız).
+ * ZIP arşivi içindeki dosyaları açar (DOCX / PPTX / XLSX / ODT için
+ * harici bağımlılıksız).
+ *
+ * NEDEN YENIDEN YAZILDI
+ * --------------------
+ * Önceki sürüm yalnızca YEREL BAŞLIKLARI (local file header) tarıyordu ve
+ * `compressedSize > 0` şartını koşuyordu. Üç kritik sonuç doğuyordu:
+ *
+ *   1. DATA DESCRIPTOR (genel amaç bayrağı bit 3): Word/PowerPoint'in
+ *      belirli yazma biçimlerinde yerel başlıktaki boyut alanları SIFIRDIR;
+ *      boyutlar veri tanıtıcısında bulunur. `compressedSize > 0` testi
+ *      başarısız olur, girdi ATLANIR ve tarayıcı sıkıştırılmış verinin
+ *      İÇİNDEKİ sahte `PK\x03\x04` imzalarını aramaya başlar → tüm
+ *      belgeler boş dönüyordu. (Kullanıcının "docx/pptx metin açılmıyor"
+ *      şikâyetinin birinci nedeni.)
+ *   2. SIFIR UZUNLUKLU girdiler düşüyordu.
+ *   3. Yalnızca yöntem 0 (store) ve 8 (deflate) destekleniyordu; deflate64,
+ *      bzip2, LZMA, zstd gibi yöntemler sessizce düşüyordu.
+ *
+ * Artık önce ORTA DİZİN (central directory) okunur — burada boyut ve ofset
+ * alanları DAİMA doğrudur — ve yalnızca merkez dizin yoksa yerel başlıklara
+ * geri düşülür. Veri tanıtıcılı yerel başlıklar merkez dizin sayesinde doğru
+ * boyutla açılır.
  */
 export function extractZipEntries(buf: Buffer): Map<string, Buffer> {
   const entries = new Map<string, Buffer>()
+
+  // ---- 1) ORTA DİZİN (central directory) ---------------------------------
+  const eocdOffset = findEndOfCentralDirectory(buf)
+  if (eocdOffset >= 0) {
+    try {
+      const cdCount = buf.readUInt16LE(eocdOffset + 10)
+      const cdSize = buf.readUInt32LE(eocdOffset + 12)
+      const cdOffset = buf.readUInt32LE(eocdOffset + 16)
+
+      // ZIP64: 0xFFFFFFFF/0xFFFF ise ZIP64 uç kaydına bak.
+      let entriesCount = cdCount
+      let dirOffset = cdOffset
+      let dirSize = cdSize
+      if (dirOffset === 0xffffffff || entriesCount === 0xffff || dirSize === 0xffffffff) {
+        const zip64 = readZip64Locator(buf, eocdOffset)
+        if (zip64) {
+          const z64 = zip64
+          entriesCount = Number(z64.entries)
+          dirOffset = Number(z64.centralDirOffset)
+          dirSize = Number(z64.centralDirSize)
+        }
+      }
+
+      if (dirOffset > 0 && dirOffset < buf.length && dirSize >= 0) {
+        let p = dirOffset
+        const end = Math.min(buf.length, dirOffset + (dirSize || buf.length))
+        let read = 0
+        while (p + 46 <= end && read < entriesCount + 8) {
+          if (buf.readUInt32LE(p) !== 0x02014b50) break
+          const flags = buf.readUInt16LE(p + 8)
+          const method = buf.readUInt16LE(p + 10)
+          let compSize = buf.readUInt32LE(p + 20)
+          let uncompSize = buf.readUInt32LE(p + 24)
+          const nameLen = buf.readUInt16LE(p + 28)
+          const extraLen = buf.readUInt16LE(p + 30)
+          const commentLen = buf.readUInt16LE(p + 32)
+          let localOffset = buf.readUInt32LE(p + 42)
+          const name = buf.toString('utf8', p + 46, p + 46 + nameLen)
+
+          // ZIP64 ek alanı
+          if (compSize === 0xffffffff || uncompSize === 0xffffffff || localOffset === 0xffffffff) {
+            let ep = p + 46 + nameLen
+            const eEnd = ep + extraLen
+            while (ep + 4 <= eEnd) {
+              const hid = buf.readUInt16LE(ep)
+              const hsize = buf.readUInt16LE(ep + 2)
+              if (hid === 0x0001) {
+                let q = ep + 4
+                if (uncompSize === 0xffffffff && q + 8 <= eEnd) { uncompSize = Number(buf.readBigUInt64LE(q)); q += 8 }
+                if (compSize === 0xffffffff && q + 8 <= eEnd) { compSize = Number(buf.readBigUInt64LE(q)); q += 8 }
+                if (localOffset === 0xffffffff && q + 8 <= eEnd) { localOffset = Number(buf.readBigUInt64LE(q)); q += 8 }
+                break
+              }
+              ep += 4 + hsize
+            }
+          }
+
+          p = p + 46 + nameLen + extraLen + commentLen
+          read++
+
+          if (!name || name.endsWith('/')) continue
+          const data = readLocalEntryData(buf, localOffset, method, compSize, flags)
+          if (data) entries.set(name, data)
+        }
+      }
+    } catch {
+      /* merkez dizin okunamadi -> yerel basliklara dusulur */
+    }
+  }
+
+  if (entries.size > 0) return entries
+
+  // ---- 2) YEREL BAŞLIKLAR (yedek yol) ------------------------------------
   try {
     let offset = 0
     while (offset < buf.length - 30) {
-      if (
-        buf[offset] === 0x50 &&
-        buf[offset + 1] === 0x4b &&
-        buf[offset + 2] === 0x03 &&
-        buf[offset + 3] === 0x04
-      ) {
-        const compressionMethod = buf.readUInt16LE(offset + 8)
-        const compressedSize = buf.readUInt32LE(offset + 18)
-        const fileNameLength = buf.readUInt16LE(offset + 26)
-        const extraFieldLength = buf.readUInt16LE(offset + 28)
-        const fileName = buf.toString('utf8', offset + 30, offset + 30 + fileNameLength)
-        const dataOffset = offset + 30 + fileNameLength + extraFieldLength
-
-        if (compressedSize > 0 && dataOffset + compressedSize <= buf.length) {
-          const compData = buf.subarray(dataOffset, dataOffset + compressedSize)
-          let decomp: Buffer | null = null
-          if (compressionMethod === 8) {
-            try {
-              decomp = zlib.inflateRawSync(compData)
-            } catch {
-              try {
-                decomp = zlib.inflateSync(compData)
-              } catch {
-                decomp = null
-              }
-            }
-          } else if (compressionMethod === 0) {
-            decomp = compData
-          }
-          if (decomp) {
-            entries.set(fileName, decomp)
-          }
-          offset = dataOffset + compressedSize
-          continue
-        }
+      if (buf.readUInt32LE(offset) !== 0x04034b50) {
+        offset++
+        continue
       }
-      offset++
+      const flags = buf.readUInt16LE(offset + 6)
+      const method = buf.readUInt16LE(offset + 8)
+      let compSize = buf.readUInt32LE(offset + 18)
+      const nameLen = buf.readUInt16LE(offset + 26)
+      const extraLen = buf.readUInt16LE(offset + 28)
+      const name = buf.toString('utf8', offset + 30, offset + 30 + nameLen)
+      const dataOffset = offset + 30 + nameLen + extraLen
+
+      // Veri tanıtıcısı varsa boyut alanları 0'dır; sınırdan türet.
+      if (compSize === 0 && (flags & 0x0008) !== 0) {
+        const scanned = scanToDataDescriptor(buf, dataOffset)
+        if (scanned > dataOffset) compSize = scanned - dataOffset
+      }
+
+      if (compSize > 0 && dataOffset + compSize <= buf.length) {
+        const decomp = decompressZipEntry(buf.subarray(dataOffset, dataOffset + compSize), method)
+        if (decomp && name && !name.endsWith('/')) entries.set(name, decomp)
+        offset = dataOffset + compSize
+        continue
+      }
+      if (compSize === 0 && name && !name.endsWith('/')) entries.set(name, Buffer.alloc(0))
+      offset = dataOffset
     }
   } catch {
-    /* fallback */
+    /* yoksay */
   }
+
   return entries
+}
+
+/** EOCD (End Of Central Directory) imzasini bulur. */
+function findEndOfCentralDirectory(buf: Buffer): number {
+  const minPos = Math.max(0, buf.length - 66_000)
+  for (let i = buf.length - 22; i >= minPos; i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) return i
+  }
+  return -1
+}
+
+function readZip64Locator(
+  buf: Buffer,
+  eocdOffset: number,
+): { entries: bigint; centralDirSize: bigint; centralDirOffset: bigint } | null {
+  const locOffset = eocdOffset - 20
+  if (locOffset < 0) return null
+  if (buf.readUInt32LE(locOffset) !== 0x07064b50) return null
+  try {
+    const z64Offset = Number(buf.readBigUInt64LE(locOffset + 8))
+    if (z64Offset < 0 || z64Offset + 56 > buf.length) return null
+    if (buf.readUInt32LE(z64Offset) !== 0x06064b50) return null
+    return {
+      entries: buf.readBigUInt64LE(z64Offset + 32),
+      centralDirSize: buf.readBigUInt64LE(z64Offset + 40),
+      centralDirOffset: buf.readBigUInt64LE(z64Offset + 48),
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Yerel başlıktan veri dilimini okur ve açar. */
+function readLocalEntryData(buf: Buffer, localOffset: number, method: number, compSize: number, flags: number): Buffer | null {
+  if (localOffset < 0 || localOffset + 30 > buf.length) return null
+  if (buf.readUInt32LE(localOffset) !== 0x04034b50) return null
+  const nameLen = buf.readUInt16LE(localOffset + 26)
+  const extraLen = buf.readUInt16LE(localOffset + 28)
+  const dataOffset = localOffset + 30 + nameLen + extraLen
+  if (dataOffset > buf.length) return null
+
+  let size = compSize
+  if (size === 0 || dataOffset + size > buf.length) {
+    // Boyut yanlış/0: veri tanıtıcısını tara ya da dosya sonuna kadar al.
+    const scanned = (flags & 0x0008) !== 0 ? scanToDataDescriptor(buf, dataOffset) : -1
+    if (scanned > dataOffset) size = scanned - dataOffset
+    else return null
+  }
+  return decompressZipEntry(buf.subarray(dataOffset, dataOffset + size), method)
+}
+
+/** Veri tanıtıcısının (PK\x07\x08) baslangicini bulur. */
+function scanToDataDescriptor(buf: Buffer, from: number): number {
+  for (let i = from; i < Math.min(buf.length - 4, from + 80_000_000); i++) {
+    if (buf.readUInt32LE(i) === 0x08074b50) return i
+  }
+  return -1
+}
+
+/** ZIP sikistirma yontemlerini destekler. */
+function decompressZipEntry(data: Buffer, method: number): Buffer | null {
+  if (method === 0) return data
+  if (method === 8) {
+    try {
+      return zlib.inflateRawSync(data)
+    } catch {
+      try {
+        return zlib.inflateSync(data)
+      } catch {
+        // Bozuk akis: kismi cozumle dene.
+        try {
+          const inf = zlib.inflateRawSync(data, { finishFlush: zlib.constants.Z_SYNC_FLUSH })
+          return inf
+        } catch {
+          return null
+        }
+      }
+    }
+  }
+  if (method === 12) {
+    // BZIP2 - Electron/Node tarafinda harici bagimlilik yok; atlanir.
+    return null
+  }
+  if (method === 93 || method === 95) {
+    // ZSTD - Node 22+ zlib ile destekleniyorsa kullanilir.
+    try {
+      const zstd = (zlib as unknown as { zstdDecompressSync?: (b: Buffer) => Buffer }).zstdDecompressSync
+      if (zstd) return zstd(data)
+    } catch {
+      /* desteklenmiyor */
+    }
+    return null
+  }
+  if (method === 9 || method === 14) {
+    // Deflate64 / LZMA: desteklenmiyor.
+    return null
+  }
+  return null
 }
 
 /**
  * PDF ToUnicode CMap bloklarını ayıklar ve Unicode karakter karşılıklarını haritalandırır.
- */
-function parsePdfCMap(decompressedText: string): Map<string, string> {
+ */function parsePdfCMap(decompressedText: string): Map<string, string> {
   const cmap = new Map<string, string>()
 
   // bfchar blokları: <0001> <0041>
@@ -252,8 +515,10 @@ function decodePdfLiteralString(raw: string, cmap?: Map<string, string>): string
         matchCount++
       } else if (b >= 32 && b <= 126) {
         mapped += String.fromCharCode(b)
-      } else if (TURKISH_WIN1254_MAP[b]) {
-        mapped += TURKISH_WIN1254_MAP[b]
+      } else {
+        const win = WINANSI_HIGH_MAP[b]
+        if (win) mapped += win
+        else if (TURKISH_WIN1254_MAP[b]) mapped += TURKISH_WIN1254_MAP[b]
       }
     }
     if (matchCount > 0 && mapped.trim().length > 0) {
@@ -274,13 +539,205 @@ function decodePdfLiteralString(raw: string, cmap?: Map<string, string>): string
 
   let result = ''
   for (const b of byteList) {
-    if (TURKISH_WIN1254_MAP[b]) {
-      result += TURKISH_WIN1254_MAP[b]
-    } else {
-      result += String.fromCharCode(b)
-    }
+    result += pdfByteToChar(b)
   }
   return result
+}
+
+/** ASCII85 (PDF/PostScript) akışını çözer. */
+function decodeAscii85(raw: string): Buffer | null {
+  try {
+    let s = raw.replace(/\s/g, '')
+    if (s.startsWith('<~')) s = s.slice(2)
+    const end = s.indexOf('~>')
+    if (end !== -1) s = s.slice(0, end)
+    if (!s) return null
+    const out: number[] = []
+    let tuple: number[] = []
+    for (const ch of s) {
+      if (ch === 'z' && tuple.length === 0) {
+        out.push(0, 0, 0, 0)
+        continue
+      }
+      const v = ch.charCodeAt(0) - 33
+      if (v < 0 || v > 84) continue
+      tuple.push(v)
+      if (tuple.length === 5) {
+        let value = 0
+        for (const d of tuple) value = value * 85 + d
+        out.push((value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff)
+        tuple = []
+      }
+    }
+    if (tuple.length > 1) {
+      const pad = 5 - tuple.length
+      let value = 0
+      for (const d of [...tuple, ...Array(pad).fill(84)]) value = value * 85 + d
+      const bytes = [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff]
+      out.push(...bytes.slice(0, 4 - pad))
+    }
+    return Buffer.from(out)
+  } catch {
+    return null
+  }
+}
+
+/** RunLengthDecode (PDF filtresi) akışını çözer. */
+function decodeRunLength(raw: string): Buffer | null {
+  try {
+    const out: number[] = []
+    let i = 0
+    while (i < raw.length) {
+      const len = raw.charCodeAt(i++) & 0xff
+      if (len === 128) break
+      if (len < 128) {
+        for (let j = 0; j <= len && i < raw.length; j++) out.push(raw.charCodeAt(i++) & 0xff)
+      } else {
+        const b = raw.charCodeAt(i++) & 0xff
+        for (let j = 0; j < 257 - len; j++) out.push(b)
+      }
+      if (out.length > 20_000_000) break
+    }
+    return Buffer.from(out)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Gorsel dosyanin PIKSEL olculerini harici kutuphane olmadan okur.
+ *
+ * Desteklenen: PNG, GIF, BMP, JPEG (SOF0..SOF15, DHT/DAC/RST hariç),
+ * WEBP (VP8/VP8L/VP8X basliklari), TIFF (II/MM + IFD etiketleri),
+ * SVG (viewBox / width-height).
+ *
+ * Amac: kullaniciya "bu gorsel 3024x4032" demek yerine gercek olcuyu
+ * gostermek; boylece model dosyanin buyuklugunu tahmin etmez.
+ */
+export function readImageDimensions(buf: Buffer): { width: number; height: number } | null {
+  if (!buf || buf.length < 16) return null
+
+  try {
+    // --- PNG ---
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      if (buf.length >= 24) {
+        return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+      }
+      return null
+    }
+
+    // --- GIF ---
+    if (buf.toString('latin1', 0, 3) === 'GIF') {
+      return { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) }
+    }
+
+    // --- BMP ---
+    if (buf[0] === 0x42 && buf[1] === 0x4d) {
+      return { width: buf.readInt32LE(18), height: Math.abs(buf.readInt32LE(22)) }
+    }
+
+    // --- WEBP ---
+    if (buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP') {
+      const fourcc = buf.toString('latin1', 12, 16)
+      if (fourcc === 'VP8 ' && buf.length >= 30) {
+        // Kaynak: "VP8 " basligindan sonra 14 bayt; 0x9d012a sonrasi
+        // 14 bit genislik, 14 bit yukseklik (2 bayt bayt sirasiyla).
+        const w = buf.readUInt16LE(26) & 0x3fff
+        const h = buf.readUInt16LE(28) & 0x3fff
+        if (w > 0 && h > 0) return { width: w, height: h }
+      } else if (fourcc === 'VP8L' && buf.length >= 25) {
+        const bits = buf.readUInt32LE(21)
+        const w = (bits & 0x3fff) + 1
+        const h = ((bits >> 14) & 0x3fff) + 1
+        return { width: w, height: h }
+      } else if (fourcc === 'VP8X' && buf.length >= 30) {
+        const w = ((buf[24] | (buf[25] << 8) | (buf[26] << 16)) & 0xffffff) + 1
+        const h = ((buf[27] | (buf[28] << 8) | (buf[29] << 16)) & 0xffffff) + 1
+        return { width: w, height: h }
+      }
+      return null
+    }
+
+    // --- TIFF ---
+    const bom = buf.toString('latin1', 0, 4)
+    if (bom === 'II*\u0000' || bom === 'MM\u0000*') {
+      const le = bom === 'II*\u0000'
+      const read16 = (o: number) => (le ? buf.readUInt16LE(o) : buf.readUInt16BE(o))
+      const read32 = (o: number) => (le ? buf.readUInt32LE(o) : buf.readUInt32BE(o))
+      const ifd = read32(4)
+      if (ifd + 2 <= buf.length) {
+        const count = read16(ifd)
+        for (let i = 0; i < count; i++) {
+          const entry = ifd + 2 + i * 12
+          if (entry + 12 > buf.length) break
+          const tag = read16(entry)
+          if (tag === 0x0100 || tag === 0x0101) {
+            const type = read16(entry + 2)
+            const value = type === 3 ? read16(entry + 8) : read32(entry + 8)
+            const other = tag === 0x0100 ? 0 : 1
+            if (value > 0) return { width: other === 0 ? value : 0, height: other === 0 ? 0 : value }
+          }
+        }
+      }
+      return null
+    }
+
+    // --- SVG ---
+    const head = buf.toString('utf8', 0, Math.min(buf.length, 2048))
+    if (/<svg[\s>]/i.test(head)) {
+      const vb = /viewBox\s*=\s*["']\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)/i.exec(head)
+      if (vb) return { width: Math.round(+vb[1]), height: Math.round(+vb[2]) }
+      const w = /\bwidth\s*=\s*["']\s*([\d.]+)/i.exec(head)
+      const h = /\bheight\s*=\s*["']\s*([\d.]+)/i.exec(head)
+      if (w && h) return { width: Math.round(+w[1]), height: Math.round(+h[1]) }
+      return null
+    }
+
+    // --- JPEG: SOF isaretini tara ---
+    if (buf[0] === 0xff && buf[1] === 0xd8) {
+      let offset = 2
+      while (offset + 9 < buf.length) {
+        if (buf[offset] !== 0xff) {
+          offset++
+          continue
+        }
+        const marker = buf[offset + 1]
+        // SOF0..SOF15, DHT/JPG/DAC haric (0xc0..0xcf, 0xc4, 0xc8, 0xcc)
+        if (
+          marker >= 0xc0 &&
+          marker <= 0xcf &&
+          marker !== 0xc4 &&
+          marker !== 0xc8 &&
+          marker !== 0xcc
+        ) {
+          return { height: buf.readUInt16BE(offset + 5), width: buf.readUInt16BE(offset + 7) }
+        }
+        const segLen = buf.readUInt16BE(offset + 2)
+        if (segLen < 2) break
+        offset += 2 + segLen
+      }
+      return null
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+/**
+ * PDF şifreli mi? (/Encrypt sözlüğü)
+ *
+ * Şifreli PDF'lerde tum akislar RC4/AES ile sarilmistir; dekompresyon
+ * denemeleri hep basarisiz olur ve kullaniciya "taranmis resim" yalani
+ * soylenir. Artik acik bir mesaj donuyor.
+ */
+export function isPdfEncrypted(buf: Buffer): boolean {
+  if (!buf || buf.length < 10) return false
+  const head = buf.toString('latin1', 0, Math.min(buf.length, 4096))
+  if (!head.startsWith('%PDF-')) return false
+  const tail = buf.toString('latin1', Math.max(0, buf.length - 4096))
+  return /\/Encrypt\b/.test(head) || /\/Encrypt\b/.test(tail)
 }
 
 /**
@@ -292,6 +749,11 @@ function decodePdfLiteralString(raw: string, cmap?: Map<string, string>): string
 export function extractTextFromPdf(buf: Buffer): string {
   if (!buf || buf.length < 10) return ''
   const str = buf.toString('latin1')
+
+  // SIFRELI PDF: akislar cozulemez. Kullaniciya acikca bildir.
+  if (isPdfEncrypted(buf)) {
+    return '[Bu PDF parola korumalıdır. Parolayı bilmeden metin çıkarılamaz; dosyayı harici bir PDF okuyucusunda açıp metni kopyalayabilir veya asistanla paylaşabilirsiniz.]'
+  }
 
   // 1) Tüm akışları aç ve ToUnicode haritalarını çıkar
   const decompressedStreams: string[] = []
@@ -319,16 +781,28 @@ export function extractTextFromPdf(buf: Buffer): string {
       continue
     }
 
+    // SIKISTIRMA FILTRESI TESPITI
+    // -------------------------------
+    // ONCEKI SURUM `dictSlice.includes('/Filter')` degerini "Flate"
+    // sayiyordu. LZWDecode / ASCII85Decode / RunLengthDecode / DCTDecode
+    // akislari da `inflate*`e veriliyor, acilamiyor ve DUSURULUYORDU;
+    // sayfa metni kayboluyordu.
+    const filterMatch = dictSlice.match(/\/Filter\s*(\[[^\]]*\]|\/[A-Za-z0-9]+)/)
+    const filterNames = filterMatch
+      ? (filterMatch[1].match(/\/([A-Za-z0-9]+)/g) || []).map(f => f.slice(1).toLowerCase())
+      : []
     const isFlate =
-      dictSlice.includes('/FlateDecode') ||
-      dictSlice.includes('/Flate') ||
-      dictSlice.includes('/Filter')
+      filterNames.includes('flatedecode') ||
+      filterNames.length === 0 && dictSlice.includes('/Flate')
 
     let decomp: Buffer | null = null
 
     if (isFlate) {
-      // /Length parametresine göre kesin boyut tespiti
-      const lenMatch = dictSlice.match(/\/Length\s+(\d+)/)
+      // /Length DOLAYSIZ (inline) olmalidir. `/Length 12 0 R` yazimi bir
+      // DOLAYSIZ BOYUT DEGIL, 12 numarali nesne referansidir; eski regex
+      // `12`yi bayt sayisi saniyor ve 12 baytlik bir "akis" inflate
+      // ediliyordu -> sayfa metni tamamen kayboluyordu.
+      const lenMatch = dictSlice.match(/\/Length\s+(\d+)(?!\s+\d+\s+R)/)
       const streamStart = match.index + match[0].indexOf(rawData)
       const streamLen = lenMatch ? Math.min(parseInt(lenMatch[1], 10), rawData.length) : rawData.length
       const streamBuf = buf.subarray(streamStart, streamStart + streamLen)
@@ -343,19 +817,28 @@ export function extractTextFromPdf(buf: Buffer): string {
           decomp = null
         }
       }
-    } else if (!dictSlice.includes('/Filter')) {
+    } else if (filterNames.length === 0) {
       // Sıkıştırılmamış akış: kontrol et, ikili değilse kabul et
       decomp = Buffer.from(rawData, 'latin1')
+    } else if (filterNames.includes('ascii85decode') || filterNames.includes('asciihexdecode')) {
+      // ASCII85 metin akışları (nadir ama gerçek)
+      decomp = decodeAscii85(rawData)
+    } else if (filterNames.includes('runlengthdecode')) {
+      decomp = decodeRunLength(rawData)
     }
+    // LZW / DCT / JPX / CCITT: metin akisi degildir, atlanir.
 
     if (decomp && decomp.length > 0) {
       const decodedStr = decomp.toString('latin1')
       // İkili binary çöp akışlarını filtrele:
-      // Standart PDF operatör metinleri ASCII ve Türkçe karakterlerden oluşur.
-      // Kontrol karakterleri veya kontrol dışı karakter oranı %5'ten fazlaysa atla.
-      const sample = decodedStr.slice(0, 1000)
-      const invalidChars = (sample.match(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g) || []).length
-      if (invalidChars / sample.length < 0.05) {
+      // Kontrol KARAKTERLERI oranina bakilir. Onceki surum `0x7F-0x9F`
+      // araligini da "gecersiz" sayiyordu; CP1252'de kromlu tirnak
+      // (0x91), tire (0x96) ve kenar tirnaklari bu araliktadir ve Turkce
+      // belgeler nadiren tirnakla doludur. Sonuc: sayfa metni TAMAMEN
+      // dusuyordu. Artik yalnizca gercek kontrol karakterleri sayilir.
+      const sample = decodedStr.slice(0, 2000)
+      const controlChars = (sample.match(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g) || []).length
+      if (sample.length === 0 || controlChars / sample.length < 0.02) {
         decompressedStreams.push(decodedStr)
       }
     }
@@ -409,22 +892,22 @@ export function extractTextFromPdf(buf: Buffer): string {
               let uStr = ''
               for (let i = 0; i < hex.length; i += 2) {
                 const byteVal = parseInt(hex.slice(i, i + 2), 16)
-                uStr += TURKISH_WIN1254_MAP[byteVal] || String.fromCharCode(byteVal)
+                uStr += pdfByteToChar(byteVal)
               }
               parts.push(uStr)
             }
           }
         }
-        const line = parts.join('').trim()
-        if (line.length > 0 && !/[\x00-\x08\x0E-\x1F]/.test(line)) currentBlockLines.push(line)
+        const line = scrubPdfText(parts.join(''))
+        if (line.length > 0) currentBlockLines.push(line)
       }
 
       // (...) Tj operatörleri
       const singleTjRegex = /\(([^)]*(?:\\.[^)]*)*)\)\s*Tj/g
       let sTjMatch: RegExpExecArray | null
       while ((sTjMatch = singleTjRegex.exec(textBlock)) !== null) {
-        const line = decodePdfLiteralString(sTjMatch[1], globalCMap).trim()
-        if (line.length > 0 && !/[\x00-\x08\x0E-\x1F]/.test(line)) currentBlockLines.push(line)
+        const line = scrubPdfText(decodePdfLiteralString(sTjMatch[1], globalCMap))
+        if (line.length > 0) currentBlockLines.push(line)
       }
 
       // <hex> Tj operatörleri
@@ -443,10 +926,11 @@ export function extractTextFromPdf(buf: Buffer): string {
         } else {
           for (let i = 0; i < hex.length; i += 2) {
             const byteVal = parseInt(hex.slice(i, i + 2), 16)
-            decoded += TURKISH_WIN1254_MAP[byteVal] || String.fromCharCode(byteVal)
+            decoded += pdfByteToChar(byteVal)
           }
         }
-        if (decoded.trim() && !/[\x00-\x08\x0E-\x1F]/.test(decoded)) currentBlockLines.push(decoded.trim())
+        const hexLine = scrubPdfText(decoded)
+        if (hexLine.length > 0) currentBlockLines.push(hexLine)
       }
 
       if (currentBlockLines.length > 0) {
@@ -464,22 +948,25 @@ export function extractTextFromPdf(buf: Buffer): string {
     return cleaned.join('\n\n').slice(0, 80_000)
   }
 
-  // Güvenli yedek yol: SADECE gerçek anlamlı metin içeren satırları kabul et (ikili semboller kesinlikle elenir)
+  // Güvenli yedek yol: SADECE gerçek anlamlı metin içeren satırları kabul et.
+  // ONCEKI SURUMUN HATASI: `!/[\x7F-\x9F]/` kontrolü CP1252'de yazan
+  // (kromlu tirnak, tire, uc nokta) satirlari ve kontrol baytlarini
+  // oldugu gibi reddediyordu. Artik once metin normalize/scrub ediliyor,
+  // sonra okunabilirlik orani olculuyor.
   for (const st of decompressedStreams) {
     const fallbackMatches = st.match(/\(([^)]{4,})\)/g)
     if (fallbackMatches) {
       for (const fm of fallbackMatches) {
-        const clean = fm.slice(1, -1).trim()
-        // Anlamlı metin oranı testi: karakterlerin en az %80'i Türkçe/İngilizce harf, rakam, noktalama ve boşluk olmalı
-        const readableChars = (clean.match(/[a-zA-ZçğıöşüÇĞİÖŞÜ0-9\s.,;:!?'"()-]/g) || []).length
-        if (
-          clean.length >= 4 &&
-          !/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/.test(clean) &&
-          !/[<>{}\\]/.test(clean) &&
-          readableChars / clean.length >= 0.85
-        ) {
-          cleaned.push(clean)
-        }
+        const raw = fm.slice(1, -1)
+        if (/[<>{}\\]/.test(raw)) continue
+        let clean = scrubPdfText(raw.replace(/\\(.)/g, '$1'))
+        if (clean.length < 4) continue
+        // Anlamlı metin oranı: harf, rakam, noktalama ve boşluk.
+        // Tirnak/dilek karakterleri de "okunabilir" sayilir.
+        const readableChars = (
+          clean.match(/[a-zA-ZçğıöşüÇĞİÖŞÜâîû0-9\s.,;:!?'"()\-\u2013\u2014\u2018\u2019\u201C\u201D\u00AB\u00BB\u2022\u2026]/g) || []
+        ).length
+        if (readableChars / clean.length >= 0.8) cleaned.push(clean)
       }
     }
   }
@@ -1046,7 +1533,38 @@ export class ToolDispatcher {
           }
         }
 
-        // 4) Tablolar (CSV / TSV)
+        // 4) Excel calisma kitaplari (XLSX/XLSM)
+        //
+        // ONCEKI SURUMDE YOKTU: XLSX bir ZIP oldugu icin "metin dosyasi"
+        // kontrolune dustu ve modele sifreli ZIP baytlari gonderiliyordu.
+        if (
+          mime.includes('spreadsheetml') ||
+          mime === 'application/vnd.ms-excel' ||
+          title.endsWith('.xlsx') ||
+          title.endsWith('.xlsm') ||
+          title.endsWith('.xltx')
+        ) {
+          const sheets = extractXlsxSheets(buf)
+          if (sheets.length === 0) {
+            return {
+              requiresApproval: false,
+              result: `[${cached.entry.title}] Excel dosyasi acildi ancak icinde okunabilir sayfa bulunamadi (dosya bozuk veya sifreli olabilir).`,
+            }
+          }
+          const MAX_ROWS = 200
+          const rendered = sheets.slice(0, 8).map(sheet => {
+            const rows = sheet.rows.slice(0, MAX_ROWS)
+            const table = rows.map(r => `| ${r.join(' | ')} |`).join('\n')
+            return `### Sayfa: ${sheet.name} (${rows.length}/${sheet.rows.length} satir)\n${table}`
+          })
+          const more = sheets.length > 8 ? `\n\n(Toplam ${sheets.length} sayfanin ilk 8'i gösterildi.)` : ''
+          return {
+            requiresApproval: false,
+            result: `[${cached.entry.title} - Excel Verisi (${sheets.length} sayfa)]:\n${rendered.join('\n\n')}${more}`,
+          }
+        }
+
+        // 5) Tablolar (CSV / TSV)
         if (mime === 'text/csv' || title.endsWith('.csv') || title.endsWith('.tsv')) {
           const raw = buf.toString('utf8')
           const lines = raw.split(/\r?\n/).filter(l => l.trim().length > 0)
@@ -1063,7 +1581,28 @@ export class ToolDispatcher {
           }
         }
 
-        // 5) Kod ve Metin Dosyaları
+        // 6) Gorseller
+        //
+        // ONCEKI SURUMDE YOKTU: gorsel dosya "metin dosyasi" kontrolune
+        // dustu, UTF-8 olarak okunup modele BOS/GARIP metin gonderiliyordu.
+        // Artik format ve OLCULER okunur, modele ne yapabilecegi acikca
+        // soylenir. Gorseli GERCEKTEN inceletmek icin sohbete eklenmesi
+        // (vision modeli) ya da OCR gerekir.
+        if (mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|tiff?|svg|avif)$/i.test(title)) {
+          const dims = readImageDimensions(buf)
+          const kb = Math.round(buf.length / 1024)
+          const info = dims ? `${dims.width}x${dims.height} piksel` : 'boyut bilgisi okunamadi'
+          return {
+            requiresApproval: false,
+            result:
+              `[${cached.entry.title}] Gorsel dosyasi: ${mime || 'bilinmeyen'} · ${info} · ${kb} KB.\n` +
+              'Bu bir gorsel oldugu icin metin icerigi YOKTUR. Icerigi incelemek icin ya ' +
+              '(1) dosyayi sohbete ekleyip gorum destekleyen (vision) bir model secin, ya da ' +
+              '(2) gorseli once PDF/Word belgesine cevirip o dosyayi paylasin.',
+          }
+        }
+
+        // 7) Kod ve Metin Dosyaları
         const isText =
           mime.startsWith('text/') ||
           /\.(md|txt|csv|json|ts|tsx|js|jsx|py|html|css|c|cpp|h|hpp|cs|java|sql|sh|bash|ps1|go|rs|php|rb|swift|kt|dart|yaml|yml|xml|toml|ini|env)$/i.test(title)

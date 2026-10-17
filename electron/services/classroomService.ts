@@ -126,6 +126,14 @@ export class ClassroomService {
   public async syncAll(): Promise<void> {
     const token = await this.getValidAccessToken()
     if (!token) {
+      // SESSIZ HATA DUZELTMESI: Onceki surum burada sessizce `return`
+      // ediyordu. Arayuz "0 ders basariyla senkronize edildi" yazip
+      // islemi BASARILI gosteriyordu; kullanici hatanin gercek nedenini
+      // (oturum yok / belirteç gecersiz) hicbir yerde goremiyordu.
+      this.storageService.recordSyncError(
+        'Google oturumu bulunamadı. Senkronizasyon için önce Ayarlar > Hesap bölümünden ' +
+          'Google ile bağlanın. Mevcut yerel ders ve ödev verileriniz korunuyor.',
+      )
       return
     }
 

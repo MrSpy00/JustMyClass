@@ -307,7 +307,22 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [isGenerating, setIsGenerating] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
+  /**
+   * KULLANICI ŞİKÂYETİ: "senkronize" hatası bağlandıktan sonra SOL ÜSTTE
+   * KALIYORDU.
+   *
+   * NEDEN? `syncError` hem senkronizasyon hatalari hem de ders/ödev IÇERIK
+   * yükleme hatalari icin kullaniliyordu. İçerik yükleme hatasi bir kez
+   * olustugunda, sonraki BASARILI yüklemeler onu temizlemiyordu; banner
+   * ekranda kalici olarak asili kaliyordu.
+   *
+   * ÇÖZÜM: iki ayri durum.
+   *   • `syncError`  → yalnizca otomatik/elle senkronizasyon.
+   *   • `contentError`→ ders listesi / ders detayı / ödev detayı. Her
+   *     başarılı yüklemede kendisi temizlenir.
+   */
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [contentError, setContentError] = useState<string | null>(null)
   const [coursesOpen, setCoursesOpen] = useState<boolean>(() => {
     try {
       const stored = window.localStorage.getItem('jmc.coursesOpen')
@@ -479,7 +494,45 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     return () => {
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
+      // Bileşen kapanırken imleç "col-resize" olarak ASILI kalıyordu ve
+      // uygulamanın geri kalanında her yerde sürükleme imleci görünüyordu.
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
     }
+  }, [])
+
+  /**
+   * Kaydedilmis panel genislikleri pencereye sigmiyorsa kucultulur.
+   *
+   * SORUN: `readStoredPaneWidth` yalnizca [160, 900] araligina kisliyordu.
+   * Kullanici onceki oturumunda 900 px kaydetmis, sonra pencereyi 1024'e
+   * daraltmis, uygulamayi yeniden baslatmis olabilir. `MIN_MAIN_WIDTH`
+   * yalnizca SURUKLEME sirasinda uygulaniyordu; acilista orta panelin
+   * tamamen sifirlanmasina ve "icerik tasma" belirtisine yol aciyordu.
+   */
+  useEffect(() => {
+    const clamp = () => {
+      const available = window.innerWidth - RAIL_WIDTH - SPLITTER_WIDTH * 2
+      const maxCombined = Math.max(MIN_LEFT + MIN_RIGHT, available - MIN_MAIN_WIDTH)
+
+      setLeftSidebarWidth(prev => {
+        const other = rightSidebarWidthRef.current
+        const budget = Math.max(MIN_LEFT, maxCombined - other)
+        const next = Math.max(MIN_LEFT, Math.min(prev, budget, available - MIN_RIGHT))
+        if (next !== prev) leftSidebarWidthRef.current = next
+        return next
+      })
+      setRightSidebarWidth(prev => {
+        const other = leftSidebarWidthRef.current
+        const budget = Math.max(MIN_RIGHT, maxCombined - other)
+        const next = Math.max(MIN_RIGHT, Math.min(prev, budget, available - MIN_LEFT))
+        if (next !== prev) rightSidebarWidthRef.current = next
+        return next
+      })
+    }
+    clamp()
+    window.addEventListener('resize', clamp)
+    return () => window.removeEventListener('resize', clamp)
   }, [])
 
   /**
@@ -525,6 +578,38 @@ const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isMemoryOpen, setIsMemoryOpen] = useState(false)
+  /** Model secici panelinin acik/kapali durumu (portal ile body'se cizilir). */
+  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
+
+  /**
+   * Kayan paneller kapaninca uzerlerine bagli ACIK kalan tum katmanlari kapat.
+   *
+   * SORUN: Model secici, sohbet gecmisi ve hafiza panelleri `createPortal`
+   * ile `document.body` uzerine ciziliyor. Kullanici "derslerim" ya da
+   * "asistan" yan panelini daraltinca panel DOM'dan kaldiriliyordu ama
+   * portal KALICIYOR ve ekranin ortasinda asili kalmis, bir sonraki tiklamayi
+   * yutan bir katman birakiyordu. Ayni sey sohbet gecmesi/hafiza
+   * pencereleri icin de gecerliydi.
+   */
+  useEffect(() => {
+    if (!coursesOpen) {
+      setIsHistoryOpen(false)
+    }
+    if (!inspectorOpen) {
+      setIsModelPickerOpen(false)
+      setIsHistoryOpen(false)
+      setIsMemoryOpen(false)
+    }
+  }, [coursesOpen, inspectorOpen])
+
+  // Panel aciliyorken eski panelin kayan icerigi kapansin.
+  useEffect(() => {
+    if (coursesOpen) setIsMemoryOpen(false)
+  }, [coursesOpen])
+
+  useEffect(() => {
+    if (inspectorOpen) setIsHistoryOpen(false)
+  }, [inspectorOpen])
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editSessionTitle, setEditSessionTitle] = useState('')
   const [memoryProfile, setMemoryProfile] = useState<MemoryProfile | null>(null)
@@ -760,6 +845,9 @@ const chatScrollRef = useRef<HTMLDivElement | null>(null)
       try {
         const details = await window.jmcAPI.getCourseDetails(course.id)
         if (isStale()) return
+        // Onceki denemeden kalan icerik hatasini temizle: basarili yukleme
+        // sonrasi banner ekranda asili kalmamali.
+        setContentError(null)
         setCourseWorks(details.courseWork || [])
         setCourseAnnouncements(details.announcements || [])
         setCourseMaterials(details.materials || [])
@@ -772,7 +860,7 @@ const chatScrollRef = useRef<HTMLDivElement | null>(null)
         setCourseMaterials([])
         setCourseParticipants([])
         setCourseTopics([])
-        setSyncError(err instanceof Error ? err.message : 'Ders içeriği alınamadı.')
+        setContentError(err instanceof Error ? err.message : 'Ders içeriği alınamadı.')
       }
     },
     [],
@@ -815,6 +903,7 @@ const chatScrollRef = useRef<HTMLDivElement | null>(null)
       setCurrentSubmission(undefined)
       setSyncStatus(null)
       setSyncError(null)
+      setContentError(null)
     }
   }, [])
 
@@ -838,6 +927,7 @@ const chatScrollRef = useRef<HTMLDivElement | null>(null)
       const list = await window.jmcAPI.getCourses()
       if (isStale()) return
       setCourses(list)
+      setContentError(null)
 
       const current = selectedCourseRef.current
       const next = (current && list.find(c => c.id === current.id)) || list[0] || null
@@ -931,7 +1021,7 @@ const chatScrollRef = useRef<HTMLDivElement | null>(null)
     })
     void loadCourses(isStale).catch(err => {
       if (!cancelled) {
-        setSyncError(err instanceof Error ? err.message : 'Ders listesi alınamadı.')
+        setContentError(err instanceof Error ? err.message : 'Ders listesi alınamadı.')
       }
     })
     void loadProviders(isStale)
@@ -994,6 +1084,9 @@ const resetSessionUiState = useCallback(() => {
     setSelectedWork(null)
     setCurrentRubric(undefined)
     setCurrentSubmission(undefined)
+    // Onceki oturumdan kalan hata banner'lari da temizlenir.
+    setSyncError(null)
+    setContentError(null)
   }, [])
 
   // Google ile baglanildiginda hesap ve ders listesi yenilenir.
@@ -1021,7 +1114,7 @@ const resetSessionUiState = useCallback(() => {
         })
       void loadCourses(() => cancelled).catch(err => {
         if (!cancelled) {
-          setSyncError(err instanceof Error ? err.message : 'Ders listesi alınamadı.')
+          setContentError(err instanceof Error ? err.message : 'Ders listesi alınamadı.')
         }
       })
     }
@@ -1046,6 +1139,7 @@ const resetSessionUiState = useCallback(() => {
       setSelectedWork(work)
       try {
         const data = await window.jmcAPI.getCourseWork(courseId, work.id)
+        setContentError(null)
         setCurrentRubric(data.rubric)
         setCurrentSubmission(data.submission)
 
@@ -1061,7 +1155,7 @@ const resetSessionUiState = useCallback(() => {
         setActiveContext(ctx)
         void window.jmcAPI.updateActiveContext(ctx)
       } catch (err) {
-        setSyncError(err instanceof Error ? err.message : 'Ödev detayı alınamadı.')
+        setContentError(err instanceof Error ? err.message : 'Ödev detayı alınamadı.')
       }
     },
     [selectedCourse?.name],
@@ -1597,13 +1691,27 @@ const resetSessionUiState = useCallback(() => {
           )}
         </header>
 
-        {syncError && (
+        {(syncError || contentError) && (
           <div
             role="alert"
             className="mx-3 mb-2 flex items-start gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-badge-bg)] p-2.5 text-[11px] leading-snug text-[var(--jmc-danger)]"
           >
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span className="line-clamp-3">{syncError}</span>
+            <span className="line-clamp-3 flex-1 break-words">{syncError ?? contentError}</span>
+            {/* Hata banner'i artik kalici degil: kullanici tek tikla
+                kapatabilir, sonraki basarili yuklemede de kendiliginden silinir. */}
+            <button
+              type="button"
+              onClick={() => {
+                setSyncError(null)
+                setContentError(null)
+              }}
+              aria-label="Uyarıyı kapat"
+              title="Uyarıyı kapat"
+              className="mt-0.5 shrink-0 rounded p-0.5 text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-danger)]"
+            >
+              <X className="h-3 w-3" />
+            </button>
           </div>
         )}
 
@@ -1802,9 +1910,15 @@ const resetSessionUiState = useCallback(() => {
 
       {/* ---------------- Ana içerik ---------------- */}
       <main className="relative min-w-0 flex-1 overflow-hidden flex flex-col">
-        {/* Üst İnce Yardımcı / Başlık Şeridi (Bileşenleri ve butonları asla örtmez) */}
-        {(!coursesOpen || !inspectorOpen || selectedCourse) && (
-          <header className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-elevated)] px-3 text-[11.5px] select-none z-10">
+        {/* Üst İnce Yardımcı / Başlık Şeridi (Bileşenleri ve butonları asla örtmez)
+         *
+         * Düzeltme: bu şerit `(!coursesOpen || !inspectorOpen || selectedCourse)`
+         * koşuluna bağlıydı. Her iki panel de açıkken ve henüz bir ders
+         * seçilmemişken şerit TAMAMEN KAYBOLUYORDU; içerik yukarı kayıyor ve
+         * panel çubuğu görünmez oluyordu. Artık daima çizilir — içi boş olsa
+         * bile yüksekliği sabit kalır, içerik zıplamaz.
+         */}
+        <header className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-elevated)] px-3 text-[11.5px] select-none z-10">
             <div className="flex items-center gap-2 min-w-0">
               {!coursesOpen && (
                 <button
@@ -1857,7 +1971,6 @@ const resetSessionUiState = useCallback(() => {
               )}
             </div>
           </header>
-        )}
         {selectedWork ? (
           <DocumentStudio
             course={selectedCourse}
@@ -2257,6 +2370,8 @@ const resetSessionUiState = useCallback(() => {
                 providers={providers}
                 providerId={String(selectedProviderId)}
                 modelId={selectedModelId}
+                open={isModelPickerOpen}
+                onOpenChange={setIsModelPickerOpen}
                 onProviderChange={value => {
                   setSelectedProviderId(value)
                   const next = providers.find(p => p.id === value)

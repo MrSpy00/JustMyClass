@@ -10,7 +10,7 @@ import {
 import { VaultService } from '../vaultService'
 import { StorageService } from '../storageService'
 import { ToolDispatcher, extractTextFromPdf, extractTextFromDocx } from '../toolDispatcher'
-import { providerHttp, HttpError } from '../httpClient'
+import { providerHttp, HttpError, HttpClient } from '../httpClient'
 import { JustMyClassMemoryService } from './memoryService'
 
 type ChatRole = 'user' | 'assistant' | 'system'
@@ -18,7 +18,25 @@ type ChatRole = 'user' | 'assistant' | 'system'
 export interface ChatParams {
   providerId: ProviderId
   modelId: string
-  messages: Array<{ role: ChatRole; content: string }>
+  /**
+   * Konusma gecmisi.
+   *
+   * `role: 'tool'` ve `toolCalls` alanlari yalnizca orchestrator'un
+   * KENDI arac dongusu icinde kullanilir; renderer'dan gelen mesajlar
+   * yalnizca `user` / `assistant` / `system` icerir.
+   */
+  messages: Array<{
+    role: ChatRole | 'tool'
+    content: string
+    toolCalls?: Array<{
+      id: string
+      name: string
+      args: Record<string, unknown>
+      thoughtSignature?: string
+    }>
+    toolCallId?: string
+    toolName?: string
+  }>
   context: ActiveContext
   mode: 'socratic' | 'draft' | 'rubric' | 'quiz' | 'general'
   attachments?: ChatAttachment[]
@@ -225,6 +243,36 @@ interface NormalizedToolCall {
   id: string
   name: string
   args: Record<string, unknown>
+  /** Gemini 3 icin `thoughtSignature`; arac cagrisi ile birlikte geri oynatilir. */
+  thoughtSignature?: string
+}
+
+/**
+ * Orchestrator'un ic konusma turu.
+ *
+ * ONCEKI SURUMDEKI HATA
+ * --------------------
+ * Arac sonuclari duz metin olarak `{ role: 'user', content: '...sonuc...' }`
+ * seklinde ekleniyordu ve modelin turu `{ role: 'assistant', content: '(araç çağrısı)' }`
+ * gibi bir YER TUTUCU metinle temsil ediliyordu. Bu, native tool
+ * protokolunu destekleyen hicbir saglayici icin gecersizdir:
+ *
+ *   - Gemini 3.x  : "Function call is missing a thought_signature" -> HTTP 400
+ *                   (model turu `functionCall` degil metin oldugu icin)
+ *   - Gemini 2.5  : "must have a text parameter" -> HTTP 400
+ *   - Anthropic   : `tool_use` / `tool_result` bloklari eksik -> HTTP 400
+ *   - OpenAI      : sessizce yanlis sonuc (arac sonucu kullanici metnine karisir)
+ *
+ * Artik her tur kendi protokolune dogru serilir.
+ */
+interface TurnMessage {
+  role: 'user' | 'assistant' | 'tool' | 'system'
+  content: string
+  /** `role === 'assistant'` ise modelin bu turde yaptigi native arac cagrilari. */
+  toolCalls?: NormalizedToolCall[]
+  /** `role === 'tool'` ise sonucun hangi cagriya ait oldugu. */
+  toolCallId?: string
+  toolName?: string
 }
 
 /** Saglayicinin gerektiğinden native tool cagirmasini destekledigi mi? */
@@ -238,6 +286,28 @@ function providerSupportsTools(prov: AiProviderConfig): boolean {
     default:
       return false
   }
+}
+
+/**
+ * MODEL duzeyinde arac destegi.
+ *
+ * `providerSupportsTools` yalnizca PROTOKOL seviyesinde bakardi ve
+ * fonksiyon cagirmayi desteklemeyen modellere (DeepSeek R1, Cog, Venice,
+ * NVIDIA NIM vb.) de 7 arac semasi gonderiliyordu. Desteklemeyen model
+ * semayi gorup JSON'u METIN olarak yaziyor, uygulama da bunu arac
+ * cagrisi sanmiyordu: kullanicinin bildirdigi "yapacagim / ham JSON"
+ * belirtisinin birinci nedeni buydu.
+ */
+function modelSupportsTools(prov: AiProviderConfig, modelId: string): boolean {
+  if (!providerSupportsTools(prov)) return false
+  const id = (modelId || '').toLowerCase()
+  if (!id) return false
+  // Chat modelleri disinda bir sey cagirilamaz.
+  if (/embed|whisper|tts|moderation|image|imagen|veo|lyria/.test(id)) return false
+  // Acilikca arac cagirmayi desteklemeyen aileler.
+  if (/deepseek-(reasoner|r1)/.test(id)) return false
+  if (/(^|[/:])r1\b/.test(id)) return false
+  return true
 }
 
 /**
@@ -424,32 +494,191 @@ function extractTextToolCalls(
     }
   }
 
-  // 4. Blok dışında, tek başına duran JSON nesneleri: {"name": "classroom_search", ...}
-  for (const toolName of KNOWN_TOOL_NAMES) {
-    const standalonePattern = new RegExp(`\\{\\s*["']name["']\\s*:\\s*["']${toolName}["'][\\s\\S]*?\\}`, 'g')
-    let sMatch: RegExpExecArray | null
-    while ((sMatch = standalonePattern.exec(cleanedText)) !== null) {
-      const fullJson = sMatch[0]
-      try {
-        const parsed = JSON.parse(fullJson)
-        if (parsed && (parsed.name === toolName || parsed.tool === toolName)) {
-          const rawArgs = parsed.arguments ?? parsed.parameters ?? parsed.args ?? {}
-          const args = typeof rawArgs === 'string' ? parseToolArguments(rawArgs) : (rawArgs || {})
-          toolCalls.push({
-            id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-            name: toolName,
-            args,
-          })
-          cleanedText = cleanedText.replace(fullJson, '')
-        }
-      } catch {
-        // devam et
-      }
-    }
-  }
+  // 4. Blok disinda, metne gomulu JSON arac cagrilari.
+  //    Onceki surum `\{\s*["']name["']\s*:\s*["']<tool>["'][\s\S]*?\}` kullaniyordu.
+  //    Bu regex ILK `}` ile durdugu icin `{"name":"x","arguments":{"a":1}}`
+  //    yalnizca `{"name":"x","arguments":{"a":1}` kesine kadar aliniyor,
+  //    JSON.parse basarisiz oluyor, `catch {}` yutuyor ve model
+  //    "yapacagim" dedikten sonra ham JSON'u metin olarak ekrana basip
+  //    DURUYORDU. Asagida denge-tanimli (balanced-brace) tarayici var.
+  cleanedText = extractInlineJsonToolCalls(cleanedText, toolCalls)
 
   return { cleanedText: cleanedText.trim(), toolCalls }
 }
+
+/**
+ * Metne gomulu JSON arac cagrilarini DENGELI parantez taramasiyla bulur.
+ *
+ * Cozulen problemler:
+ *   - Ic ice nesne (`arguments`) oldugunda ilk `}` ile kesilme sorunu.
+ *   - Anahtar siralamasi: `{"arguments":{...},"name":"x"}` da yakalanir.
+ *   - Python benzeri tek tirnak: `{'name': 'x', 'arguments': {...}}`.
+ *   - Argumanlari duz yazilmis varyant: `{"name":"x","query":"..."}`.
+ *   - Ic ice tirnakli dizeler (`{"arguments":{"q":"bir } işareti"}}`).
+ */
+function extractInlineJsonToolCalls(text: string, sink: NormalizedToolCall[]): string {
+  let out = text
+  let searchFrom = 0
+
+  // Metin icinde aday nesne baslangiclarini tara.
+  while (searchFrom < out.length) {
+    const start = out.indexOf('{', searchFrom)
+    if (start === -1) break
+
+    const end = findBalancedJsonEnd(out, start)
+    if (end === -1) {
+      searchFrom = start + 1
+      continue
+    }
+
+    const candidate = out.slice(start, end + 1)
+    const call = parseToolCallJson(candidate)
+    if (call) {
+      sink.push({
+        id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        name: call.name,
+        args: call.args,
+      })
+      // Bu adayi ve ondan sonraki bosluklari kirp.
+      out = out.slice(0, start) + out.slice(end + 1)
+      searchFrom = start
+      continue
+    }
+    searchFrom = end + 1
+  }
+
+  return out
+}
+
+/**
+ * Yanitta ayristirilamayan HAM arac JSON'u kaldi mi?
+ *
+ * KULLANICI SIKAYETI: "once yapim/yapacagim diyor, sonra ekranda ham
+ * arac JSON'u kaliyor ve duruyor". Model bazen arac cagrisini NATIVE olmayan
+ * bir bicimde (ornegin ```json { "tool": ... } ``` ya da eksik tirnakli
+ * metin icinde) uretir. `extractTextToolCalls` bunlari cogu zaman yakalar;
+ * yakalayamadiginda kullaniciya JSON gosterilmemeli, bunun yerine acik bir
+ * aciklama verilmelidir.
+ */
+function hasUnparsedToolJson(text: string): boolean {
+  if (!text) return false
+  const fences = text.match(/```(?:json)?\s*\{[\s\S]{0,4000}?```/gi) ?? []
+  const candidates = [...fences]
+  // Tirnak disi kalan nesne adaylari.
+  const braces = text.match(/\{[^{}]*"(?:tool|tool_name|toolName|function|arguments|params)"\s*:/gi) ?? []
+  candidates.push(...braces)
+  if (candidates.length === 0) return false
+  return candidates.some(c => !parseToolCallJson(c))
+}
+
+/**
+ * `start` indeksindeki `{` ile eslesen `}` indeksini dondurur.
+ * Tirnak icindeki parantezlar ve kacis karakterleri sayilmaz.
+ */
+function findBalancedJsonEnd(text: string, start: number): number {
+  let depth = 0
+  let inString = false
+  let quote = ''
+  let escaped = false
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (ch === '\\') {
+        escaped = true
+        continue
+      }
+      if (ch === quote) inString = false
+      continue
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = true
+      quote = ch
+      continue
+    }
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}
+
+/** Tek bir JSON metnini normalize arac cagrisina cevirir (gecersizse null). */
+function parseToolCallJson(raw: string): { name: string; args: Record<string, unknown> } | null {
+  const attempt = (text: string): { name: string; args: Record<string, unknown> } | null => {
+    let parsed: any
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      return null
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    const name: unknown = parsed.name ?? parsed.tool ?? parsed.function?.name
+    if (typeof name !== 'string' || !KNOWN_TOOL_NAMES.has(name)) return null
+    const rawArgs = parsed.arguments ?? parsed.parameters ?? parsed.args ?? parsed.function?.arguments
+    if (rawArgs === undefined || rawArgs === null) {
+      // Argumanlar duz yazilmis olabilir: {"name":"x","query":"fizik"}
+      const rest = { ...parsed }
+      delete rest.name
+      delete rest.tool
+      delete rest.function
+      delete rest.arguments
+      delete rest.parameters
+      delete rest.args
+      return { name, args: rest as Record<string, unknown> }
+    }
+    const args = typeof rawArgs === 'string' ? parseToolArguments(rawArgs) : (rawArgs as Record<string, unknown>)
+    return { name, args: args && typeof args === 'object' ? args : {} }
+  }
+
+  const direct = attempt(raw.trim())
+  if (direct) return direct
+
+  // Python/JS benzeri tek tirnakli JSON: '...' -> "..."
+  const relaxed = raw
+    .trim()
+    .replace(/([{,]\s*)'([^']*)'(\s*:)/g, '$1"$2"$3')
+    .replace(/:\s*'([^']*)'/g, ': "$1"')
+  if (relaxed !== raw.trim()) return attempt(relaxed)
+  return null
+}
+
+/**
+ * Gemini `functionResponse.response` alani yalnizca JSON NESNESI kabul eder.
+ * Araç sonucu duz metin oldugunda API 400 donuyordu.
+ */
+function parseToolResultForGemini(content: string): Record<string, unknown> {
+  const raw = (content ?? '').trim()
+  if (raw.startsWith('{') || raw.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object') {
+        return { result: Array.isArray(parsed) ? { items: parsed } : parsed }
+      }
+    } catch {
+      /* metin olarak gonder */
+    }
+  }
+  return { result: raw }
+}
+
+/**
+ * Gemini'de model erisim sorunu olursa dusulecek model.
+ * ONEMLI: Onceki surum burada `gemini-2.0-flash` ve `gemini-1.5-flash`
+ * kullaniyordu; IKISI DE GOOGLE TARAFINDAN KAPATILDI
+ * (2.0 serisi 2026-06-01, 1.5 serisi 2025-09-29). Otomatik dusus de
+ * 404 veriyor, yani kullaniciya gosterilen hata mesaji her seferinde
+ * "bulunamayan modeli secin" diyordu.
+ */
+const GEMINI_FALLBACK_MODEL = 'gemini-3.8-flash'
 
 /** Model kimliginden akil yurutme destegi tahmini (yalnizca yerellestirme icin). */
 function modelSupportsReasoning(id: string): boolean {
@@ -572,7 +801,23 @@ function modelStability(id: string): number {
  */
 function inferGeminiVision(id: string): boolean {
   const s = id.toLowerCase()
-  return /^(gemini-[123]\.|gemini-flash|gemini-pro|gemini-omni)/.test(s)
+  return /^(gemini-[0-9.]|gemini-flash|gemini-pro|gemini-omni)/.test(s)
+}
+
+/**
+ * Bir model kimliginin arac cagirmayi destekledigi tahmin eder.
+ *
+ * `normalizeFetchedModels` ONCEKI SURUMDE her cekilen model icin
+ * `supportsTools: true` yaziyordu; ModelPicker'daki ⚡ rozeti bu yuzden
+ * HER model icin yanlis gorunuyordu ve desteklemeyen modellere de
+ * arac semasi gonderiliyordu.
+ */
+function inferToolSupport(id: string): boolean {
+  const s = id.toLowerCase()
+  if (/deepseek-(reasoner|r1)/.test(s)) return false
+  if (/(^|[/:_-])r1([/:_-]|$)/.test(s)) return false
+  if (/embedding|whisper|tts|moderation|imagen|image-|veo|lyria|ocr/.test(s)) return false
+  return true
 }
 
 /**
@@ -608,7 +853,7 @@ export function normalizeFetchedModels(
       contextWindow: entry.contextWindow ?? 131_072,
       maxOutputTokens: entry.maxOutputTokens ?? 16_384,
       supportsVision: visionById(id),
-      supportsTools: true,
+      supportsTools: inferToolSupport(id),
       supportsReasoning: reasoningById(id),
     })
   }
@@ -647,12 +892,33 @@ export function normalizeFetchedModels(
  * KURAL: gomulu katalog her zaman korunur; sunucudan gelen yeni
  * modeller SONUNA eklenir. Boylece hem "her model gorunur" hem de
  * "hicbir model kaybolmaz" dogrulanir.
+ *
+ * DUZELTME (kullanilmayan model hatasi)
+ * ------------------------------------
+ * Canli `/models` cagrisi BASARILI oldugunda, gomulu katalogdaki hicbir
+ * model listede yoksa o model artik YOKTUR: Google tarafindan kapatilmis
+ * (orn. gemini-1.5-pro, gemini-2.0-flash) ya da OpenAI API'de hic
+ * sunulmamistir (gpt-oss-*). Onceki surum bunlari her zaman tutuyor,
+ * kullanici secince 404 aliyor ve hata mesaji da ayni olu modeli
+ * oneriyordu. Artik canli liste basariliysa KATALOG + CANLI birlestirilir
+ * ve yalnizca o saglayiciya ait olu kodlar elenir.
  */
 function mergeFetchedWithCatalog(catalog: AiModel[], fetched: AiModel[]): AiModel[] {
+  if (fetched.length === 0) return catalog
   const byId = new Map<string, AiModel>()
   for (const m of catalog) byId.set(m.id, m)
-  for (const m of fetched) if (!byId.has(m.id)) byId.set(m.id, m)
+  for (const m of fetched) byId.set(m.id, m)
   return [...byId.values()]
+}
+
+/**
+ * Canli model listesinde ARTIK BULUNMAYAN, gomulu katalogdaki olu kodlari
+ * eler. Yalnizca katalog girdisi uzerinde calisir.
+ */
+function pruneMissingCatalogModels(catalog: AiModel[], fetched: AiModel[]): AiModel[] {
+  if (fetched.length === 0) return catalog
+  const live = new Set(fetched.map(m => m.id))
+  return catalog.filter(m => live.has(m.id))
 }
 
 /**
@@ -814,8 +1080,9 @@ export class AiOrchestrator {
           { id: 'gpt-4.1-mini', name: 'GPT-4.1 mini', contextWindow: 1_047_576, maxOutputTokens: 32_768, supportsVision: true, supportsTools: true, supportsReasoning: false },
           { id: 'o3', name: 'o3', contextWindow: 200_000, maxOutputTokens: 100_000, supportsVision: true, supportsTools: true, supportsReasoning: true },
           { id: 'o4-mini', name: 'o4-mini', contextWindow: 200_000, maxOutputTokens: 100_000, supportsVision: true, supportsTools: true, supportsReasoning: true },
-          { id: 'gpt-oss-120b', name: 'GPT-OSS 120B (açık ağırlık)', contextWindow: 131_072, maxOutputTokens: 65_536, supportsVision: false, supportsTools: true, supportsReasoning: true },
-          { id: 'gpt-oss-20b', name: 'GPT-OSS 20B (açık ağırlık)', contextWindow: 131_072, maxOutputTokens: 65_536, supportsVision: false, supportsTools: true, supportsReasoning: true },
+          // DIKKAT: `gpt-oss-120b` / `gpt-oss-20b` OpenAI API'de YOKTUR;
+          // acik agirlikli modeller Groq/DeepInfra uzerinde sunulur.
+          // Onceki surumde burada listeleniyordu ve secildiginde 404 veriyordu.
         ],
       },
       {
@@ -828,15 +1095,26 @@ export class AiOrchestrator {
         isLocal: false,
         isEnabled: true,
         hasKey: local('gemini'),
-        selectedModel: 'gemini-2.0-flash',
+        selectedModel: GEMINI_FALLBACK_MODEL,
         healthStatus: 'unconfigured',
         privacyNotice:
           'Gemini ücretsiz katmanda istemler ürün geliştirme ve insan incelemesi amacıyla kullanılabilir. Öğrenci verisi ücretsiz katmana gönderilmemelidir.',
+        // MODEL KATALOGU DUZELTMESI
+        // -----------------------
+        // Eski katalogunun DORDU modeli de Google tarafindan kapatildi:
+        //   gemini-2.0-flash / -lite  -> 2026-06-01
+        //   gemini-1.5-pro / -flash   -> 2025-09-29
+        // Varsayilan model 404 dondugu icin GEMINI HICBIR KEZ CALISMIYORDU ve
+        // kullanici "api failed" hatasini goruyordu. Asagidaki kimlikler
+        // ai.google.dev/gemini-api/docs/models uzerinde yayinda ve en az
+        // 12 ay destekleniyor. Liste acilista canli `/models` cagrisiyla
+        // tazelenir; gomulu liste yalnizca ag yokken kullanilir.
         models: [
-          { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1_048_576, maxOutputTokens: 8_192, supportsVision: true, supportsTools: true, supportsReasoning: false, isDefault: true },
-          { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', contextWindow: 1_048_576, maxOutputTokens: 8_192, supportsVision: true, supportsTools: true, supportsReasoning: false },
-          { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', contextWindow: 1_048_576, maxOutputTokens: 8_192, supportsVision: true, supportsTools: true, supportsReasoning: false },
-          { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', contextWindow: 2_097_152, maxOutputTokens: 8_192, supportsVision: true, supportsTools: true, supportsReasoning: false },
+          { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: true, isDefault: true },
+          { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: true },
+          { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: false },
+          { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: false },
+          { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro (önizleme)', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: true },
         ],
       },
       {
@@ -849,13 +1127,17 @@ export class AiOrchestrator {
         isLocal: false,
         isEnabled: true,
         hasKey: local('deepseek'),
-        selectedModel: 'deepseek-reasoner',
+        selectedModel: 'deepseek-chat',
         healthStatus: 'unconfigured',
         privacyNotice:
           'DeepSeek ile paylaşılan verinin işlenme yeri ve saklama koşulları sağlayıcının güncel şartlarına tabidir. Öğrenci verisi için varsayılan tercih edilmemelidir.',
         models: [
-          { id: 'deepseek-reasoner', name: 'DeepSeek R1', contextWindow: 64_000, maxOutputTokens: 8_192, supportsVision: false, supportsTools: false, supportsReasoning: true, isDefault: true },
-          { id: 'deepseek-chat', name: 'DeepSeek V3', contextWindow: 64_000, maxOutputTokens: 8_192, supportsVision: false, supportsTools: true, supportsReasoning: false },
+          // `deepseek-reasoner` (R1) fonksiyon cagirmayi DESTEKLEMEZ.
+          // Varsayilan model R1 iken arac semasi gonderilip modelden ham
+          // JSON metin olarak istemek, kullanicinin "yapacagim diyor ve
+          // duruyor" belirtisinin kaynagiydi. Artik varsayilan V3'tur.
+          { id: 'deepseek-chat', name: 'DeepSeek V3', contextWindow: 128_000, maxOutputTokens: 8_192, supportsVision: false, supportsTools: true, supportsReasoning: false, isDefault: true },
+          { id: 'deepseek-reasoner', name: 'DeepSeek R1 (arac çağırma desteklemez)', contextWindow: 128_000, maxOutputTokens: 8_192, supportsVision: false, supportsTools: false, supportsReasoning: true },
         ],
       },
       {
@@ -956,7 +1238,11 @@ export class AiOrchestrator {
         brand: 'llamacpp',
         keyUrl: 'https://github.com/ggml-org/llama.cpp',
         protocolType: 'llamacpp',
-        baseUrl: 'http://127.0.0.1:8080',
+        // llama.cpp `llama-server` OpenAI uyumlu ucu `/v1` ON EKI ile
+        // sunar. Onceki surumde adres `/v1` icermiyordu ve
+        // `POST http://127.0.0.1:8080/chat/completions` deniyordu;
+        // sunucu 404 donuyordu, yani saglayici HICBIR KEZ calismiyordu.
+        baseUrl: 'http://127.0.0.1:8080/v1',
         isLocal: true,
         isEnabled: true,
         hasKey: true,
@@ -1398,7 +1684,9 @@ export class AiOrchestrator {
 
     const applyFetched = (models: AiModel[]): AiModel[] => {
       if (!models.length) return prov.models
-      const merged = mergeFetchedWithCatalog(prov.models, models)
+      // Canli liste basarili: gomulu katalogdaki KAPANMIS olu kodlari elenir.
+      const pruned = pruneMissingCatalogModels(prov.models, models)
+      const merged = mergeFetchedWithCatalog(pruned, models)
       prov.models = merged
       prov.healthStatus = 'healthy'
       if (!prov.selectedModel || !merged.some(m => m.id === prov.selectedModel)) {
@@ -1887,10 +2175,17 @@ export class AiOrchestrator {
       return `${providerName} API anahtarı geçersiz veya yetkisiz. Lütfen Ayarlar > Yapay Zekâ bölümünden anahtarınızı güncelleyin.`
     }
     if (lower.includes('not been granted access') || lower.includes('permissiondenied')) {
-      return `${providerName} bu modele erişim izni vermedi (erken erişim veya yetki kısıtı). Lütfen genel kullanıma açık olan 'gemini-2.0-flash' modelini seçin.`
+      return `${providerName} bu modele erişim izni vermedi (önizleme veya yetki kısıtı). Lütfen model listesinden genel kullanıma açık bir model seçin${
+        providerName.toLowerCase().includes('gemini') ? ` (örn. ${GEMINI_FALLBACK_MODEL})` : ''
+      }.`
     }
     if (lower.includes('404') || lower.includes('model not found') || lower.includes('is not found for api version')) {
-      return `Seçilen model ${providerName} üzerinde bulunamadı veya kullanımdan kalktı. Lütfen 'gemini-2.0-flash' veya model listesinden güncel bir model seçin.`
+      return (
+        `Seçilen model ${providerName} üzerinde bulunamadı veya kullanımdan kaldırıldı. ` +
+        (providerName.toLowerCase().includes('gemini')
+          ? `${GEMINI_FALLBACK_MODEL} modelini ya da Ayarlar > Yapay Zekâ > Sağlayıcılar bölümündeki "Modelleri sorgula" ile yenilenen listeyi kullanın. `
+          : 'Ayarlar > Yapay Zekâ > Sağlayıcılar bölümündeki "Modelleri sorgula" ile listeyi yenileyin ve geçerli bir model seçin. ')
+      )
     }
     if (
       lower.includes('net::err_connection_refused') ||
@@ -1939,7 +2234,7 @@ export class AiOrchestrator {
       p: AiProviderConfig,
       key: string | undefined,
       model: string,
-      chatMessages: Array<{ role: ChatRole; content: string }>,
+      chatMessages: TurnMessage[],
       toolsEnabled?: boolean,
     ): Promise<StreamOutcome> => {
       const callParams: ChatParams = {
@@ -1964,7 +2259,7 @@ export class AiOrchestrator {
       p: AiProviderConfig,
       key: string | undefined,
       model: string,
-      chatMessages: Array<{ role: ChatRole; content: string }>,
+      chatMessages: TurnMessage[],
       toolsEnabled?: boolean,
     ): Promise<StreamOutcome> => {
       let currentMessages = chatMessages
@@ -1988,8 +2283,9 @@ export class AiOrchestrator {
           if (isPayloadTooLarge && currentMessages.length > 2) {
             // 413 durumunda: mesaj geçmişini buda ve araç sonuçlarını kısalt
             currentMessages = currentMessages.slice(-4).map(m => ({
-              role: m.role,
-              content: m.content.length > 6000 ? m.content.slice(0, 6000) + '\n...[Metin boyutu nedeniyle kısaltıldı]...' : m.content,
+              ...m,
+              content:
+                m.content.length > 6000 ? m.content.slice(0, 6000) + '\n...[Metin boyutu nedeniyle kısaltıldı]...' : m.content,
             }))
             continue
           }
@@ -2001,17 +2297,26 @@ export class AiOrchestrator {
             continue
           }
 
-          // Gemini model erişim kısıtlaması (404/403/access) durumunda stabil 'gemini-2.0-flash' modeline otomatik düş
+          // Gemini model erisim kisitlamasi (404/403/400) durumunda
+          // YAYINDA olan stabil bir modele otomatik dusulur.
+          //
+          // ONCEKI SURUM `gemini-2.0-flash` ve `gemini-1.5-flash`
+          // hedefliyordu; IKISI DE GOOGLE TARAFINDAN KAPATILDI. Yani
+          // otomatik kurtarma da 404 veriyor ve kullaniciya gosterilen
+          // hata mesaji da ayni olmayan modeli oneriyordu.
           const isGeminiModelIssue =
             p.protocolType === 'gemini' &&
             ((err instanceof HttpError && (err.status === 404 || err.status === 403 || err.status === 400)) ||
               /not found|not granted access|model.*not.*exist|invalid argument.*model|unsupported/i.test(String(err)))
 
-          if (isGeminiModelIssue && model !== 'gemini-2.0-flash' && model !== 'gemini-1.5-flash') {
+          if (isGeminiModelIssue && model !== GEMINI_FALLBACK_MODEL) {
             try {
-              return await executeStreamCall(p, key, 'gemini-2.0-flash', currentMessages)
-            } catch {
-              return await executeStreamCall(p, key, 'gemini-1.5-flash', currentMessages)
+              return await executeStreamCall(p, key, GEMINI_FALLBACK_MODEL, currentMessages, toolsEnabled)
+            } catch (fallbackErr) {
+              // Ilk gercek hata kullaniciya gosterilmeli; dususmenin
+              // basarisizligi onu gizlememeli.
+              console.warn('[AiOrchestrator] Gemini otomatik model dususu basarisiz:', fallbackErr)
+              throw err
             }
           }
 
@@ -2068,20 +2373,15 @@ export class AiOrchestrator {
     const allToolCalls: ToolCallRecord[] = []
     let reasoningParts: string[] = []
     let answer = ''
-    let conversation = [...params.messages]
+    let conversation: TurnMessage[] = params.messages.map(m => ({ role: m.role, content: m.content }))
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
       if (signal?.aborted) throw new Error('Yanıt üretimi kullanıcı tarafından iptal edildi.')
 
-      if (round > 0) {
-        // Her turdan once metni temizle: modelin "arac cagiriyorum"
-        // diye yazdigi sey kullaniciya GORUNMEZ, yalnizca model gecer.
-        const cleaned = this.stripToolPreambles(answer)
-        conversation = [
-          ...conversation,
-          { role: 'assistant', content: cleaned || '(araç çağrısı)' },
-        ]
-      }
+      // NOT: Onceki surumde tur basinda `{ role: 'assistant', content: '(araç çağrısı)' }`
+      // yer tutucusu ekleniyordu. Artik dogru bicim, turun sonunda
+      // `modelTurn` (arac cagrilariyla) + `toolTurns` (sonuclarla)
+      // ekleniyor; basa ayrica tur eklemek konusmasi bozardi.
 
       const turn = round === 0
         ? outcome
@@ -2090,7 +2390,12 @@ export class AiOrchestrator {
             activeApiKey,
             activeModelId,
             conversation,
-            round >= 2 ? false : undefined,
+            // ONCEKI SURUM: `round >= 2 ? false` ile 2. turdan itibaren
+            // arac semasi GONDERILMIYORDU. Yani model en fazla BIR tur
+            // native arac cagirabiliyor, sonraki turlarda sema yokken
+            // sistem istemi "araclari KESINLIKLE cagir" demeye devam
+            // ediyor ve model JSON'u METIN olarak yaziyordu.
+            // Araclar her turda gonderilir.
           )
 
       if (turn.reasoning) reasoningParts.push(turn.reasoning)
@@ -2123,9 +2428,13 @@ export class AiOrchestrator {
 
       if (pendingCalls.length === 0) {
         // Model arac istemiyor: dongu bitti.
-        if (round >= MAX_TOOL_ROUNDS && turn.toolCalls.length > 0) {
+        // ANCAK yanitta ayristirilamayan ham arac JSON'u kalmis olabilir.
+        // Kullaniciya JSON gostermek yerine acikca belirtiyoruz.
+        if (hasUnparsedToolJson(answer)) {
           onChunk(
-            `\n\n*(Uyarı: model ${MAX_TOOL_ROUNDS} ardışık araç turuna ulaştı; yanıt mevcut bulgularla sunuluyor.)*\n\n`,
+            '\n\n*(Bu model, arac çağrısını standart biçimde gönderemedi; ' +
+              'çağrı çalıştırılamadı. Model değiştirerek veya soruyu biraz ' +
+              'yeniden ifade ederek tekrar deneyebilirsiniz.)*\n\n',
           )
         }
         break
@@ -2153,10 +2462,52 @@ export class AiOrchestrator {
         break
       }
 
-      conversation = [
-        ...conversation,
-        { role: 'user', content: this.formatToolResultsForModel(executed.results) },
-      ]
+      // ---- NATIVE PROTOKOL DONGUSU -------------------------------------
+      //
+      // ONCEKI SURUM BURADA:
+      //   { role: 'assistant', content: '(araç çağrısı)' }   <- YER TUTUCU
+      //   { role: 'user',      content: '<düz sonuç metni>' }
+      // yaziyordu. Bu bicim native tool destekleyen HICBIR saglayici
+      // icin gecersizdi:
+      //   • Gemini 3.x  -> "Function call is missing a thought_signature"
+      //   • Gemini 2.5  -> "must have a text parameter"
+      //   • Anthropic   -> tool_use / tool_result blokları eksik
+      // ve 2. turda HTTP 400 ile arac kullanimi tamamen kiriyordu.
+      //
+      // Artik model turu `functionCall` / `tool_use` / `tool_calls`
+      // bloklariyla, sonuc turu de protokole uygun `role: 'tool'` turu
+      // olarak geri besleniyor.
+      const nativeToolCalls = pendingCalls.filter(tc => KNOWN_TOOL_NAMES.has(tc.name))
+      const nativeToolsActive =
+        params.toolsEnabled !== false && modelSupportsTools(activeProv, activeModelId) && nativeToolCalls.length > 0
+
+      const modelTurn: TurnMessage = {
+        role: 'assistant',
+        content: this.stripToolPreambles(answer),
+        toolCalls: nativeToolsActive ? nativeToolCalls : undefined,
+      }
+
+      const toolTurns: TurnMessage[] = nativeToolsActive
+        ? executed.results.map(res => ({
+            role: 'tool' as const,
+            content: res.content,
+            toolCallId: res.callId,
+            toolName: res.name,
+          }))
+        : [
+            // Dizi-katmanı desteği yok: model sonucu düz metin olarak
+            // görmek zorunda (protokol-yorumlanabilir yedek yol).
+            { role: 'user' as const, content: this.formatToolResultsForModel(executed.results) },
+          ]
+
+      conversation = [...conversation, modelTurn, ...toolTurns]
+
+      if (round >= MAX_TOOL_ROUNDS) {
+        onChunk(
+          `\n\n*(Uyarı: model ${MAX_TOOL_ROUNDS} ardışık araç turuna ulaştı; yanıt mevcut bulgularla sunuluyor.)*\n\n`,
+        )
+        break
+      }
     }
 
     let finalContent = answer.trim()
@@ -2227,6 +2578,18 @@ export class AiOrchestrator {
 
   /**
    * Model metnindeki "arac cagiriyorum" türü geçiş cümlelerini temizler.
+   *
+   * ONCEKI SURUMUN HATASI
+   * ---------------------
+   * Tum alternatifler opsiyonel oldugu icin regex pratikte "satir `arac`,
+   * `araç`, `tool`, `function` ile mi basliyor" sorusuna donusuyordu.
+   * Sonuc: `Toolchain yapısı`, `Aracınlastırma`, `- Araç listesi` gibi
+   * GECERLI Turkce/Ingilizce cumleler de siliniyordu. Ayrica `if (!l)
+   * return false` satiri HER BOS SATIRI siliyor, yani paragraf yapisini
+   * bozuyordu.
+   *
+   * Artik yalnizca net "gecis cumlesi" kaliplari silinir ve bos satirlar
+   * korunur.
    */
   private stripToolPreambles(text: string): string {
     if (!text) return ''
@@ -2234,18 +2597,40 @@ export class AiOrchestrator {
       .split('\n')
       .filter(line => {
         const l = line.trim()
-        if (!l) return false
-        if (/^(ilk olarak|şimdi|simdi|öncelikle|oncelikle)?\s*[`*_#-]*\s*(arac|araç|tool|function|fonksiyon|classroom_search|workspace_read|web_search)/i.test(l)) return false
-        if (/fonksiyonunu\s+(kullanarak|çağırarak|calistirarak|kullanıyorum|çalıştırıyorum)/i.test(l)) return false
-        if (/(dosyay[ıi]|belgeyi|icerigi|içeriği)\s+(okuyorum|inceliyorum|arıyorum|ariyorum)/i.test(l)) return false
-        if (/^(i will now|calling tool|calling function|searching classroom|reading file)/i.test(l)) return false
+        if (!l) return true // bos satirlar KORUNUR (paragraf yapisı)
+        // Markdown madde isaretini soy, duz metne bak.
+        const body = l.replace(/^[-*+>]\s*/, '').replace(/^[`*_#]+\s*/, '').trim()
+
+        const preamblePatterns = [
+          // "... aracini kullaniyorum / cagiriyorum"
+          /^(\p{L}.)?\p{L}*\s*(araç|arac|tool|function|fonksiyon)\w*\s*(çağırıyorum|cagiriyorum|kullanıyorum|kullaniyorum|çalıştırıyorum|calistiriyorum|call|using)\b/iu,
+          // "(Araç çağrısı)" / "Araç Sonucu: ..." gibi etiketler
+          /^[*_`#-]*\s*(araç çağrısı|arac cagrisi|araç sonucu|arac sonucu|tool call|tool result)\s*[:*-]/iu,
+          // "... yapıyorum" + arac fiili
+          /^(\p{L}.)?\p{L}*\s*(fonksiyonunu|aracini|aracını|aracı)\s+\w*\s*(kullanarak|çağırarak|cagirarak|çalıştırıyorum|calistiriyorum)\b/iu,
+          // "... dosyayı okuyorum" / "... arıyorum"
+          /^(dosyay[ıi]|belgeyi|içeriği|icerigi|arşivi|arsivi)\s+\w*\s*(okuyorum|inceliyorum|arıyorum|ariyorum|tarıyorum|tariyorum)\b/iu,
+          // Ingilizce gecis cumleleri
+          /^(i will now|i'll now|calling|searching|reading|let me)\s+(call|use|read|search|open)\b/i,
+        ]
+
+        for (const p of preamblePatterns) {
+          if (p.test(body)) return false
+        }
         return true
       })
       .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
       .trim()
   }
 
-  /** Araç sonuçlarını modele geri beslemek için okunur bir metne çevirir. */
+  /**
+   * Araç sonuçlarını modele geri beslemek için okunur bir metne çevirir.
+   *
+   * DIZI KATMANI DESTEKL EMYEN SAGLAYICILAR icin kullanilir: OpenAI uyumlu
+   * olmayan protokollerde (veya arac semasi gonderilemediginde) model
+   * cagrinin sonucunu duz metin olarak gormek zorundadir.
+   */
   private formatToolResultsForModel(
     results: Array<{ callId: string; name: string; content: string; isError?: boolean }>,
   ): string {
@@ -2344,29 +2729,59 @@ export class AiOrchestrator {
     const userIndices = params.messages.map((m, i) => (m.role === 'user' ? i : -1)).filter(i => i !== -1)
     const lastUserIdx = userIndices.length > 0 ? userIndices[userIndices.length - 1] : -1
 
-    const formattedMessages = params.messages
-      .filter(m => m.role !== 'system')
-      .map((m, idx) => {
-        if (idx !== lastUserIdx || !hasAttachments) {
-          return { role: m.role, content: m.content }
-        }
+    const formattedMessages: any[] = []
+    for (const [idx, m] of params.messages.entries()) {
+      if (m.role === 'system') continue
 
-        const { textContent, images } = formatUserMessageWithAttachments(m.content, params.attachments)
-        if (images.length > 0 && supportsVision) {
-          const parts: any[] = [{ type: 'text', text: textContent }]
-          for (const img of images) {
-            parts.push({
-              type: 'image_url',
-              image_url: { url: `data:${img.mimeType};base64,${img.base64Data}` },
-            })
-          }
-          return { role: 'user', content: parts }
-        } else if (images.length > 0 && !supportsVision) {
-          const warning = `\n\n*(Not: [${images.map(i => i.name).join(', ')}] görseli eklendi; ancak "${params.modelId}" modeli görsel analizini desteklemiyor. Kullanıcıya görsel analizi için GPT-4o veya Gemini gibi multimodal bir modele geçebileceğini belirtin.)*`
-          return { role: 'user', content: textContent + warning }
+      // ARAC SONUCU: OpenAI protokoli bunu ayri bir `role: 'tool'` turu
+      // olarak ister ve `tool_call_id` ile eslestirir.
+      if (m.role === 'tool') {
+        formattedMessages.push({
+          role: 'tool',
+          tool_call_id: m.toolCallId || 'call_unknown',
+          content: m.content,
+        })
+        continue
+      }
+
+      // MODEL TURU: native arac cagrilari `tool_calls` dizisiyle geri
+      // doner. Onceki surumde model turu duz metin olarak gonderildigi
+      // icin arac sonucu ile model cevabi birbirine karisiyordu.
+      if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+        formattedMessages.push({
+          role: 'assistant',
+          content: m.content || null,
+          tool_calls: m.toolCalls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: { name: tc.name, arguments: JSON.stringify(tc.args ?? {}) },
+          })),
+        })
+        continue
+      }
+
+      if (idx !== lastUserIdx || !hasAttachments) {
+        formattedMessages.push({ role: m.role, content: m.content })
+        continue
+      }
+
+      const { textContent, images } = formatUserMessageWithAttachments(m.content, params.attachments)
+      if (images.length > 0 && supportsVision) {
+        const parts: any[] = [{ type: 'text', text: textContent }]
+        for (const img of images) {
+          parts.push({
+            type: 'image_url',
+            image_url: { url: `data:${img.mimeType};base64,${img.base64Data}` },
+          })
         }
-        return { role: 'user', content: textContent }
-      })
+        formattedMessages.push({ role: 'user', content: parts })
+      } else if (images.length > 0 && !supportsVision) {
+        const warning = `\n\n*(Not: [${images.map(i => i.name).join(', ')}] görseli eklendi; ancak "${params.modelId}" modeli görsel analizini desteklemiyor. Kullanıcıya görsel analizi için GPT-4o veya Gemini gibi multimodal bir modele geçebileceğini belirtin.)*`
+        formattedMessages.push({ role: 'user', content: textContent + warning })
+      } else {
+        formattedMessages.push({ role: 'user', content: textContent })
+      }
+    }
 
     const body: Record<string, unknown> = {
       model: params.modelId,
@@ -2382,9 +2797,13 @@ export class AiOrchestrator {
     // ama hicbir istek gövdesine eklenmiyordu; model bu yuzden arac
     // cagirmiyor, kullaniciya "dosyayi inceliyorum" dedikten sonra
     // yalnizca dosya ADINI okuyup icerik uyduruyordu.
-    if (params.toolsEnabled !== false && providerSupportsTools(prov)) {
+    if (params.toolsEnabled !== false && modelSupportsTools(prov, params.modelId)) {
       body.tools = toOpenAiTools()
       body.tool_choice = 'auto'
+      // Bazi OpenAI uyumlu geçitler (DeepSeek, Groq, cerebras vb.)
+      // paralel arac cagirmasini varsayilan olarak acik birakip 400
+      // dondurur. Dairesel akis kullandigimiz icin paralellik gereksiz.
+      body.parallel_tool_calls = false
     }
 
     const res = await providerHttp.request<Response>(`${prov.baseUrl}/chat/completions`, {
@@ -2445,9 +2864,15 @@ export class AiOrchestrator {
     for await (const piece of iterateStream(res)) {
       for (const line of buffer.push(decoder.decode(piece, { stream: true }))) consumeLine(line)
     }
+
     // Saglayici son satiri newline ile bitirmeyebilir; `flush()` olmadan
     // son token sessizce kayboluyordu.
     for (const line of buffer.flush()) consumeLine(line)
+
+    // Akis bitti: govde zaman asimi zamanlayicisini kapat. Bu cagrilmazsa
+    // her akistan sonra 180 saniyelik bir zaman asimi bekletir kalir ve
+    // uzun suren sohbetlerde surec hafizasi buyur.
+    HttpClient.clearStreamDeadline(res)
 
     const toolCalls: NormalizedToolCall[] = []
     toolAcc.forEach((entry, idx) => {
@@ -2484,53 +2909,78 @@ export class AiOrchestrator {
     const userIndices = params.messages.map((m, i) => (m.role === 'user' ? i : -1)).filter(i => i !== -1)
     const lastUserIdx = userIndices.length > 0 ? userIndices[userIndices.length - 1] : -1
 
-    const formattedMessages = params.messages
-      .filter(m => m.role !== 'system')
-      .map((m, idx) => {
-        if (idx !== lastUserIdx || !hasAttachments) {
-          return { role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }
-        }
+    const formattedMessages: any[] = []
+    for (const [idx, m] of params.messages.entries()) {
+      if (m.role === 'system') continue
 
-        const { textContent, images, nonImages } = formatUserMessageWithAttachments(m.content, params.attachments)
-        const contentParts: any[] = []
+      // ARAC SONUCU: Anthropic `tool_result` blogunu `role: 'user'` icinde
+      // ister ve `tool_use_id` ile `tool_use` bloguna baglar.
+      if (m.role === 'tool') {
+        formattedMessages.push({
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: m.toolCallId || 'call_unknown', content: m.content }],
+        })
+        continue
+      }
 
-        for (const img of images) {
-          if (img.base64Data) {
-            contentParts.push({
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: img.mimeType,
-                data: img.base64Data,
-              },
-            })
-          }
+      // MODEL TURU: `tool_use` blogu olmadan gonderilen arac sonucu
+      // Anthropic tarafindan reddedilir (400).
+      if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+        const blocks: any[] = []
+        if (m.content) blocks.push({ type: 'text', text: m.content })
+        for (const tc of m.toolCalls) {
+          blocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.args ?? {} })
         }
-        for (const doc of nonImages) {
-          if (doc.mimeType === 'application/pdf' && doc.base64Data && !doc.textContent) {
-            contentParts.push({
-              type: 'document',
-              source: {
-                type: 'base64',
-                media_type: 'application/pdf',
-                data: doc.base64Data,
-              },
-            })
-          }
+        formattedMessages.push({ role: 'assistant', content: blocks })
+        continue
+      }
+
+      if (idx !== lastUserIdx || !hasAttachments) {
+        formattedMessages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })
+        continue
+      }
+
+      const { textContent, images, nonImages } = formatUserMessageWithAttachments(m.content, params.attachments)
+      const contentParts: any[] = []
+
+      for (const img of images) {
+        if (img.base64Data) {
+          contentParts.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: img.mimeType,
+              data: img.base64Data,
+            },
+          })
         }
-        contentParts.push({ type: 'text', text: textContent })
-        return { role: 'user', content: contentParts }
-      })
+      }
+      for (const doc of nonImages) {
+        if (doc.mimeType === 'application/pdf' && doc.base64Data && !doc.textContent) {
+          contentParts.push({
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: doc.base64Data,
+            },
+          })
+        }
+      }
+      contentParts.push({ type: 'text', text: textContent })
+      formattedMessages.push({ role: 'user', content: contentParts })
+    }
 
     const body: Record<string, unknown> = {
         model: params.modelId,
         system: systemPrompt,
-        max_tokens: 8_192,
+        max_tokens: 16_000,
         stream: true,
         messages: formattedMessages,
       }
-      if (params.toolsEnabled !== false && providerSupportsTools(prov)) {
+      if (params.toolsEnabled !== false && modelSupportsTools(prov, params.modelId)) {
         body.tools = toAnthropicTools()
+        body.tool_choice = { type: 'auto' }
       }
 
     const res = await providerHttp.request<Response>(`${prov.baseUrl}/messages`, {
@@ -2565,13 +3015,26 @@ export class AiOrchestrator {
           if (parsed.type === 'content_block_start') {
             const cb = parsed.content_block
             if (cb?.type === 'tool_use') {
-              currentToolIndex = typeof cb.index === 'number' ? cb.index : toolAcc.size
-              toolAcc.set(currentToolIndex as number, {
+              // Anthropic SSE'de `index` OLAYIN KOKUNDE gelir,
+              // `content_block` icinde DEGIL. Onceki surum `cb.index`
+              // okuyordu ve her zaman `undefined` dusiyordu.
+              const idx =
+                typeof parsed.index === 'number'
+                  ? parsed.index
+                  : typeof cb.index === 'number'
+                    ? cb.index
+                    : toolAcc.size
+              currentToolIndex = idx
+              toolAcc.set(idx, {
                 id: String(cb.id ?? ''),
                 name: String(cb.name ?? ''),
                 json: '',
               })
             }
+          } else if (parsed.type === 'content_block_stop') {
+            // Blok kapandi: sonraki metin blogu bir onceki arac
+            // cagrisinin argumanina yanlis yazilmasin.
+            currentToolIndex = null
           } else if (parsed.type === 'content_block_delta') {
             const delta = parsed.delta
             if (delta?.thinking) {
@@ -2606,6 +3069,8 @@ export class AiOrchestrator {
         /* yoksay */
       }
     }
+
+    HttpClient.clearStreamDeadline(res)
 
     const toolCalls: NormalizedToolCall[] = []
     toolAcc.forEach((entry, idx) => {
@@ -2645,8 +3110,38 @@ export class AiOrchestrator {
     for (let idx = 0; idx < params.messages.length; idx++) {
       const m = params.messages[idx]
       if (m.role === 'system') continue
-      const targetRole = m.role === 'assistant' ? 'model' : 'user'
       const parts: any[] = []
+
+      // ARAC SONUCU: Gemini arac cagrisi sonucunu `functionResponse`
+      // PART'i olarak ister. Onceki surum sonucu duz `{ text: ... }`
+      // olarak gonderiyordu; Gemini 3.x buna
+      // "Function call is missing a thought_signature" / "must have a
+      // text parameter" seklinde HTTP 400 donuyordu ve arac kullanimi
+      // TAMAMEN calismiyordu.
+      if (m.role === 'tool') {
+        parts.push({
+          functionResponse: {
+            name: m.toolName || 'tool',
+            response: parseToolResultForGemini(m.content),
+          },
+        })
+        const last = rawTurns[rawTurns.length - 1]
+        if (last && last.role === 'user') last.parts.push(...parts)
+        else rawTurns.push({ role: 'user', parts })
+        continue
+      }
+
+      const targetRole = m.role === 'assistant' ? 'model' : 'user'
+
+      // MODEL TURU: `functionCall` part'i ve `thoughtSignature` geri
+      // oynatilir. Gemini 3.x imzayi zorunlu ister.
+      if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+        for (const tc of m.toolCalls) {
+          const fn: Record<string, unknown> = { name: tc.name, args: tc.args ?? {} }
+          if (tc.thoughtSignature) fn.thoughtSignature = tc.thoughtSignature
+          parts.push({ functionCall: fn })
+        }
+      }
 
       if (idx === lastUserIdx && hasAttachments) {
         const { textContent, images, nonImages } = formatUserMessageWithAttachments(m.content, params.attachments)
@@ -2708,13 +3203,25 @@ export class AiOrchestrator {
     const geminiBody: Record<string, unknown> = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents,
+      generationConfig: {
+        temperature: 0.35,
+        maxOutputTokens: 16_384,
+      },
+      // Ogrenci/okul icerikleri varsayilan guvenlik filtrelerine takilip
+      // BOS YANIT donuyordu. Kullanici bu ayari degistiremiyordu.
+      safetySettings: [
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+      ],
     }
-    if (params.toolsEnabled !== false && providerSupportsTools(prov)) {
+    if (params.toolsEnabled !== false && modelSupportsTools(prov, params.modelId)) {
       geminiBody.tools = toGeminiTools()
       geminiBody.toolConfig = { functionCallingConfig: { mode: 'AUTO' } }
     }
 
-    const cleanModelId = (params.modelId || 'gemini-2.0-flash').replace(/^models\//, '')
+    const cleanModelId = (params.modelId || GEMINI_FALLBACK_MODEL).replace(/^models\//, '')
     const url = `${prov.baseUrl}/models/${encodeURIComponent(cleanModelId)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`
     const res = await providerHttp.request<Response>(
       url,
@@ -2735,11 +3242,23 @@ export class AiOrchestrator {
     const toolCalls: NormalizedToolCall[] = []
     const buffer = new SseBuffer()
     const decoder = new TextDecoder()
+    /** Istek seviyesinde blok varsa (candidates bos gelir). */
+    let promptBlockReason = ''
 
     const consume = (line: string): void => {
       if (!line.startsWith('data:')) return
       try {
         const parsed = JSON.parse(line.slice(5).trim())
+        // PROMPT SEVIYESI BLOK: `candidates` hic gelmez, gerekce yalnizca
+        // buradadir. Onceki surum bunu hic okumuyordu ve kullaniciya
+        // "Model bos bir yanit dondurdu" (yani arac dongusu suculu)
+        // hatasi gosteriyordu.
+        if (parsed.promptFeedback?.blockReason) {
+          promptBlockReason = String(parsed.promptFeedback.blockReason)
+          if (parsed.promptFeedback.blockReasonMessage) {
+            promptBlockReason += `: ${String(parsed.promptFeedback.blockReasonMessage)}`
+          }
+        }
         const candidate = parsed.candidates?.[0]
         const parts = candidate?.content?.parts ?? []
         for (const part of parts) {
@@ -2751,11 +3270,19 @@ export class AiOrchestrator {
             onChunk(part.text)
           } else if (part.functionCall?.name) {
             // NATIVE TOOL CAGIRISI
-            toolCalls.push({
-              id: part.functionCall.id || `call_${Date.now()}_${toolCalls.length}`,
-              name: String(part.functionCall.name),
-              args: (part.functionCall.args ?? {}) as Record<string, unknown>,
-            })
+            // `thoughtSignature` Gemini 3.x icin ZORUNLUDUR; bir sonraki
+            // turda ayni imzayla geri oynatilmazsa HTTP 400 doner.
+            const fc = part.functionCall
+            const tc: NormalizedToolCall = {
+              id: fc.id || `call_${Date.now()}_${toolCalls.length}`,
+              name: String(fc.name),
+              args: (fc.args ?? {}) as Record<string, unknown>,
+            }
+            const signature = fc.thoughtSignature ?? part.thoughtSignature
+            if (typeof signature === 'string' && signature.length > 0) {
+              tc.thoughtSignature = signature
+            }
+            toolCalls.push(tc)
           }
         }
         if (candidate?.finishReason) stopReason = String(candidate.finishReason)
@@ -2768,12 +3295,23 @@ export class AiOrchestrator {
       for (const line of buffer.push(decoder.decode(piece, { stream: true }))) consume(line)
     }
     for (const line of buffer.flush()) consume(line)
+    HttpClient.clearStreamDeadline(res)
 
-    // Guvenlik filtresi: Gemini `finishReason: "SAFETY"` doner ve govde bos kalir.
-    if (!content && toolCalls.length === 0 && stopReason === 'SAFETY') {
+    // Guvenlik / icerik engeli: Gemini `finishReason: "SAFETY"` doner ve
+    // govde bos kalir. Prompt seviyesi blok ise `candidates` hic gelmez.
+    if (!content && toolCalls.length === 0 && (promptBlockReason || stopReason === 'SAFETY')) {
+      const detail = promptBlockReason || 'SAFETY'
       throw new Error(
-        'Model bu isteği güvenlik filtresi nedeniyle yanıtlamayı reddetti. ' +
-          'Farklı bir model deneyin veya sorunun ifadesini yumuşatın.',
+        `Google Gemini bu isteği güvenlik/içerik filtresi nedeniyle yanıtlamayı reddetti (${detail}). ` +
+          'Farklı bir model deneyin, isteği birkaç kelimeyle özetleyin veya Ayarlar > Yapay Zekâ > ' +
+          'Sağlayıcılar bölümünden başka bir sağlayıcı seçin.',
+      )
+    }
+
+    if (!content && toolCalls.length === 0 && stopReason === 'MAX_TOKENS') {
+      throw new Error(
+        'Google Gemini çıktı sınırına ulaştığı için yanıt üretemedi. ' +
+          'Daha kısa bir soru sorun veya daha büyük bir model seçin.',
       )
     }
 
@@ -2860,9 +3398,15 @@ export class AiOrchestrator {
             })
           }
           if (parsed.done_reason) stopReason = String(parsed.done_reason)
-          if (parsed.error) throw new Error(String(parsed.error))
+          // Ollama hatalari JSON satirinin ICINDE gelir:
+          //   {"error":"model \"x\" not found"}
+          // Onceki surum `!line.includes('{')` kosuluyla bunu yutuyordu ve
+          // kullanici "Model bos bir yanit dondurdu" goruyordu.
+          if (parsed.error) throw new Error(`Ollama: ${String(parsed.error)}`)
         } catch (err) {
-          if (err instanceof Error && err.message && !line.includes('{')) throw err
+          // JSON satirinin icinden gelen OLLAMA hatasini yutma.
+          if (err instanceof Error && err.message.startsWith('Ollama:')) throw err
+          if (err instanceof SyntaxError && !line.trim().startsWith('{')) throw err
         }
       }
     }

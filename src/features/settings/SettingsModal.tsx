@@ -41,6 +41,7 @@ import {
   AiProviderConfig,
   ProviderId,
   SecurityInfo,
+  StorageDiagnostics,
   SyncStatus,
   UpdateStatus,
   ThemeName,
@@ -2608,6 +2609,31 @@ const PrivacyPanel: React.FC<{
   onWipe: () => Promise<void>
 }> = ({ security, wiping, onWipe }) => {
   const [confirming, setConfirming] = useState(false)
+  const [diagnostics, setDiagnostics] = useState<StorageDiagnostics | null>(null)
+
+  /**
+   * Depolama sagligi tanilamasi.
+   *
+   * KULLANICI ŞİKÂYETİ: veri kaybolduğunda arayüz HİÇBİR ŞEY söylemiyordu;
+   * kullanici derslerin sıfırlandığını sanıp tekrar tekrar giriş yapıyordu.
+   * Asıl neden (ana anahtar dosyası okunamıyor / güvenli depolama yok) gizli
+   * kalıyordu. Bu panel nedeni açıkça gösterir.
+   */
+  useEffect(() => {
+    let cancelled = false
+    void window.jmcAPI
+      ?.getStorageDiagnostics?.()
+      .then(d => {
+        if (!cancelled && d) setDiagnostics(d)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const storeProblem = diagnostics?.store?.readable === false || Boolean(diagnostics?.store?.problem)
+  const vaultProblem = diagnostics?.vault?.readable === false || Boolean(diagnostics?.vault?.problem)
 
   return (
     <div className="space-y-5">
@@ -2632,6 +2658,73 @@ const PrivacyPanel: React.FC<{
           <p className="text-[12px] text-[var(--jmc-text-dim)]">Güvenlik durumu okunamadı.</p>
         )}
       </section>
+
+      {/* ---- Depolama sağlığı tanılaması ---- */}
+      {diagnostics && (
+        <section className="space-y-2.5">
+          <h3 className="text-[12.5px] font-medium">Depolama sağlığı</h3>
+
+          {storeProblem || vaultProblem ? (
+            <div className="space-y-2 rounded-[var(--jmc-radius)] border border-[var(--jmc-warning)]/35 bg-[var(--jmc-warning)]/10 p-3">
+              <p className="flex items-start gap-2 text-[12px] font-medium text-[var(--jmc-warning)]">
+                <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>Şifreli depolama açılamadı</span>
+              </p>
+              <p className="text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
+                Verileriniz diskte SİLİNMEDİ; şifre çözme anahtarı okunamadığı için uygulama onları
+                güvenlik gereği göstermiyor. Sorunlu dosyalar yedek olarak saklandı — verileriniz hâlâ
+                duruyor. Bu genellikle işletim sistemi güvenli depolamasının (Windows: DPAPI) hesap
+                profili değişikliği, klasör kopyalama veya geri yükleme nedeniyle geçersizleşmesinden
+                kaynaklanır.
+              </p>
+              {diagnostics.store?.problem && (
+                <p className="text-[11px] leading-relaxed text-[var(--jmc-text-dim)]">
+                  <strong className="text-[var(--jmc-text-muted)]">Veritabanı:</strong>{' '}
+                  {diagnostics.store.problem}
+                </p>
+              )}
+              {diagnostics.vault?.problem && (
+                <p className="text-[11px] leading-relaxed text-[var(--jmc-text-dim)]">
+                  <strong className="text-[var(--jmc-text-muted)]">Anahtar kasası:</strong>{' '}
+                  {diagnostics.vault.problem}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="flex items-start gap-2 text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
+              <CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--jmc-success)]" />
+              <span>
+                Şifreli veritabanı ve anahtar kasası açıldı. Verileriniz yerinde ve okunabilir
+                durumda.
+              </span>
+            </p>
+          )}
+
+          <div className="space-y-1 rounded-[var(--jmc-radius)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)]/40 p-2.5 font-mono text-[10.5px] text-[var(--jmc-text-dim)]">
+            <StatusRow label="Sürüm" value={diagnostics.version} mono />
+            <StatusRow
+              label="Çalışma modu"
+              value={
+                diagnostics.portable ? 'Taşınabilir (Portable)' : diagnostics.packaged ? 'Kurulu' : 'Geliştirme'
+              }
+              mono
+            />
+            <StatusRow label="Veri klasörü" value={diagnostics.dataDir} mono />
+            <StatusRow
+              label="Anahtar dosyası"
+              value={diagnostics.keyring?.keyFilePath || '—'}
+              mono
+              tone={diagnostics.keyring?.readable ? 'ok' : 'warn'}
+            />
+            {diagnostics.keyring?.problem && (
+              <p className="pt-1 text-[11px] leading-relaxed text-[var(--jmc-text-dim)]">
+                <strong className="text-[var(--jmc-text-muted)]">Anahtar durumu:</strong>{' '}
+                {diagnostics.keyring.problem}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       <ul className="space-y-1.5 text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
         <li className="flex gap-2">

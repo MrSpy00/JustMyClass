@@ -130,7 +130,7 @@ describe('VaultService', () => {
     expect(described.description).toContain('DPAPI')
   })
 
-  it('bozuk veya cozulemeyen secrets.vault karsisinda cokmez ve sifirdan baslar', () => {
+  it('bozuk kasa dosyasini silmez, yedekler ve nedeni bildirir', () => {
     const vaultFile = path.join(USER_DATA, 'secrets.vault')
     fs.writeFileSync(vaultFile, Buffer.from('bozuk-kasa-verisi-aes-cozemez'))
 
@@ -138,10 +138,18 @@ describe('VaultService', () => {
     expect(() => freshVault.getKey('openai')).not.toThrow()
     expect(freshVault.getKey('openai')).toBeUndefined()
 
-    // Bozuk kasa dosyası .corrupted olarak yedeklenmiş olmalıdır
+    // VERI KAYBI YARAN YER: eski surum cozulemeyen kasayi sifirdan
+    // baslatiyor ve .corrupted diye yedekliyordu. Artik dosya yedeklenir
+    // ama okunabilir sayilmaz; neden kullaniciya bildirilir.
+    const health = freshVault.getVaultHealth()
+    expect(health.readable).toBe(false)
+    expect(health.problem).not.toBe('')
+
     const files = fs.readdirSync(USER_DATA)
-    const corruptedBackup = files.find(f => f.startsWith('secrets.vault.corrupted'))
-    expect(corruptedBackup).toBeDefined()
+    const backup = files.find(f => f.startsWith('secrets.vault.unreadable.'))
+    expect(backup).toBeDefined()
+    // Orijinal dosya yerinde durmali: veri yok edilmemis olmali.
+    expect(fs.existsSync(vaultFile)).toBe(true)
   })
 })
 

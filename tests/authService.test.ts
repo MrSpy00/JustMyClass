@@ -313,7 +313,7 @@ describe('AuthService', () => {
     expect(vault.getKey('google_client_secret')).toBe('GOCSPX-secret123')
   })
 
-  it('logout yapildiginda belirtecler silinir ve tum yerel ders verileri temizlenir', async () => {
+  it('logout belirtecleri siler ama YEREL DERS VERISINI KORUR', async () => {
     vault.setKey('google_access_token', 'ya29.test')
     vault.setKey('google_refresh_token', '1//refresh.test')
     storage.setAccount({
@@ -339,9 +339,13 @@ describe('AuthService', () => {
     await auth.logout()
 
     expect(storage.getAccount()).toBeNull()
-    expect(storage.getCourses().length).toBe(0)
     expect(vault.getKey('google_access_token')).toBeUndefined()
     expect(vault.getKey('google_refresh_token')).toBeUndefined()
+
+    // VERI KAYBI DUZELTMESI: eski surumde cikis yapmak tum yerel ders
+    // verisini SILIYORDU. Kullanici oturumu kapatti, yeniden girdi ve tum
+    // derslerini kaybettti. Cikis artik yalnizca Google tarafini temizler.
+    expect(storage.getCourses().length).toBe(1)
   })
 
   it('getDiagnostics gizli deger sizdirmadan oturum durumunu ozetler', () => {
@@ -430,10 +434,8 @@ describe('AuthService', () => {
     expect(cap.reason).toBe('signed-out')
   })
 
-  it('logout indirilen dosyalari da diskten temizler', async () => {
+  it('logout indirilen dosyalari diskte BIRAKIR (yalnizca acikca silinir)', async () => {
     const fileId = 'drive_file_test'
-    // Metotlar dogrudan `storage.` uzerinden cagrilir; ayirip cagrimak
-    // `this` baglamini kaybettirip private alana erisim hatasi verir.
     storage.saveFileToCas(fileId, 'c1', 'odev.pdf', 'application/pdf', Buffer.from('gizli icerik'))
     expect(storage.getCachedFile(fileId)).toBeTruthy()
 
@@ -449,9 +451,9 @@ describe('AuthService', () => {
 
     await auth.logout()
 
-    // Indeks boslansa bile dosya diskte kalmasin: indirilen odev PDF'leri
-    // ogrencilerin adlarini ve teslim metinlerini iceriyor.
-    expect(storage.getCachedFile(fileId)).toBeNull()
+    // Indirilen odev dosyalari acik bir eylemle silinir (Ayarlar >
+    // Verileri sil). Oturumu kapatmak onlari SILMEZ.
+    expect(storage.getCachedFile(fileId)).not.toBeNull()
   })
 
   it('normal logout OAuth client secret degerini korur, tam sifirlama (wipeCache) veya resetCustomClient temizler', async () => {

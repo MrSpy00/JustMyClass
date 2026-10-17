@@ -68,6 +68,31 @@ function auditTheme(c: ThemeColors): ThemeAudit {
   }
 }
 
+/**
+ * Rengin göreli parlaklığını döndürür (0 = siyah, 1 = beyaz).
+ *
+ * `color-scheme` ve Prism vurgu renkleri bu değere göre karar verir.
+ */
+export function relativeLuminance(hex: string): number {
+  const rgb = parseHex(hex)
+  if (!rgb) return 0
+  const [r, g, b] = rgb
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+}
+
+/**
+ * Tema "açık" mı?
+ *
+ * SORUN: `color-scheme` her zaman `dark` yazılıyordu. `Light` ve `Sand`
+ * temalarında tarayıcı-native kaydırma çubuğu, `<select>` açılır listesi ve
+ * metin seçimi KOYU zeminde beyaz gösteriyordu; ayrıca açık temada gölge
+ * ve vurgular okunmuyordu. Karar artık gerçek arka plan parlaklığından
+ * türetiliyor.
+ */
+export function isLightTheme(colors: ThemeColors): boolean {
+  return relativeLuminance(colors.bg) > 0.4
+}
+
 interface ThemeContextValue {
   theme: ThemeName
   setTheme: (name: ThemeName) => void
@@ -142,9 +167,30 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     set('--jmc-shadow-sm', `0 1px 2px ${colors.elevation}`)
     set('--jmc-shadow-md', `0 4px 14px ${colors.elevation}`)
     set('--jmc-shadow-lg', `0 18px 48px ${colors.elevation}`)
-    // Tarayıcı-native bileşenler (select açılır listesi, kaydırma çubuğu) de temayı izlesin.
-    set('color-scheme', 'dark')
-    root.style.colorScheme = 'dark'
+    // `--jmc-shadow-xl` önceden YAZILMIYORDU. Bilesenler (belge onizleme
+    // penceresi, model secici) bu belirteci kullaniyordu ve yalnizca
+    // stylesheet'teki varsayilana dusuyordu; tema degisince golge gorsel
+    // olarak eski kaliyordu.
+    set('--jmc-shadow-xl', `0 24px 60px -8px ${colors.elevation}`)
+
+    // Tarayıcı-native bilesenler (select acilir listesi, kaydirma cubugu,
+    // metin secimi) de temayi izlesin. Sabit `dark` yerine gercek arka plan
+    // parlakligindan karar verilir; aksi halde `Light` ve `Sand` temalarinda
+    // kaydirma cubugu koyu zeminde kalirdi.
+    const scheme: 'light' | 'dark' = isLightTheme(colors) ? 'light' : 'dark'
+    set('color-scheme', scheme)
+    root.style.colorScheme = scheme
+    root.dataset.jmcScheme = scheme
+
+    // Prism vurgulari: acik temada koyu tonlarin yerini acik tonlar alir.
+    set('--jmc-code-comment', scheme === 'dark' ? '#7c89a0' : '#5b6478')
+    set('--jmc-code-punct', scheme === 'dark' ? '#9aa8bd' : '#4b5563')
+    set('--jmc-code-literal', scheme === 'dark' ? '#f2857f' : '#b4322b')
+    set('--jmc-code-string', scheme === 'dark' ? '#4fd6a4' : '#0a7a4f')
+    set('--jmc-code-operator', scheme === 'dark' ? '#57c7f0' : '#0a6f8f')
+    set('--jmc-code-keyword', scheme === 'dark' ? '#b18cff' : '#6b21d6')
+    set('--jmc-code-function', scheme === 'dark' ? '#7fb0ff' : '#1d4ed8')
+    set('--jmc-code-meta', scheme === 'dark' ? '#fbbf24' : '#a16207')
 
     localStorage.setItem('jmc_theme', theme)
   }, [theme, colors])
