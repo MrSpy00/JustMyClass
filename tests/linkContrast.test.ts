@@ -51,11 +51,14 @@ describe('deriveLinkColors', () => {
     expect(failures, `Okunamayan link renkleri:\n${failures.join('\n')}`).toHaveLength(0)
   })
 
-  it('link rengi ARKA PLANLA AYNI OLMAZ (kullanici bildiriminin cekirdegi)', () => {
+  it('link rengi ARKA PLANLA AYNI OLMAZ ve GOVDE METNIYLE (c.text) AYNI OLMAZ', () => {
     for (const [name, colors] of ALL_THEMES) {
       const { link } = deriveLinkColors(colors)
+      expect(link.toLowerCase(), `${name} link rengi gövde metniyle (text) aynı olmamalı`).not.toBe(
+        colors.text.toLowerCase(),
+      )
       for (const [surfaceName, bg] of surfaces(colors)) {
-        expect(contrastRatio(link, bg), `${name} / ${surfaceName}`).toBeGreaterThan(1.3)
+        expect(contrastRatio(link, bg), `${name} / ${surfaceName}`).toBeGreaterThanOrEqual(5.5)
       }
     }
   })

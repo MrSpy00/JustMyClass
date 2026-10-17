@@ -368,24 +368,70 @@ textarea,
 .prose a {
   color: var(--jmc-link);
   text-decoration: underline;
-  text-underline-offset: 2.5px;
-  /*
-   * Kullanicinin "link belirginligini artir" istegi: ince alt cizgi
-   * govde metniyle karisip linki gizliyordu. 1.5px kalinlik + daha
-   * genis ofset, linki hem renkle hem bicimle ayirt edilebilir kiliyor.
-   */
+  text-underline-offset: 3px;
   text-decoration-thickness: 1.5px;
-  font-weight: 500;
-  border-radius: 2px;
+  text-decoration-color: color-mix(in srgb, var(--jmc-link) 70%, transparent);
+  font-weight: 600;
+  background-color: color-mix(in srgb, var(--jmc-link) 10%, transparent);
+  padding: 0.04em 0.28em;
+  border-radius: 4px;
   transition:
     color 120ms ease,
-    background-color 120ms ease;
+    background-color 120ms ease,
+    text-decoration-color 120ms ease;
 }
 .prose a:hover {
   color: var(--jmc-link-hover);
-  /* Uzerine gelince hafif bir zemin: renk koyu temalarda solmaz. */
-  background-color: color-mix(in srgb, var(--jmc-link) 12%, transparent);
+  text-decoration-color: var(--jmc-link-hover);
+  background-color: color-mix(in srgb, var(--jmc-link) 20%, transparent);
 }
+
+/*
+ * Kullanıcı sohbet balonu (`bg-[var(--jmc-primary)]`) içindeki Markdown içeriği:
+ * Normal `.prose` kuralı `color: var(--jmc-text)` ve `.prose a` kuralı `color: var(--jmc-link)`
+ * dayattığı için kullanıcı balonunda metin ve linkler zeminle aynı tona düşüp okunmaz oluyordu.
+ * `.prose-on-primary` tüm metin, kalın yazı, kod ve bağlantıları `--jmc-on-primary` ile
+ * yüksek kontrastlı hâle getirir.
+ */
+.prose.prose-on-primary,
+.prose.prose-on-primary p,
+.prose.prose-on-primary li,
+.prose.prose-on-primary strong,
+.prose.prose-on-primary em,
+.prose.prose-on-primary h1,
+.prose.prose-on-primary h2,
+.prose.prose-on-primary h3,
+.prose.prose-on-primary h4 {
+  color: var(--jmc-on-primary);
+}
+.prose.prose-on-primary li::marker {
+  color: color-mix(in srgb, var(--jmc-on-primary) 75%, transparent);
+}
+.prose.prose-on-primary blockquote {
+  color: var(--jmc-on-primary);
+  border-left-color: color-mix(in srgb, var(--jmc-on-primary) 55%, transparent);
+}
+.prose.prose-on-primary :not(pre) > code {
+  color: var(--jmc-on-primary);
+  background: color-mix(in srgb, var(--jmc-on-primary) 16%, transparent);
+}
+.prose.prose-on-primary a {
+  color: var(--jmc-on-primary);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--jmc-on-primary) 80%, transparent);
+  background-color: color-mix(in srgb, var(--jmc-on-primary) 16%, transparent);
+  padding: 0.06em 0.36em;
+  border-radius: 5px;
+}
+.prose.prose-on-primary a:hover {
+  color: var(--jmc-on-primary);
+  text-decoration-color: var(--jmc-on-primary);
+  background-color: color-mix(in srgb, var(--jmc-on-primary) 28%, transparent);
+}
+
 /*
  * Diger baglanti yuzeyleri (belge onizleme, hata mesaji, gezinme).
  * Bunlar da ayni kontrast zorlanmis rengi kullanmali; aksi halde bir

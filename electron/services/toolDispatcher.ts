@@ -94,23 +94,53 @@ const WINANSI_HIGH_MAP: Record<number, string> = {
   0x9f: '\u0178', // Ÿ
 }
 
-/** Tek bir PDF metin baytini doğru karaktere cevirir (once Turkce, sonra WinAnsi). */
-function pdfByteToChar(b: number): string {
+/**
+ * MacRomanEncoding yüksek bayt (0x80-0xFF) tablosu (özellikle macOS / Quartz / Keynote / Pages
+ * ve bazı LaTeX/Office PDF üreticilerinin madde işareti 0xA5 • ve tire/tırnak karakterleri için).
+ */
+const MACROMAN_HIGH_MAP: Record<number, string> = {
+  0xa0: '\u2020', // †
+  0xa1: '\u00B0', // °
+  0xa5: '\u2022', // • (MacRoman bullet — WinAnsi'de ¥ olduğu için PDF'lerde ¥ çıkmasına yol açıyordu)
+  0xa6: '\u00B6', // ¶
+  0xa7: '\u00DF', // ß
+  0xa8: '\u00AE', // ®
+  0xa9: '\u00A9', // ©
+  0xaa: '\u2122', // ™
+  0xc7: '\u00AB', // «
+  0xc8: '\u00BB', // »
+  0xc9: '\u2026', // …
+  0xca: ' ',      // non-breaking space
+  0xd0: '\u2013', // – (en dash)
+  0xd1: '\u2014', // — (em dash)
+  0xd2: '\u201C', // “
+  0xd3: '\u201D', // ”
+  0xd4: '\u2018', // ‘
+  0xd5: '\u2019', // ’
+  0xd6: '\u00F7', // ÷
+  0: ' ',
+}
+
+/** Tek bir PDF metin baytini doğru karaktere cevirir (once Turkce, sonra MacRoman/WinAnsi). */
+function pdfByteToChar(b: number, encoding?: 'MacRoman' | 'WinAnsi'): string {
+  if (encoding === 'MacRoman' && MACROMAN_HIGH_MAP[b] !== undefined) {
+    return MACROMAN_HIGH_MAP[b]
+  }
+  // 0xA5 bayti PDF metinlerinde neredeyse her zaman MacRoman madde isareti (•) olarak kullanilir
+  if (b === 0xa5) return '\u2022'
   return TURKISH_WIN1254_MAP[b] ?? WINANSI_HIGH_MAP[b] ?? String.fromCharCode(b)
 }
 
 /**
- * PDF metin satırındaki kontrol baytlarını temizler.
+ * Tekil Tj / TJ parçasındaki kontrol baytlarını temizler ancak
+ * BAŞTAKİ / SONDAKİ / TEK BAŞINA BOŞLUKLARI ASLA KIRPMAZ (.trim() yapmaz).
  *
- * ONCEKI SURUMUN HATASI: `!/[\x00-\x08\x0E-\x1F]/.test(line)` ile
- * "satırda kontrol karakteri varsa satırı TAMAMEN at" kuralı vardı. Tek bir
- * bozuk bayt (ör. PDF üreticisinin ham 0x13/0x14 yazdığı tire) yüzünden
- * satır, dolayısıyla BT...ET bloğu, dolayısıyla SAYFA tamamen kayboluyordu.
- *
- * Artık: kontrol baytları önce WinAnsi karşılıklarına çevrilir, karşılığı
- * olmayanlar boşluğa dönüştürülür. Satır yalnızca GERÇEKTEN boşaldığında atılır.
+ * ÖNCEKİ SÜRÜMÜN KRİTİK HATASI: `decodeWithFont` her küçük TJ parçası için
+ * `.trim()` yapan `scrubPdfText` çağırıyordu. Böylece `[(5. ) (Hafta ) (Uygulama )]`
+ * veya `[(Bu) ( ) (haftaki)]` dizilerindeki tüm boşluklar siliniyor ve
+ * `5.HaftaUygulamaProjesi:SıcaklıkKontrollü` gibi yapışık kelimeler oluşuyordu!
  */
-function scrubPdfText(s: string): string {
+function scrubPdfFragment(s: string): string {
   let out = ''
   for (const ch of s) {
     const code = ch.charCodeAt(0)
@@ -118,9 +148,16 @@ function scrubPdfText(s: string): string {
       out += ch
       continue
     }
-    // Dikey tab / form feed PDF metninde satır kırılmasıdır
     if (code === 0x0b || code === 0x0c) {
       out += '\n'
+      continue
+    }
+    if (code === 0xa0) {
+      out += ' '
+      continue
+    }
+    if (code === 0xa5) {
+      out += '\u2022'
       continue
     }
     if (code >= 0x20 && code !== 0x7f) {
@@ -129,7 +166,65 @@ function scrubPdfText(s: string): string {
     }
     out += WINANSI_HIGH_MAP[code] ?? ' '
   }
-  return out.replace(/[ \t]{2,}/g, ' ').trim()
+  return out
+}
+
+/**
+ * PDF metin satırındaki kontrol baytlarını temizler ve satır sonu/başı boşlukları kırpar.
+ */
+function scrubPdfText(s: string): string {
+  return scrubPdfFragment(s)
+    .replace(/\u00A5(?=\s*[A-ZÇĞİÖŞÜa-zçğıöşü0-9(])/g, '\u2022')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+}
+
+const KNOWN_CAMEL_WORDS = new Set([
+  'GitHub', 'GitLab', 'YouTube', 'JavaScript', 'TypeScript', 'PowerPoint',
+  'OneDrive', 'SharePoint', 'WordPress', 'OpenAI', 'ChatGPT', 'DeepSeek',
+  'PostgreSQL', 'MySQL', 'MongoDB', 'GraphQL', 'FastAPI', 'NextJS', 'NodeJS',
+  'ReactJS', 'VueJS', 'MacBook', 'iPhone', 'iPad', 'macOS', 'iOS', 'McGraw',
+  'JustMyClass', 'LibreOffice', ' SolidWorks', 'AutoCAD', 'MatLab', 'Simulink',
+])
+
+/**
+ * PDF üreticilerinin kerning / konumlandırma nedeniyle boşluk karakteri koymadan
+ * bitiştirdiği Türkçe kelimeleri ve noktalama geçişlerini güvenli biçimde onarır.
+ * Örn: "5.HaftaUygulamaProjesi:SıcaklıkKontrollü" -> "5. Hafta Uygulama Projesi: Sıcaklık Kontrollü"
+ */
+function repairPdfGluedWords(line: string): string {
+  if (!line || line.length < 3) return line
+  // URL veya e-posta olmayan parçalarda işlem yap
+  return line
+    .split(/(\s+)/)
+    .map(token => {
+      if (/^\s+$/.test(token)) return token
+      if (/^(?:https?:\/\/|www\.|mailto:)/i.test(token) || token.includes('@') || token.includes('/')) {
+        return token
+      }
+      if (KNOWN_CAMEL_WORDS.has(token)) return token
+
+      let fixed = token
+      // 1) Sayı + nokta + Büyük harf: "5.Hafta" -> "5. Hafta"
+      fixed = fixed.replace(/(\d+\.)([A-ZÇĞİÖŞÜ][a-zçğıöşü])/g, '$1 $2')
+      // 2) İki nokta / noktalı virgül + Harf: "Projesi:Sıcaklık" -> "Projesi: Sıcaklık"
+      fixed = fixed.replace(/([:;])([A-ZÇĞİÖŞÜa-zçğıöşü])/g, '$1 $2')
+      // 3) Kapanan parantez + Harf veya Harf + Açılan parantez (fonksiyon çağrısı değilse)
+      fixed = fixed.replace(/(\))([A-ZÇĞİÖŞÜa-zçğıöşü])/g, '$1 $2')
+      // 4) Küçük harf + Büyük harf + küçük harf (CamelCase yapışması): "HaftaUygulama" -> "Hafta Uygulama"
+      fixed = fixed.replace(/([a-zçğıöşü])([A-ZÇĞİÖŞÜ][a-zçğıöşü])/g, (match, low, up, offset, full) => {
+        // Bilinen özel isim kontrolü
+        for (const kw of KNOWN_CAMEL_WORDS) {
+          if (full.includes(kw)) return match
+        }
+        return `${low} ${up}`
+      })
+      // 5) Madde işareti (•) hemen ardından boşluksuz harf geliyorsa
+      fixed = fixed.replace(/(\u2022)([^\s])/g, '$1 $2')
+      return fixed
+    })
+    .join('')
+    .replace(/[ \t]{2,}/g, ' ')
 }
 
 function decodeXmlEntities(str: string): string {
@@ -533,6 +628,8 @@ interface PdfFontInfo {
   toUnicode: Map<string, string>
   /** `/Differences` ile acikca tanimlanmis kodlar (basit fontlar). */
   differences: Map<number, string>
+  /** 1-baytlik yazitip kodlamasi (MacRoman / WinAnsi). */
+  encoding?: 'MacRoman' | 'WinAnsi'
 }
 
 /** AGL (Adobe Glyph List) alt kumesi: yazitip adindan Unicode. */
@@ -695,7 +792,9 @@ function describeFont(fontDict: string, streamByObj: Map<number, string>): PdfFo
   // Karakter basina bayt sayisi
   const isType0 = /\/Subtype\s*\/Type0\b/.test(fontDict)
   const isIdentity = /\/Encoding\s*\/Identity-[HV]\b/.test(fontDict)
+  const isMacRoman = /\/Encoding\s*\/MacRomanEncoding\b|\/BaseEncoding\s*\/MacRomanEncoding\b/.test(fontDict)
   const widths: 1 | 2 = isType0 || isIdentity ? 2 : 1
+  const encoding: 'MacRoman' | 'WinAnsi' = isMacRoman ? 'MacRoman' : 'WinAnsi'
 
   // ToUnicode
   const toUnicode = new Map<string, string>()
@@ -725,8 +824,8 @@ function describeFont(fontDict: string, streamByObj: Map<number, string>): PdfFo
     }
   }
 
-  if (toUnicode.size === 0 && differences.size === 0 && widths === 1) return null
-  return { widths, toUnicode, differences }
+  if (toUnicode.size === 0 && differences.size === 0 && widths === 1 && !isMacRoman) return null
+  return { widths, toUnicode, differences, encoding }
 }
 
 /**
@@ -736,13 +835,16 @@ function describeFont(fontDict: string, streamByObj: Map<number, string>): PdfFo
  * tek ilerler. Cozumleme sirasi:
  *   1. Yazitipin kendi ToUnicode haritasi
  *   2. `/Differences` ile tanimlanmis kod
- *   3. WinAnsi / Turkce Latin-5 tabanli karsilik (en iyi tahmin)
+ *   3. MacRoman / WinAnsi / Turkce Latin-5 tabanli karsilik (en iyi tahmin)
+ *
+ * ÖNEMLİ: Tekil Tj / TJ parçalarında `.trim()` yapmayan `scrubPdfFragment` kullanılır;
+ * aksi halde parça başı/sonu boşluklar silinir ve kelimeler birbirine yapışır!
  */
 function decodeWithFont(bytes: number[], font: PdfFontInfo | null): string {
   if (!font) {
     // Yazitip bilinmiyor: eski davranis (bayt bayt) ama taban kodlama ile
     const s = bytes.map(b => pdfByteToChar(b)).join('')
-    return scrubPdfText(s)
+    return scrubPdfFragment(s)
   }
 
   let out = ''
@@ -754,7 +856,7 @@ function decodeWithFont(bytes: number[], font: PdfFontInfo | null): string {
     for (let i = 2; i + 1 < bytes.length; i += 2) {
       out += String.fromCharCode((bytes[i] << 8) | bytes[i + 1])
     }
-    return scrubPdfText(out)
+    return scrubPdfFragment(out)
   }
 
   if (step === 1) {
@@ -770,7 +872,7 @@ function decodeWithFont(bytes: number[], font: PdfFontInfo | null): string {
         out += diff
         continue
       }
-      out += pdfByteToChar(b)
+      out += pdfByteToChar(b, font.encoding)
     }
   } else {
     for (let i = 0; i + 1 < bytes.length; i += 2) {
@@ -786,7 +888,9 @@ function decodeWithFont(bytes: number[], font: PdfFontInfo | null): string {
       // kullanici "hafta" yerine "u hafta koaja" goruyordu.
       // Su an kodun TAMAMINI tek bir karakter gibi ele aliyoruz; cogu
       // Identity-H alt kume yazitipinde kod dogrudan Unicode esdegeridir.
-      if (code >= 0x20 && code <= 0x7e) {
+      if (code === 0xa5) {
+        out += '\u2022'
+      } else if (code >= 0x20 && code <= 0x7e) {
         out += String.fromCharCode(code)
       } else if (code >= 0xa0 && code <= 0xff) {
         out += String.fromCharCode(code)
@@ -796,10 +900,10 @@ function decodeWithFont(bytes: number[], font: PdfFontInfo | null): string {
       }
     }
     // Tek bayt artik kaldiysa (bozuk akis)
-    if (bytes.length % 2 === 1) out += pdfByteToChar(bytes[bytes.length - 1])
+    if (bytes.length % 2 === 1) out += pdfByteToChar(bytes[bytes.length - 1], font.encoding)
   }
 
-  return scrubPdfText(out)
+  return scrubPdfFragment(out)
 }
 
 
@@ -1421,7 +1525,7 @@ export function extractTextFromPdf(buf: Buffer): string {
   }
 
   // 2) SADECE BT ... ET metin bloklarını tara (Grafik ve PostScript operatörleri filtrelenir)
-  const paragraphs: string[] = []
+  const rawBlockGroups: string[][] = []
 
   for (const content of decompressedStreams) {
     const btRegex = /\bBT\b([\s\S]*?)\bET\b/g
@@ -1432,21 +1536,37 @@ export function extractTextFromPdf(buf: Buffer): string {
       const currentBlockLines: string[] = []
 
       // `/F1 12 Tf` operatörü AKTIF YAZITIPI belirtir.
-      //
-      // NEDEN ONEMLI?
-      // Bir BT/ET blogu icinde birden fazla yazitipi kullanilabilir
-      // (orn. baslik kalin, govde normal). `Tf` takip edilmezse sonraki
-      // tum metin yanlis yazitiple cozulur.
       let activeFont: PdfFontInfo = fallbackFont
       const tokenizeWithFont = (source: string): string => {
         const out: string[] = []
-        // Metni operator sirasiyla tara: once `Tf`, sonra gosterme operatoru.
-        // DIKKAT: `\(([^\\)]*(?:\\[\s\S][^\\)]*)*)\)` kalibi sifir geri-izleme
-        // (zero-backtracking) ile calisir; eski `\(([^)]*(?:\\.[^)]*)*)\)` kalibi
-        // Turkce oktal kacis dizileri (\347, \366, \374) iceren TJ dizilerinde
-        // O(2^n) ustel kilitlenmeye yol acip "Belge Hazirlaniyor..." ekranini donduruyordu.
+        let lastX: number | null = null
+        let lastY: number | null = null
+
+        const pushSpaceIfNeeded = () => {
+          if (out.length === 0) return
+          const prev = out[out.length - 1]
+          if (!prev || /[\s\n]$/.test(prev)) return
+          out.push(' ')
+        }
+
+        const pushNewlineIfNeeded = () => {
+          if (out.length === 0) return
+          const prev = out[out.length - 1]
+          if (prev === '\n') return
+          out.push('\n')
+        }
+
+        // Metni operator sirasiyla tara:
+        // 1: Tf (font degisimi)
+        // 2: (...) Tj (literal metin)
+        // 3: <...> Tj (hex metin)
+        // 4: [...] TJ (metin + kerning dizisi)
+        // 5,6: dx dy Td / TD (goreceli konum degisimi)
+        // 7,8: a b c d tx ty Tm (mutlak metin matrisi)
+        // 9: (...) ' (yeni satir + literal metin)
+        // T*: yeni satir
         const opRe =
-          /\/([A-Za-z0-9#._-]+)\s+[-\d.]+\s+Tf|\(([^\\)]*(?:\\[\s\S][^\\)]*)*)\)\s*Tj|<([0-9a-fA-F]+)>\s*Tj|\[((?:[^\]\\(]|\([^\\)]*(?:\\[\s\S][^\\)]*)*\)|\\[\s\S])*)\]\s*TJ|\bTd\b|\bTD\b|\bT\*\b/g
+          /\/([A-Za-z0-9#._-]+)\s+[-\d.]+\s+Tf|\(([^\\)]*(?:\\[\s\S][^\\)]*)*)\)\s*Tj|<([0-9a-fA-F]+)>\s*Tj|\[((?:[^\]\\(]|\([^\\)]*(?:\\[\s\S][^\\)]*)*\)|\\[\s\S])*)\]\s*TJ|([-\d.]+)\s+([-\d.]+)\s+(?:Td|TD)\b|(?:[-\d.]+\s+){4}([-\d.]+)\s+([-\d.]+)\s+Tm\b|\(([^\\)]*(?:\\[\s\S][^\\)]*)*)\)\s*'|\bT\*\b/g
         let op: RegExpExecArray | null
         while ((op = opRe.exec(source)) !== null) {
           if (op[1] !== undefined) {
@@ -1459,47 +1579,117 @@ export function extractTextFromPdf(buf: Buffer): string {
           } else if (op[3] !== undefined) {
             out.push(decodePdfHexString(op[3], activeFont))
           } else if (op[4] !== undefined) {
-            // TJ dizisi: literal ve hex parcalarini birlestir
+            // TJ dizisi: literal, hex ve negatif kerning bosluk sayilarini birlestir
             const inner = op[4]
-            const tjToken = /\(([^\\)]*(?:\\[\s\S][^\\)]*)*)\)|<([0-9a-fA-F]+)>/g
+            const tjToken = /\(([^\\)]*(?:\\[\s\S][^\\)]*)*)\)|<([0-9a-fA-F]+)>|(-?\d+(?:\.\d+)?)/g
             let t: RegExpExecArray | null
             while ((t = tjToken.exec(inner)) !== null) {
-              if (t[1] !== undefined) out.push(decodeWithFont(unescapePdfLiteral(t[1]), activeFont))
-              else if (t[2] !== undefined) out.push(decodePdfHexString(t[2], activeFont))
+              if (t[1] !== undefined) {
+                out.push(decodeWithFont(unescapePdfLiteral(t[1]), activeFont))
+              } else if (t[2] !== undefined) {
+                out.push(decodePdfHexString(t[2], activeFont))
+              } else if (t[3] !== undefined) {
+                const kern = parseFloat(t[3])
+                // PDF TJ icinde <= -80 degerleri glifler arasi kelime boslugunu temsil eder
+                if (Number.isFinite(kern) && kern <= -80) {
+                  pushSpaceIfNeeded()
+                }
+              }
             }
+          } else if (op[5] !== undefined && op[6] !== undefined) {
+            const dx = parseFloat(op[5])
+            const dy = parseFloat(op[6])
+            if (Number.isFinite(dy) && Math.abs(dy) > 1.2) {
+              pushNewlineIfNeeded()
+              if (lastY !== null) lastY += dy
+              if (lastX !== null && Number.isFinite(dx)) lastX += dx
+            } else if (Number.isFinite(dx) && dx > 1.2) {
+              pushSpaceIfNeeded()
+              if (lastX !== null) lastX += dx
+            }
+          } else if (op[7] !== undefined && op[8] !== undefined) {
+            const tx = parseFloat(op[7])
+            const ty = parseFloat(op[8])
+            if (Number.isFinite(ty) && lastY !== null && Math.abs(ty - lastY) > 1.5) {
+              pushNewlineIfNeeded()
+            } else if (Number.isFinite(tx) && lastX !== null && tx - lastX > 2.5) {
+              pushSpaceIfNeeded()
+            }
+            if (Number.isFinite(tx)) lastX = tx
+            if (Number.isFinite(ty)) lastY = ty
+          } else if (op[9] !== undefined) {
+            pushNewlineIfNeeded()
+            out.push(decodeWithFont(unescapePdfLiteral(op[9]), activeFont))
           } else {
-            // Td / TD / T* -> satir kirlmasi
-            out.push('\n')
+            // T* -> satir kirilmasi
+            pushNewlineIfNeeded()
           }
         }
         return out.join('')
       }
 
-
-      // Butun BT/ET blogunu TEK GECISLE coz.
-      //
-      // ONCEKI SURUM: TJ dizileri, sonra tekil Tj, sonra hex Tj AYRI AYRI
-      // taraniyordu ve ucu da global CMap uzerinden cozuluyordu. Bu yuzden
-      // (a) metin operator sirasi KAYBOLUYORDU (`Tj` metinden sonra gelen
-      // `Tf` yazitipi degisimi gorunmezdi) ve (b) yazitip cozumlemesi yoktu.
-      // Artik operatorler sirasiyla isleniyor ve `Tf` ile aktif yazitip
-      // guncellendikce her parca dogru haritadan geciriliyor.
       const blockText = tokenizeWithFont(textBlock)
       for (const rawLine of blockText.split('\n')) {
-        const t = scrubPdfText(rawLine).trim()
-        if (t.length > 0) currentBlockLines.push(t)
+        const withoutOps = rawLine.replace(/\b(?:TJ|ET|BT|Tm|Tf|cm|q|Q|rg|RG|re|W\*)\b/g, '')
+        const t = repairPdfGluedWords(scrubPdfText(withoutOps)).trim()
+        if (t.length > 0 && !/^[\d\s.\-+,#()\[\];]+$/.test(t)) {
+          currentBlockLines.push(t)
+        }
       }
 
       if (currentBlockLines.length > 0) {
-        paragraphs.push(currentBlockLines.join(' '))
+        rawBlockGroups.push(currentBlockLines)
       }
     }
   }
 
-  // Operatör ve çöp filtreleme: PDF komutları (TJ, ET, BT, Tm, Tf, cm, q, Q vb.) asla metin olarak kabul edilmez
-  const cleaned = paragraphs
-    .map(p => p.replace(/\b(?:TJ|ET|BT|Tm|Tf|cm|q|Q|rg|RG|re|W\*)\b/g, '').replace(/\s+/g, ' ').trim())
-    .filter(p => p.length > 0 && !/^[\d\s.\-+,#()\[\];]+$/.test(p))
+  // Paragraf, baslik ve madde isaretlerini koruyarak satirlari yapilandir
+  const cleaned: string[] = []
+  const isBulletOrNumbered = (line: string) =>
+    /^(?:[\u2022\u2023\u25E6•▪◦▸►*\-]|\d+[.)]|\([a-zA-Z0-9]+\)|[a-zA-Z]\))\s+/.test(line) ||
+    /^\u2022/.test(line)
+  const isHeadingLike = (line: string) =>
+    /^(?:\d+\.\s*Hafta|Hafta\s*\d+|Bölüm\s*\d+|Ünite\s*\d+|Konu\s*:|Amaç\s*:|Hedef\s*:|Özet\s*:|Giriş\b|Sonuç\b|Kaynakça\b|Uygulama\s+Projesi)/i.test(line) ||
+    (line.length <= 85 && /:$/.test(line)) ||
+    (line.length <= 70 && /^[A-ZÇĞİÖŞÜ0-9]/.test(line) && !/[.;,!?\-]$/.test(line))
+
+  for (const group of rawBlockGroups) {
+    let currentPara = ''
+    for (const line of group) {
+      const normalizedLine = line.startsWith('\u2022') && !line.startsWith('\u2022 ')
+        ? `\u2022 ${line.slice(1).trim()}`
+        : line
+
+      if (!currentPara) {
+        currentPara = normalizedLine
+        continue
+      }
+
+      if (isBulletOrNumbered(normalizedLine) || isHeadingLike(normalizedLine) || isHeadingLike(currentPara)) {
+        cleaned.push(currentPara.trim())
+        currentPara = normalizedLine
+        continue
+      }
+
+      // Tire ile bolunmus satir sonu kelimesini birlestir: "uygula-" + "ması" -> "uygulaması"
+      if (/[a-zA-ZçğıöşüÇĞİÖŞÜ]-$/.test(currentPara) && /^[a-zçğıöşü]/.test(normalizedLine)) {
+        currentPara = `${currentPara.slice(0, -1)}${normalizedLine}`
+        continue
+      }
+
+      // Cumle bitmisse ve yeni satir buyuk harfle basliyorsa yeni paragraf/satir olabilir;
+      // ancak ayni paragrafin devami da olabilir — eger onceki satir kisa (< 65) ise ayri tut
+      if (/[.!?…:]$/.test(currentPara) && currentPara.length < 65) {
+        cleaned.push(currentPara.trim())
+        currentPara = normalizedLine
+      } else {
+        currentPara = `${currentPara} ${normalizedLine}`
+      }
+    }
+    if (currentPara.trim().length > 0) {
+      cleaned.push(currentPara.trim())
+    }
+  }
 
   if (cleaned.length > 0) {
     return cleaned.join('\n\n').slice(0, 80_000)

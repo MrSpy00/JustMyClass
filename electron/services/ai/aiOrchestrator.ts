@@ -2644,6 +2644,7 @@ export class AiOrchestrator {
       const fallbacks = this.findFallbackProviders(activeProv.id)
       let fallbackSuccess = false
       let lastErr: unknown = primaryErr
+      let lastFailedProviderName = activeProv.displayName
 
       for (const fb of fallbacks) {
         const fbModel = fb.provider.selectedModel || fb.provider.models[0]?.id
@@ -2660,6 +2661,7 @@ export class AiOrchestrator {
         } catch (fbErr) {
           if (signal?.aborted) throw fbErr
           lastErr = fbErr
+          lastFailedProviderName = fb.provider.displayName
         }
       }
 
@@ -2668,8 +2670,8 @@ export class AiOrchestrator {
         if (lastErr === primaryErr || String(lastErr) === String(primaryErr)) {
           throw new Error(primaryMessage)
         }
-        const fallbackMessage = this.formatProviderErrorMessage(lastErr, activeProv.displayName)
-        throw new Error(`${primaryMessage} (Yedek sağlayıcı da başarısız oldu: ${fallbackMessage})`)
+        const fallbackMessage = this.formatProviderErrorMessage(lastErr, lastFailedProviderName)
+        throw new Error(`${primaryMessage} (Yedek sağlayıcı [${lastFailedProviderName}] de başarısız oldu: ${fallbackMessage})`)
       }
     }
 
@@ -2682,14 +2684,48 @@ export class AiOrchestrator {
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
       if (signal?.aborted) throw new Error('Yanıt üretimi kullanıcı tarafından iptal edildi.')
 
-      const turn = round === 0
-        ? outcome
-        : await executeStreamCallWithRetry(
+      let turn: StreamOutcome
+      if (round === 0) {
+        turn = outcome
+      } else {
+        try {
+          turn = await executeStreamCallWithRetry(
             activeProv,
             activeApiKey,
             activeModelId,
             conversation,
           )
+        } catch (roundErr) {
+          if (signal?.aborted) throw roundErr
+          log.warn(`[AiOrchestrator] Araç döngüsü tur ${round} hatası (${activeProv.displayName}):`, roundErr)
+
+          // Yedek sağlayıcı varsa araç sonuçlarıyla oradan devam etmeyi dene
+          const fallbacks = this.findFallbackProviders(activeProv.id)
+          let recoveredTurn: StreamOutcome | null = null
+          for (const fb of fallbacks) {
+            const fbModel = fb.provider.selectedModel || fb.provider.models[0]?.id
+            if (!fbModel) continue
+            try {
+              recoveredTurn = await executeStreamCallWithRetry(fb.provider, fb.apiKey, fbModel, conversation)
+              activeProv = fb.provider
+              activeModelId = fbModel
+              activeApiKey = fb.apiKey
+              break
+            } catch (fbRoundErr) {
+              if (signal?.aborted) throw fbRoundErr
+            }
+          }
+
+          if (recoveredTurn) {
+            turn = recoveredTurn
+          } else if (allToolCalls.length > 0) {
+            // Araçlar zaten başarıyla çalıştıysa hatayla çökmek yerine döngüden çıkıp araç bulgularını sentezle
+            break
+          } else {
+            throw roundErr
+          }
+        }
+      }
 
       if (turn.reasoning) reasoningParts = [turn.reasoning]
       if (round === 0) {
@@ -3072,6 +3108,7 @@ export class AiOrchestrator {
     const body: Record<string, unknown> = {
       model: params.modelId,
       stream: true,
+      max_tokens: 4096,
       messages: [
         { role: 'system', content: systemPrompt },
         ...formattedMessages,
@@ -3092,15 +3129,42 @@ export class AiOrchestrator {
       body.parallel_tool_calls = false
     }
 
-    const res = await providerHttp.request<Response>(`${prov.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      raw: true,
-      timeoutMs: 180_000,
-      maxRetries: 1,
-      signal,
-    })
+    let res: Response
+    try {
+      res = await providerHttp.request<Response>(`${prov.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        raw: true,
+        timeoutMs: 180_000,
+        maxRetries: 1,
+        signal,
+      })
+    } catch (err) {
+      // OpenRouter "requires more credits, or fewer max_tokens... can only afford N" (HTTP 402)
+      // hatasında bütçeye sığan max_tokens değeriyle anında yeniden dene.
+      const errText = err instanceof HttpError ? `${err.message} ${err.bodySnippet ?? ''}` : String(err)
+      const affordMatch = /can only afford\s+(\d+)/i.exec(errText)
+      if (err instanceof HttpError && err.status === 402 && affordMatch) {
+        const affordable = parseInt(affordMatch[1], 10)
+        if (Number.isFinite(affordable) && affordable >= 128) {
+          body.max_tokens = Math.max(128, Math.min(4096, affordable - 32))
+          res = await providerHttp.request<Response>(`${prov.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+            raw: true,
+            timeoutMs: 180_000,
+            maxRetries: 1,
+            signal,
+          })
+        } else {
+          throw err
+        }
+      } else {
+        throw err
+      }
+    }
 
     let content = ''
     let reasoning = ''
@@ -3422,7 +3486,8 @@ export class AiOrchestrator {
             parts.push({
               text:
                 `[Araç sonucu — ${toolName}]\n` +
-                `${String(m.content ?? '').slice(0, 20_000)}`,
+                `${String(m.content ?? '').slice(0, 20_000)}\n\n` +
+                `Yukarıdaki araç sonucunu kullanarak kullanıcının isteğini Türkçe, kapsamlı ve doğrudan yanıtla.`,
             })
           }
           const last = turns[turns.length - 1]
@@ -3468,9 +3533,13 @@ export class AiOrchestrator {
         // MODEL TURU: `functionCall` part'i ve `thoughtSignature` geri oynatilir.
         // DIKKAT: Google Gemini v1beta semasinda `thoughtSignature`, `functionCall`
         // icinde DEGIL, dogrudan `Part` nesnesi uzerinde kardes alandir!
+        // Gemini 3.x modellerinde `thoughtSignature` zorunludur; Gemini 2.0/2.5 modellerinde
+        // ise model `thoughtSignature` dondurmeyebilir ve yerel `functionCall` + `functionResponse`
+        // imzasiz da calisir.
         if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+          const isGemini3Model = /^gemini-3/i.test((params.modelId || '').replace(/^models\//, ''))
           for (const tc of m.toolCalls) {
-            if (forceTextToolHistory || !tc.thoughtSignature) {
+            if (forceTextToolHistory || (isGemini3Model && !tc.thoughtSignature)) {
               textOnlyCallsThisTurn.push(
                 `Araç çağrısı: ${tc.name} ${JSON.stringify(tc.args ?? {}).slice(0, 1_000)}`,
               )
@@ -3481,7 +3550,9 @@ export class AiOrchestrator {
                 name: tc.name,
                 args: tc.args ?? {},
               },
-              thoughtSignature: tc.thoughtSignature,
+            }
+            if (tc.thoughtSignature) {
+              partObj.thoughtSignature = tc.thoughtSignature
             }
             parts.push(partObj)
             nativeNamesThisTurn.push(tc.name)
@@ -3514,7 +3585,7 @@ export class AiOrchestrator {
       return turns
     }
 
-    const buildGeminiBody = (forceTextToolHistory: boolean): Record<string, unknown> => {
+    const buildGeminiBody = (forceTextToolHistory: boolean, includeTools = true): Record<string, unknown> => {
       const body: Record<string, unknown> = {
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: buildGeminiTurns(forceTextToolHistory),
@@ -3529,7 +3600,7 @@ export class AiOrchestrator {
           { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
         ],
       }
-      if (params.toolsEnabled !== false && modelSupportsTools(prov, params.modelId)) {
+      if (includeTools && params.toolsEnabled !== false && modelSupportsTools(prov, params.modelId)) {
         body.tools = toGeminiTools()
         body.toolConfig = { functionCallingConfig: { mode: 'AUTO' } }
       }
@@ -3549,7 +3620,7 @@ export class AiOrchestrator {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          body: JSON.stringify(buildGeminiBody(false)),
+          body: JSON.stringify(buildGeminiBody(false, true)),
           raw: true,
           timeoutMs: 180_000,
           maxRetries: 1,
@@ -3563,7 +3634,7 @@ export class AiOrchestrator {
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-            body: JSON.stringify(buildGeminiBody(true)),
+            body: JSON.stringify(buildGeminiBody(true, true)),
             raw: true,
             timeoutMs: 180_000,
             maxRetries: 1,
@@ -3579,7 +3650,6 @@ export class AiOrchestrator {
     let reasoning = ''
     let stopReason: string | null = null
     const toolCalls: NormalizedToolCall[] = []
-    const buffer = new SseBuffer()
     const decoder = new TextDecoder()
     /** Istek seviyesinde blok varsa (candidates bos gelir). */
     let promptBlockReason = ''
@@ -3588,10 +3658,6 @@ export class AiOrchestrator {
       if (!line.startsWith('data:')) return
       try {
         const parsed = JSON.parse(line.slice(5).trim())
-        // PROMPT SEVIYESI BLOK: `candidates` hic gelmez, gerekce yalnizca
-        // buradadir. Onceki surum bunu hic okumuyordu ve kullaniciya
-        // "Model bos bir yanit dondurdu" (yani arac dongusu suculu)
-        // hatasi gosteriyordu.
         if (parsed.promptFeedback?.blockReason) {
           promptBlockReason = String(parsed.promptFeedback.blockReason)
           if (parsed.promptFeedback.blockReasonMessage) {
@@ -3608,9 +3674,6 @@ export class AiOrchestrator {
             content += part.text
             onChunk(part.text)
           } else if (part.functionCall?.name) {
-            // NATIVE TOOL CAGIRISI
-            // `thoughtSignature` Gemini 3.x icin ZORUNLUDUR; bir sonraki
-            // turda ayni imzayla geri oynatilmazsa HTTP 400 doner.
             const fc = part.functionCall
             const tc: NormalizedToolCall = {
               id: fc.id || `call_${Date.now()}_${toolCalls.length}`,
@@ -3630,11 +3693,50 @@ export class AiOrchestrator {
       }
     }
 
-    for await (const piece of iterateStream(res)) {
-      for (const line of buffer.push(decoder.decode(piece, { stream: true }))) consume(line)
+    const consumeStreamResponse = async (streamRes: Response): Promise<void> => {
+      const buffer = new SseBuffer()
+      for await (const piece of iterateStream(streamRes)) {
+        for (const line of buffer.push(decoder.decode(piece, { stream: true }))) consume(line)
+      }
+      for (const line of buffer.flush()) consume(line)
+      HttpClient.clearStreamDeadline(streamRes)
     }
-    for (const line of buffer.flush()) consume(line)
-    HttpClient.clearStreamDeadline(res)
+
+    await consumeStreamResponse(res)
+
+    // Eger Gemini arac gecmisi veya arac semasi yuzunden bos STOP / MALFORMED_FUNCTION_CALL dondurduyse,
+    // arac semalarini devre disi birakip metin sentezleme modunda 1 kez otomatik yeniden dene.
+    if (
+      !content &&
+      !reasoning &&
+      toolCalls.length === 0 &&
+      !promptBlockReason &&
+      stopReason !== 'SAFETY' &&
+      stopReason !== 'MAX_TOKENS'
+    ) {
+      try {
+        log.warn(`[AiOrchestrator] Gemini boş yanıt döndürdü (stopReason=${stopReason}); metin sentezleme modunda yeniden deneniyor...`)
+        const retryBody = buildGeminiBody(true, false)
+        const retryRes = await providerHttp.request<Response>(
+          url,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+            body: JSON.stringify(retryBody),
+            raw: true,
+            timeoutMs: 180_000,
+            maxRetries: 0,
+            signal,
+          },
+        )
+        if (retryRes && typeof (retryRes as any).body !== 'undefined') {
+          stopReason = null
+          await consumeStreamResponse(retryRes)
+        }
+      } catch (retryErr) {
+        log.warn('[AiOrchestrator] Gemini boş yanıt kurtarma denemesi başarısız:', retryErr)
+      }
+    }
 
     // Guvenlik / icerik engeli: Gemini `finishReason: "SAFETY"` doner ve
     // govde bos kalir. Prompt seviyesi blok ise `candidates` hic gelmez.

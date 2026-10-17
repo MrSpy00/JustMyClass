@@ -243,6 +243,8 @@ function resolvePrismGrammar(lang: string): { grammar: Prism.Grammar; key: strin
   return null
 }
 
+import { getYouTubeEmbedUrl, getYouTubeThumbnailUrl, parseYouTubeUrl } from '../lib/youtube'
+
 /**
  * DOCX paragrafi: metni gosterir ve `w:hyperlink` ile gelen hedef varsa
  * paragrafi TIKLANABILIR yapar.
@@ -251,23 +253,104 @@ function resolvePrismGrammar(lang: string): { grammar: Prism.Grammar; key: strin
  * tiklanabilir yapar); `url` varsa paragrafin tamami dokunun hedefine gider.
  */
 function DocxParagraphText({ text, url }: { text: string; url?: string }): React.ReactElement {
+  const [showYtPlayer, setShowYtPlayer] = useState(false)
   if (!url || !isSafeExternalUrl(url)) {
     return <ClickableText text={text} preserveWhitespace={false} />
   }
+  const yt = parseYouTubeUrl(url)
   return (
-    <a
-      href={url}
-      onClick={e => {
-        e.preventDefault()
-        e.stopPropagation()
-        void window.jmcAPI?.openExternalUrl(url)
-      }}
-      rel="noreferrer noopener"
-      className="text-[var(--jmc-link)] underline underline-offset-2 hover:opacity-80 break-words"
-      title={url}
-    >
-      {text || url}
-    </a>
+    <span className="inline">
+      <a
+        href={url}
+        onClick={e => {
+          e.preventDefault()
+          e.stopPropagation()
+          if (yt) {
+            setShowYtPlayer(v => !v)
+          } else {
+            void window.jmcAPI?.openExternalUrl(url)
+          }
+        }}
+        rel="noreferrer noopener"
+        className="text-[var(--jmc-link)] hover:text-[var(--jmc-link-hover)] font-semibold underline decoration-[1.5px] underline-offset-3 bg-[var(--jmc-link)]/10 hover:bg-[var(--jmc-link)]/20 px-1 py-0.5 rounded transition-colors break-words"
+        title={yt ? 'Uygulama içinde izlemek için tıklayın' : url}
+      >
+        {text || url}
+      </a>
+      {yt && (
+        <span className="mt-2 block not-italic font-normal" onClick={e => e.stopPropagation()}>
+          {showYtPlayer ? (
+            <span className="block overflow-hidden rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-elevated)] shadow-[var(--jmc-shadow-sm)]">
+              <span className="relative block w-full pt-[56.25%] bg-black">
+                <iframe
+                  src={getYouTubeEmbedUrl(yt.videoId, { autoplay: true, startSeconds: yt.startSeconds })}
+                  title={text || `YouTube video ${yt.videoId}`}
+                  className="absolute inset-0 h-full w-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </span>
+              <span className="flex items-center justify-between px-3 py-1.5 text-[11px] bg-[var(--jmc-bg-surface)] border-t border-[var(--jmc-border-subtle)]">
+                <span className="font-medium text-[var(--jmc-text-muted)]">YouTube Uygulama İçi Oynatıcı</span>
+                <span className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void window.jmcAPI?.openExternalUrl(url)}
+                    className="text-[var(--jmc-link)] hover:text-[var(--jmc-link-hover)] font-semibold underline"
+                  >
+                    Tarayıcıda Aç
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowYtPlayer(false)}
+                    className="rounded px-2 py-0.5 bg-[var(--jmc-bg)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]"
+                  >
+                    Kapat
+                  </button>
+                </span>
+              </span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-2.5 rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-elevated)] p-2 shadow-[var(--jmc-shadow-sm)]">
+              <button
+                type="button"
+                onClick={() => setShowYtPlayer(true)}
+                className="group relative h-12 w-20 shrink-0 overflow-hidden rounded-lg bg-black focus:outline-none"
+              >
+                <img
+                  src={getYouTubeThumbnailUrl(yt.videoId)}
+                  alt="YouTube önizleme"
+                  loading="lazy"
+                  className="h-full w-full object-cover opacity-85 group-hover:scale-105 group-hover:opacity-100 transition-all"
+                />
+                <span className="absolute inset-0 flex items-center justify-center bg-black/35">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ff0033] text-white text-[10px]">
+                    ▶
+                  </span>
+                </span>
+              </button>
+              <span className="flex flex-wrap items-center gap-2 pr-1">
+                <button
+                  type="button"
+                  onClick={() => setShowYtPlayer(true)}
+                  className="inline-flex items-center gap-1 rounded-lg bg-[var(--jmc-primary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--jmc-on-primary)] hover:bg-[var(--jmc-primary-hover)] transition-colors"
+                >
+                  <span>▶</span>
+                  <span>Uygulama İçinde İzle</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void window.jmcAPI?.openExternalUrl(url)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
+                >
+                  <span>Tarayıcıda Aç</span>
+                </button>
+              </span>
+            </span>
+          )}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -1833,10 +1916,11 @@ export function DocumentViewerModal({
                   {preview.kind === 'pdf' && (
                     <div className="h-full w-full flex flex-col">
                       {pdfMode === 'embed' && pdfBlobUrl ? (
-                        <iframe
-                          src={pdfBlobUrl}
+                        <embed
+                          src={`${pdfBlobUrl}#toolbar=1&navpanes=0&view=FitH`}
+                          type="application/pdf"
                           title={preview.title || 'PDF Belgesi'}
-                          className="h-full w-full border-0 bg-neutral-900 rounded-b-xl"
+                          className="h-full w-full flex-1 border-0 bg-neutral-900 rounded-b-xl"
                         />
                       ) : pdfMode === 'embed' ? (
                         <div className="grid h-full place-items-center p-8">
@@ -1874,24 +1958,82 @@ export function DocumentViewerModal({
                         </div>
                       ) : (
                         <div className="p-6 md:p-8 max-w-4xl mx-auto w-full">
-                          <div className="rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 shadow-sm">
-                            <div className="flex items-center justify-between border-b border-[var(--jmc-border-subtle)] pb-3 mb-4">
-                              <h4 className="text-[13px] font-semibold text-[var(--jmc-text)]">
-                                PDF Ayıklanan Metin İçeriği
-                              </h4>
+                          <div className="rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-8 shadow-md">
+                            <div className="flex items-center justify-between border-b border-[var(--jmc-border-subtle)] pb-3.5 mb-5">
+                              <div>
+                                <h4 className="text-[14px] font-bold text-[var(--jmc-text)]">
+                                  {preview.title || 'PDF Ayıklanan Metin İçeriği'}
+                                </h4>
+                                <p className="text-[11px] text-[var(--jmc-text-dim)] mt-0.5">
+                                  PDF Belgesi · Yapılandırılmış Metin Görünümü
+                                </p>
+                              </div>
                               <button
                                 type="button"
                                 onClick={handleCopy}
-                                className="inline-flex items-center gap-1 rounded bg-[var(--jmc-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] border border-[var(--jmc-border)]"
+                                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] border border-[var(--jmc-border)]"
                               >
-                                {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                                <span>{copied ? 'Kopyalandı' : 'Kopyala'}</span>
+                                {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                                <span>{copied ? 'Kopyalandı' : 'Tüm Metni Kopyala'}</span>
                               </button>
                             </div>
-                            <ClickableText
-                              text={preview.text || 'Bu PDF dosyasından metin ayıklanamadı. PDF Görünümünü kullanın.'}
-                              className="block font-sans text-[13px] leading-relaxed text-[var(--jmc-text)] select-text"
-                            />
+                            {preview.text ? (
+                              <div className="space-y-3 select-text">
+                                {preview.text
+                                  .split(/\n{2,}/)
+                                  .map(block => block.trim())
+                                  .filter(Boolean)
+                                  .map((block, bIdx) => {
+                                    const lines = block.split('\n').map(l => l.trim()).filter(Boolean)
+                                    return (
+                                      <div key={bIdx} className="space-y-2">
+                                        {lines.map((line, lIdx) => {
+                                          const bulletMatch = /^(?:[•●▪▸\-*]|¥)\s+(.*)$/.exec(line)
+                                          const numberedHeading = /^(\d+\.\s+[^:]+:.*)$/.exec(line)
+                                          if (bulletMatch) {
+                                            return (
+                                              <div
+                                                key={lIdx}
+                                                className="flex items-start gap-2.5 pl-2 py-0.5 text-[13px] leading-relaxed text-[var(--jmc-text)]"
+                                              >
+                                                <span className="text-[var(--jmc-primary-text)] font-bold select-none mt-0.5">
+                                                  •
+                                                </span>
+                                                <ClickableText
+                                                  text={bulletMatch[1]}
+                                                  className="flex-1 font-sans text-[13px] leading-relaxed text-[var(--jmc-text)]"
+                                                />
+                                              </div>
+                                            )
+                                          }
+                                          if (numberedHeading || (bIdx === 0 && lIdx === 0 && line.length < 110)) {
+                                            return (
+                                              <h5
+                                                key={lIdx}
+                                                className="font-sans text-[14px] font-semibold text-[var(--jmc-text)] pt-1"
+                                              >
+                                                <ClickableText text={line} preserveWhitespace={false} />
+                                              </h5>
+                                            )
+                                          }
+                                          return (
+                                            <p
+                                              key={lIdx}
+                                              className="font-sans text-[13px] leading-relaxed text-[var(--jmc-text)]"
+                                            >
+                                              <ClickableText text={line} />
+                                            </p>
+                                          )
+                                        })}
+                                      </div>
+                                    )
+                                  })}
+                              </div>
+                            ) : (
+                              <p className="font-sans text-[13px] leading-relaxed text-[var(--jmc-text-muted)]">
+                                Bu PDF dosyasından metin ayıklanamadı. PDF Görünümünü kullanın.
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}

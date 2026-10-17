@@ -174,3 +174,38 @@ describe('findUrls — konum bilgisi', () => {
     expect(findUrls('')).toEqual([])
   })
 })
+
+import {
+  extractYouTubeVideosFromText,
+  getYouTubeEmbedUrl,
+  getYouTubeThumbnailUrl,
+  parseYouTubeUrl,
+} from '../src/lib/youtube'
+
+describe('YouTube hafif uygulama içi oynatıcı ayrıştırıcısı (src/lib/youtube.ts)', () => {
+  it('watch, youtu.be, shorts, embed ve şemasız youtube.com bağlantılarını tanır', () => {
+    expect(parseYouTubeUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')?.videoId).toBe('dQw4w9WgXcQ')
+    expect(parseYouTubeUrl('https://youtu.be/dQw4w9WgXcQ?t=1m30s')).toEqual({
+      videoId: 'dQw4w9WgXcQ',
+      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=90s',
+      startSeconds: 90,
+    })
+    expect(parseYouTubeUrl('youtube.com/shorts/abc123XYZ_-')?.videoId).toBe('abc123XYZ_-')
+    expect(parseYouTubeUrl('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')?.videoId).toBe(
+      'dQw4w9WgXcQ',
+    )
+    expect(parseYouTubeUrl('https://aegissoft.com.tr')).toBeNull()
+  })
+
+  it('metin içindeki benzersiz YouTube videolarını çıkarır ve gizlilik dostu nocookie embed üretir', () => {
+    const videos = extractYouTubeVideosFromText(
+      'Ders videosu: https://youtu.be/dQw4w9WgXcQ ve tekrar https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    )
+    expect(videos).toHaveLength(1)
+    expect(videos[0].videoId).toBe('dQw4w9WgXcQ')
+    expect(getYouTubeEmbedUrl('dQw4w9WgXcQ', { autoplay: true, startSeconds: 45 })).toBe(
+      'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1&playsinline=1&autoplay=1&start=45',
+    )
+    expect(getYouTubeThumbnailUrl('dQw4w9WgXcQ')).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg')
+  })
+})

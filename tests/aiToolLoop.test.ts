@@ -444,4 +444,96 @@ describe('Asistan araç döngüsü', () => {
     expect(result.reasoningContent ?? '').not.toContain('According to rules')
     expect(result.content).toContain('Toplam 2 aktif dersiniz bulunuyor.')
   })
+
+  it('Gemini arac sonrasinda bos STOP donerse otomatik olarak duz metin gecmisiyle (forceFlattenText) yeniden dener ve yaniti kurtarir', async () => {
+    orchestrator.setProviderKey('gemini', 'AIzaSyTestKey0123456789abcdefghijk')
+
+    const geminiToolChunk = `data: ${JSON.stringify({
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [{ functionCall: { name: 'classroom_search', args: { query: 'odev' } } }],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+    })}`
+
+    // 2. cagri: Gemini finishReason: STOP ama parts bos donuyor!
+    const geminiEmptyStopChunk = `data: ${JSON.stringify({
+      candidates: [{ content: { role: 'model', parts: [] }, finishReason: 'STOP' }],
+    })}`
+
+    // 3. cagri (otomatik kurtarma denemesi): Gemini anlamli yanit doner
+    const geminiRecoveredChunk = `data: ${JSON.stringify({
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [{ text: 'Kurtarılan yanıt: 5. Hafta Sıcaklık Kontrollü Fan projesi bulundu.' }],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+    })}`
+
+    requestMock
+      .mockResolvedValueOnce(sseResponse([geminiToolChunk]))
+      .mockResolvedValueOnce(sseResponse([geminiEmptyStopChunk]))
+      .mockResolvedValueOnce(sseResponse([geminiRecoveredChunk]))
+
+    const result = await orchestrator.sendChatMessage(
+      {
+        providerId: 'gemini',
+        modelId: 'gemini-2.5-flash',
+        messages: [{ role: 'user', content: 'Ödevimi özetle' }],
+        context: {},
+        mode: 'general',
+      },
+      () => {},
+    )
+
+    expect(requestMock).toHaveBeenCalledTimes(3)
+    expect(result.content).toContain('Kurtarılan yanıt: 5. Hafta Sıcaklık Kontrollü Fan projesi bulundu.')
+  })
+
+  it('OpenRouter HTTP 402 max_tokens butce hatasi dondugunde (can only afford N) max_tokens degerini dusurerek otomatik yeniden dener', async () => {
+    orchestrator.setProviderKey('openrouter', 'sk-or-v1-0123456789abcdefghij')
+    const { HttpError } = await import('../electron/services/httpClient')
+
+    requestMock
+      .mockRejectedValueOnce(
+        new HttpError(
+          402,
+          'HTTP 402',
+          JSON.stringify({
+            error: {
+              message:
+                'This request requires more credits, or fewer max_tokens. You requested up to 16384 tokens, but can only afford 2048.',
+            },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([textDelta('Düşürülmüş max_tokens ile başarılı yanıt.'), textDelta('', true)]),
+      )
+
+    const result = await orchestrator.sendChatMessage(
+      {
+        providerId: 'openrouter',
+        modelId: 'openai/gpt-4.1-mini',
+        messages: [{ role: 'user', content: 'Merhaba' }],
+        context: {},
+        mode: 'general',
+      },
+      () => {},
+    )
+
+    expect(requestMock).toHaveBeenCalledTimes(2)
+    const [, retryOpts] = requestMock.mock.calls[1]
+    const retryBody = JSON.parse(retryOpts.body)
+    expect(retryBody.max_tokens).toBe(2016)
+    expect(result.content).toBe('Düşürülmüş max_tokens ile başarılı yanıt.')
+  })
 })

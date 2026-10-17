@@ -228,3 +228,41 @@ describe('extractTextFromPdf - maliyet dogrusal', () => {
     expect(ms, `${ms.toFixed(0)} ms surdu`).toBeLessThan(5_000)
   })
 })
+
+describe('extractTextFromPdf - yapışık kelimeler ve MacRoman madde imi onarımı', () => {
+  it('TJ dizisi içindeki parça sonu boşluklarını ((5. ) (Hafta )) kırpmaz ve negatif kerning boşluklarını korur', () => {
+    const streamBytes = Buffer.from(
+      'BT /F1 12 Tf 72 720 Td [(5. ) (Hafta ) (Uygulama ) -120 (Projesi)] TJ ET',
+      'latin1',
+    )
+    const compressed = zlib.deflateSync(streamBytes)
+    const pdf = Buffer.concat([
+      Buffer.from('%PDF-1.7\n', 'latin1'),
+      Buffer.from(`4 0 obj\n<< /Length ${compressed.length} /Filter /FlateDecode >>\nstream\n`, 'latin1'),
+      compressed,
+      Buffer.from('\nendstream\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n', 'latin1'),
+    ])
+    const out = extractTextFromPdf(pdf)
+    expect(out).toContain('5. Hafta Uygulama Projesi')
+  })
+
+  it('0xA5 (MacRoman bullet / Latin-1 ¥) baytını gerçek madde imine (•) dönüştürür ve yapışık Türkçe kelimeleri ayırır', () => {
+    // 0xA5 = \245 octal in PDF literal string
+    const streamBytes = Buffer.from(
+      'BT /F1 12 Tf 72 720 Td (5.HaftaUygulamaProjesi:SicaklikKontrollu) Tj 0 -18 Td (\\245 Fan节/IsiticiKontrolSistemi) Tj ET',
+      'latin1',
+    )
+    const compressed = zlib.deflateSync(streamBytes)
+    const pdf = Buffer.concat([
+      Buffer.from('%PDF-1.7\n', 'latin1'),
+      Buffer.from(`4 0 obj\n<< /Length ${compressed.length} /Filter /FlateDecode >>\nstream\n`, 'latin1'),
+      compressed,
+      Buffer.from('\nendstream\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n', 'latin1'),
+    ])
+    const out = extractTextFromPdf(pdf)
+    expect(out).toContain('5. Hafta Uygulama Projesi: Sicaklik Kontrollu')
+    expect(out).toContain('•')
+    expect(out).not.toContain('¥')
+  })
+})
+

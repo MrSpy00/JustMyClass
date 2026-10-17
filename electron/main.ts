@@ -254,15 +254,20 @@ function applyContentSecurityPolicy(session: Session): void {
   const scriptSrc = isDev ? ["'self'", "'unsafe-inline'", "'unsafe-eval'"] : ["'self'"]
   // Websocket izinleri HMR ile sinirli kalmali; `ws:` herhangi bir
   // sunucuya izin verirdi.
-  const connectSrc = isDev
-    ? [
-        "'self'",
-        'ws://localhost:*',
-        'ws://127.0.0.1:*',
-        'http://localhost:*',
-        'http://127.0.0.1:*',
-      ]
-    : ["'none'"]
+  const connectSrc = [
+    "'self'",
+    'blob:',
+    'data:',
+    'chrome-extension:',
+    ...(isDev
+      ? [
+          'ws://localhost:*',
+          'ws://127.0.0.1:*',
+          'http://localhost:*',
+          'http://127.0.0.1:*',
+        ]
+      : []),
+  ]
 
   // `blob:` hem asagidaki ag filtresinde hem de burada izinlidir; iki
   // liste birbirini yansitmalidir, aksi halde gorseller sessizce bloklanir.
@@ -281,32 +286,35 @@ function applyContentSecurityPolicy(session: Session): void {
 
   const policy = [
     "default-src 'none'",
-    `script-src ${scriptSrc.join(' ')} chrome-extension:`,
+    `script-src ${scriptSrc.join(' ')} blob: chrome-extension:`,
     // Tailwind v4 gelistirmede satir ici stil enjekte eder.
     "style-src 'self' 'unsafe-inline' chrome-extension:",
-    "font-src 'self' data: https://fonts.gstatic.com",
+    "font-src 'self' data: chrome-extension: https://fonts.gstatic.com",
     `img-src ${imgSrc.join(' ')} chrome-extension:`,
     `connect-src ${connectSrc.join(' ')} https://*.googlevideo.com https://*.youtube.com https://*.youtube-nocookie.com`,
     "media-src 'self' data: blob: https://*.googlevideo.com",
+    "worker-src 'self' blob: chrome-extension:",
+    "child-src 'self' blob: data: chrome-extension: https://www.youtube.com https://www.youtube-nocookie.com",
     "frame-src 'self' blob: data: chrome-extension: https://www.youtube.com https://www.youtube-nocookie.com",
     "object-src 'self' blob: data: chrome-extension:",
     "base-uri 'none'",
     "form-action 'none'",
-    "frame-ancestors 'none'",
+    "frame-ancestors 'self' file:",
   ].join('; ')
 
   session.webRequest.onHeadersReceived((details, callback) => {
-    // Harici video/medya cercevelerinin (YouTube vb.) kendi CSP ve basliklarini bozma
-    const isExternalMediaFrame =
-      details.resourceType === 'subFrame' &&
-      (details.url.includes('youtube.com') ||
-        details.url.includes('youtube-nocookie.com') ||
-        details.url.includes('googlevideo.com'))
+    // KRITIK: Uygulama CSP basligi YALNIZCA ana uygulama cercevesine (`mainFrame`)
+    // uygulanmalidir. Alt cercevelere (`subFrame`) uygulandiginda Chromium'un
+    // yerlesik PDF goruntuleyicisi (`chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai`)
+    // ve `blob:` PDF akislari kendi CSP'lerini kaybedip `#525659` gri ekranda
+    // kilitleniyordu.
+    const isAppMainFrame =
+      details.resourceType === 'mainFrame' &&
+      (details.url.startsWith('file:') ||
+        details.url.startsWith('http://localhost') ||
+        details.url.startsWith('http://127.0.0.1'))
 
-    if (
-      !isExternalMediaFrame &&
-      (details.resourceType === 'mainFrame' || details.resourceType === 'subFrame')
-    ) {
+    if (isAppMainFrame) {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
@@ -364,14 +372,31 @@ function createWindow() {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show()
   })
 
-  // Tum navigasyonlar engellenir; uygulama yalnizca kendi dokumanini yukler.
-  wc.on('will-navigate', event => {
+  // Ana pencerenin dis adreslere yonlenmesini engelle; ancak gomulu PDF
+  // (`blob:`, `chrome-extension:`) ve YouTube embed alt cercevelerine izin ver.
+  const isAllowedInternalOrEmbedNavigation = (targetUrl: string): boolean =>
+    targetUrl.startsWith('blob:') ||
+    targetUrl.startsWith('data:') ||
+    targetUrl.startsWith('chrome-extension:') ||
+    targetUrl.startsWith('chrome:') ||
+    targetUrl.includes('youtube.com/embed/') ||
+    targetUrl.includes('youtube-nocookie.com/embed/')
+
+  wc.on('will-navigate', (event, targetUrl) => {
+    if (isAllowedInternalOrEmbedNavigation(targetUrl)) return
     event.preventDefault()
   })
-  wc.on('will-redirect', event => {
+  wc.on('will-redirect', (event, targetUrl) => {
+    if (isAllowedInternalOrEmbedNavigation(targetUrl)) return
     event.preventDefault()
   })
-  wc.on('will-attach-webview', event => {
+  wc.on('will-attach-webview', (event, _webPreferences, params) => {
+    // Chromium'un yerlesik PDF eklentisi (`mhjfbmdgcfjbbpaeojofohoefgiehjai`)
+    // MimeHandlerViewGuest olarak baglanir; bunun disindaki tum webview'ler engellenir.
+    const src = String(params?.src ?? '')
+    if (src.startsWith('chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai') || src.startsWith('blob:')) {
+      return
+    }
     event.preventDefault()
   })
 

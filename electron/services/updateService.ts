@@ -41,15 +41,18 @@
  */
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import { app, shell } from 'electron'
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
 import { providerHttp } from './httpClient'
 import type { StorageService } from './storageService'
 
 const DEFAULT_GITHUB_OWNER = 'MrSpy00'
 const DEFAULT_GITHUB_REPO = 'JustMyClass'
 
-function isNewerVersion(current: string, remote: string): boolean {
-  const c = current.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0)
-  const r = remote.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0)
+export function isNewerVersion(current: string, remote: string): boolean {
+  const c = current.replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0)
+  const r = remote.replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0)
   for (let i = 0; i < Math.max(c.length, r.length); i++) {
     const cv = c[i] ?? 0
     const rv = r[i] ?? 0
@@ -57,6 +60,176 @@ function isNewerVersion(current: string, remote: string): boolean {
     if (rv < cv) return false
   }
   return false
+}
+
+export function isSameVersion(current: string, remote: string): boolean {
+  const c = current.replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0)
+  const r = remote.replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0)
+  const len = Math.max(c.length, r.length)
+  if (len === 0) return false
+  for (let i = 0; i < len; i++) {
+    if ((c[i] ?? 0) !== (r[i] ?? 0)) return false
+  }
+  return true
+}
+
+/**
+ * GitHub API `assets[].digest` alanini ("sha256:6da8515...") veya ham
+ * 64 haneli hex dizgisini kucuk harfli saf 64-hex SHA-256 degerine cevirir.
+ */
+export function normalizeSha256Digest(raw?: string | null): string | null {
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim().toLowerCase()
+  const withoutPrefix = trimmed.startsWith('sha256:') ? trimmed.slice(7).trim() : trimmed
+  return /^[0-9a-f]{64}$/.test(withoutPrefix) ? withoutPrefix : null
+}
+
+/** Verilen dosyanin SHA-256 ozetini senkron hesaplar; okunamazsa `null`. */
+export function computeFileSha256(filePath?: string | null): string | null {
+  if (!filePath) return null
+  try {
+    if (!fs.existsSync(filePath)) return null
+    const stat = fs.statSync(filePath)
+    if (!stat.isFile() || stat.size <= 0) return null
+    const hash = crypto.createHash('sha256')
+    const fd = fs.openSync(filePath, 'r')
+    try {
+      const buf = Buffer.allocUnsafe(64 * 1024)
+      let bytesRead = 0
+      while ((bytesRead = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
+        hash.update(bytesRead === buf.length ? buf : buf.subarray(0, bytesRead))
+      }
+    } finally {
+      fs.closeSync(fd)
+    }
+    return hash.digest('hex')
+  } catch {
+    return null
+  }
+}
+
+export interface ReleaseEvaluationInput {
+  currentVersion: string
+  remoteTag: string
+  remoteAssetDigest?: string | null
+  remoteAssetUpdatedAt?: string | null
+  /** Portable modda dogrudan calisan `.exe` dosyasinin SHA-256 ozeti. */
+  localPortableSha256?: string | null
+  /** Kurulu (NSIS) modda daha once kaydedilen release asset SHA-256 ozeti. */
+  baselineReleaseSha256?: string | null
+  /** Yerel ikili dosyanin / paket kaynaklarinin son degistirilme zamani (ms). */
+  localBuildMtimeMs?: number | null
+}
+
+export interface ReleaseEvaluationResult {
+  updateAvailable: boolean
+  isHotfixRebuild: boolean
+  displayVersion: string
+  remoteSha256: string | null
+}
+
+/**
+ * Cok katmanli surum + SHA-256 derleme dogrulamasi.
+ *
+ * 1. `remoteTag > currentVersion` ise standart yeni surum bildirilir.
+ * 2. `remoteTag === currentVersion` (orn. ayni `v0.0.1` etiketine yeni
+ *    derleme yuklendiyse) SHA-256 `digest` ve `updated_at` zaman damgasi
+ *    kontrol edilerek "Yeni Derleme" (hotfix) algilanir.
+ */
+export function evaluateReleaseUpdate(input: ReleaseEvaluationInput): ReleaseEvaluationResult {
+  const remoteSha256 = normalizeSha256Digest(input.remoteAssetDigest)
+  const cleanTag = input.remoteTag.trim()
+
+  if (isNewerVersion(input.currentVersion, cleanTag)) {
+    return {
+      updateAvailable: true,
+      isHotfixRebuild: false,
+      displayVersion: cleanTag,
+      remoteSha256,
+    }
+  }
+
+  if (!isSameVersion(input.currentVersion, cleanTag) || !remoteSha256) {
+    return {
+      updateAvailable: false,
+      isHotfixRebuild: false,
+      displayVersion: cleanTag,
+      remoteSha256,
+    }
+  }
+
+  const remoteTimeMs = input.remoteAssetUpdatedAt ? Date.parse(input.remoteAssetUpdatedAt) : NaN
+  const hasNewerTimestamp =
+    typeof input.localBuildMtimeMs === 'number' &&
+    input.localBuildMtimeMs > 0 &&
+    Number.isFinite(remoteTimeMs)
+      ? remoteTimeMs > input.localBuildMtimeMs + 60_000
+      : true
+
+  // 1) Portable calisma modu: calisan `.exe` ile GitHub'daki Portable `.exe`
+  //    birebir ayni dosyadir; SHA-256 dogrudan karsilastirilir.
+  const localPortable = normalizeSha256Digest(input.localPortableSha256)
+  if (localPortable) {
+    if (localPortable === remoteSha256) {
+      return {
+        updateAvailable: false,
+        isHotfixRebuild: false,
+        displayVersion: cleanTag,
+        remoteSha256,
+      }
+    }
+    if (hasNewerTimestamp) {
+      return {
+        updateAvailable: true,
+        isHotfixRebuild: true,
+        displayVersion: `${cleanTag} (Yeni Derleme #${remoteSha256.slice(0, 7)})`,
+        remoteSha256,
+      }
+    }
+  }
+
+  // 2) Kurulu (NSIS) mod: kurulan surumun kaydedilmis `baselineReleaseSha256`
+  //    ozetiyle veya yerel derleme zamaniyla karsilastirilir.
+  const baseline = normalizeSha256Digest(input.baselineReleaseSha256)
+  if (baseline) {
+    if (baseline !== remoteSha256 && hasNewerTimestamp) {
+      return {
+        updateAvailable: true,
+        isHotfixRebuild: true,
+        displayVersion: `${cleanTag} (Yeni Derleme #${remoteSha256.slice(0, 7)})`,
+        remoteSha256,
+      }
+    }
+    return {
+      updateAvailable: false,
+      isHotfixRebuild: false,
+      displayVersion: cleanTag,
+      remoteSha256,
+    }
+  }
+
+  // Baseline henuz kaydedilmemisse ama uzaktaki asset yerel derlemeden en az
+  // 10 dakika daha yeniyse, ayni etikete yeni bir build yuklenmis demektir.
+  if (
+    typeof input.localBuildMtimeMs === 'number' &&
+    input.localBuildMtimeMs > 0 &&
+    Number.isFinite(remoteTimeMs) &&
+    remoteTimeMs > input.localBuildMtimeMs + 10 * 60_000
+  ) {
+    return {
+      updateAvailable: true,
+      isHotfixRebuild: true,
+      displayVersion: `${cleanTag} (Yeni Derleme #${remoteSha256.slice(0, 7)})`,
+      remoteSha256,
+    }
+  }
+
+  return {
+    updateAvailable: false,
+    isHotfixRebuild: false,
+    displayVersion: cleanTag,
+    remoteSha256,
+  }
 }
 
 export type UpdateStage =
@@ -87,6 +260,14 @@ export interface UpdateStatus {
   /** Besleme adresi tanimli mi? Degilse ozellik kapali. */
   configured: boolean
   feedUrl?: string
+  /** Ayni surum etiketine (orn. v0.0.1) yeni bir SHA-256 derlemesi yuklendiyse `true`. */
+  isHotfixRebuild?: boolean
+  /** Sunucudaki kurulum paketinin SHA-256 ozeti (varsa). */
+  remoteSha256?: string
+  /** Calisan yerel ikili dosyanin SHA-256 ozeti (varsa). */
+  localSha256?: string
+  /** Indirilen paketin SHA-256 butunluk dogrulamasi gecti mi? */
+  verifiedIntegrity?: boolean
 }
 
 const LOG = '[UpdateService]'
@@ -98,7 +279,15 @@ export class UpdateService {
   private wired = false
   private lastCheckedAt: string | null = null
   private latestReleaseAssetUrl?: string
+  private latestReleaseAssetName?: string
+  private latestReleaseAssetSha256?: string | null
   private latestReleaseHtmlUrl?: string
+  private downloadedInstallerPath?: string
+  private cachedLocalFingerprint?: {
+    portableSha256: string | null
+    binarySha256: string | null
+    buildMtimeMs: number | null
+  }
 
   constructor(private storageService: StorageService) {
     this.status = {
@@ -367,18 +556,55 @@ export class UpdateService {
   // -------------------------------------------------------------------------
 
   /**
-   * GitHub Releases API'den en son surumu okur (autoUpdater kullanmadan).
-   *
-   * NEDEN BU YOL BIRINCIL?
-   * -----------------------
-   * `electron-updater`'in GitHub saglayicisi kontrol ederken yayindaki
-   * surum tanim dosyasini indirip ayristirir. Bu dosya okunamazsa/bozuksa/
-   * sa512 eslesmezse kontrol HATA durumuna duser ve kullaniciya ham bir dosya
-   * adi iletilir. Oysa surum bilgisi GitHub Releases API'sinde zaten VAR;
-   * dosya ayristirmaya hic gerek yok.
-   *
-   * Bu yol ayrica platforma ozgun tanim dosyalarina bagli olmadigi icin
-   * Windows/macOS/Linux arasinda tutarsizlik olusmaz.
+   * Calisan ikili dosyanin SHA-256 parmak izini ve derleme zamanini
+   * tek sefer hesaplayip bellege alir.
+   */
+  private resolveLocalFingerprint(): {
+    portableSha256: string | null
+    binarySha256: string | null
+    buildMtimeMs: number | null
+  } {
+    if (this.cachedLocalFingerprint) return this.cachedLocalFingerprint
+
+    const portablePath = process.env.PORTABLE_EXECUTABLE_FILE || null
+    let exePath: string | null = null
+    try {
+      exePath = app?.getPath ? app.getPath('exe') : null
+    } catch {
+      exePath = null
+    }
+
+    const portableSha256 = portablePath ? computeFileSha256(portablePath) : null
+    const binarySha256 = portableSha256 ?? (exePath ? computeFileSha256(exePath) : null)
+
+    let buildMtimeMs: number | null = null
+    const candidates = [
+      portablePath,
+      process.resourcesPath ? path.join(process.resourcesPath, 'app.asar') : null,
+      exePath,
+    ].filter((p): p is string => Boolean(p))
+
+    for (const candidate of candidates) {
+      try {
+        if (fs.existsSync(candidate)) {
+          const st = fs.statSync(candidate)
+          if (st.mtimeMs > 0) {
+            buildMtimeMs = st.mtimeMs
+            break
+          }
+        }
+      } catch {
+        /* sonraki adayi dene */
+      }
+    }
+
+    this.cachedLocalFingerprint = { portableSha256, binarySha256, buildMtimeMs }
+    return this.cachedLocalFingerprint
+  }
+
+  /**
+   * GitHub Releases API'den en son surumu ve kriptografik SHA-256
+   * asset ozetini okur (autoUpdater kullanmadan).
    */
   private async checkViaGitHubApi(): Promise<UpdateStatus> {
     try {
@@ -388,7 +614,13 @@ export class UpdateService {
         published_at?: string
         body?: string
         html_url?: string
-        assets?: Array<{ name: string; browser_download_url: string }>
+        assets?: Array<{
+          name: string
+          browser_download_url: string
+          digest?: string
+          updated_at?: string
+          size?: number
+        }>
       }>(`https://api.github.com/repos/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases/latest`, {
         method: 'GET',
         headers: {
@@ -403,27 +635,76 @@ export class UpdateService {
         return this.getStatus()
       }
 
-      const remoteVer = response.tag_name.replace(/^v/, '')
-      const currentVer = this.status.currentVersion.replace(/^v/, '')
       this.latestReleaseHtmlUrl = response.html_url
+      const assets = response.assets ?? []
+      const isPortableRuntime = Boolean(process.env.PORTABLE_EXECUTABLE_FILE)
 
-      if (!isNewerVersion(currentVer, remoteVer)) {
-        this.patch({ stage: 'not-available', availableVersion: undefined, error: undefined })
+      const targetAsset = isPortableRuntime
+        ? (assets.find(a => /portable/i.test(a.name) && a.name.toLowerCase().endsWith('.exe')) ??
+           assets.find(a => /setup/i.test(a.name) && a.name.toLowerCase().endsWith('.exe')) ??
+           assets.find(a => a.name.toLowerCase().endsWith('.exe')))
+        : (assets.find(a => /setup/i.test(a.name) && a.name.toLowerCase().endsWith('.exe')) ??
+           assets.find(a => a.name.toLowerCase().endsWith('.exe')) ??
+           assets.find(a => /\.dmg$|\.app\.zip$/i.test(a.name)))
+
+      const fingerprint = this.resolveLocalFingerprint()
+      const baselineKey = fingerprint.binarySha256
+        ? `update.baselineSha256.${fingerprint.binarySha256.slice(0, 16)}`
+        : 'update.baselineSha256.default'
+      let storedBaseline: string | null = null
+      try {
+        storedBaseline = this.storageService.getSetting<string | null>(baselineKey, null)
+      } catch {
+        storedBaseline = null
+      }
+
+      const evaluation = evaluateReleaseUpdate({
+        currentVersion: this.status.currentVersion,
+        remoteTag: response.tag_name,
+        remoteAssetDigest: targetAsset?.digest ?? null,
+        remoteAssetUpdatedAt: targetAsset?.updated_at ?? response.published_at ?? null,
+        localPortableSha256: fingerprint.portableSha256,
+        baselineReleaseSha256: storedBaseline,
+        localBuildMtimeMs: fingerprint.buildMtimeMs,
+      })
+
+      // Kurulu surum ilk kez kontrol edildiginde (ve uzaktaki derleme daha yeni
+      // degilse) mevcut release SHA-256 ozetini referans (baseline) olarak kaydet.
+      // Boylece daha sonra ayni etikete (orn. v0.0.1) farkli SHA-256'li yeni bir
+      // build yuklendiginde aninda tespit edilir.
+      if (!evaluation.updateAvailable && evaluation.remoteSha256 && !storedBaseline) {
+        try {
+          this.storageService.setSetting(baselineKey, evaluation.remoteSha256)
+        } catch {
+          /* salt-okunur / gecici hata yok sayilir */
+        }
+      }
+
+      if (!evaluation.updateAvailable) {
+        this.patch({
+          stage: 'not-available',
+          availableVersion: undefined,
+          isHotfixRebuild: false,
+          remoteSha256: evaluation.remoteSha256 ?? undefined,
+          localSha256: fingerprint.binarySha256 ?? undefined,
+          error: undefined,
+        })
         return this.getStatus()
       }
 
-      const assets = response.assets ?? []
-      const setupAsset =
-        assets.find(a => /setup/i.test(a.name) && a.name.toLowerCase().endsWith('.exe')) ??
-        assets.find(a => a.name.toLowerCase().endsWith('.exe')) ??
-        assets.find(a => /\.dmg$|\.app\.zip$/i.test(a.name))
-      this.latestReleaseAssetUrl = setupAsset?.browser_download_url ?? response.html_url
+      this.latestReleaseAssetUrl = targetAsset?.browser_download_url ?? response.html_url
+      this.latestReleaseAssetName = targetAsset?.name
+      this.latestReleaseAssetSha256 = evaluation.remoteSha256
 
       this.patch({
         stage: 'available',
-        availableVersion: response.tag_name,
-        releaseDate: response.published_at,
+        availableVersion: evaluation.displayVersion,
+        releaseDate: targetAsset?.updated_at ?? response.published_at,
         releaseNotes: response.body,
+        isHotfixRebuild: evaluation.isHotfixRebuild,
+        remoteSha256: evaluation.remoteSha256 ?? undefined,
+        localSha256: fingerprint.binarySha256 ?? undefined,
+        verifiedIntegrity: undefined,
         error: undefined,
       })
     } catch (err) {
@@ -467,17 +748,113 @@ export class UpdateService {
     return this.checkViaGitHubApi()
   }
 
+  /**
+   * Kurulum paketini HTTPS uzerinden indirir, ilerlemeyi bildirir ve
+   * SHA-256 kriptografik butunluk dogrulamasini gerceklestirir.
+   */
+  private async downloadAndVerifyAsset(
+    assetUrl: string,
+    assetName?: string,
+    expectedSha256?: string | null,
+  ): Promise<string> {
+    const safeName = (assetName || 'JustMyClass-Setup.exe').replace(/[^a-zA-Z0-9._-]/g, '_')
+    const tempDir = app?.getPath ? app.getPath('temp') : process.env.TEMP || '.'
+    const targetPath = path.join(tempDir, `jmc-update-${Date.now()}-${safeName}`)
+
+    this.patch({
+      stage: 'downloading',
+      progress: 0,
+      transferredMb: 0,
+      totalMb: undefined,
+      error: undefined,
+    })
+
+    const res = await providerHttp.request<Response>(assetUrl, {
+      method: 'GET',
+      headers: { 'User-Agent': `JustMyClass/${this.status.currentVersion}` },
+      raw: true,
+      timeoutMs: 300_000,
+      maxRetries: 1,
+    })
+
+    const totalBytes = Number(res.headers.get('content-length') || 0)
+    const totalMb = totalBytes > 0 ? Math.round(totalBytes / 1024 / 1024) : undefined
+    const hash = crypto.createHash('sha256')
+    const fileStream = fs.createWriteStream(targetPath)
+
+    let transferredBytes = 0
+    const reader = res.body?.getReader()
+    if (!reader) {
+      fileStream.close()
+      throw new Error('Güncelleme akışı başlatılamadı.')
+    }
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value && value.byteLength > 0) {
+          const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength)
+          hash.update(chunk)
+          if (!fileStream.write(chunk)) {
+            await new Promise<void>(resolve => fileStream.once('drain', resolve))
+          }
+          transferredBytes += chunk.byteLength
+          const progress = totalBytes > 0 ? Math.min(99, Math.round((transferredBytes / totalBytes) * 100)) : undefined
+          this.patch({
+            stage: 'downloading',
+            progress,
+            transferredMb: Math.round(transferredBytes / 1024 / 1024),
+            totalMb,
+          })
+        }
+      }
+      await new Promise<void>((resolve, reject) => {
+        fileStream.end((err?: Error | null) => (err ? reject(err) : resolve()))
+      })
+    } catch (err) {
+      fileStream.destroy()
+      try {
+        if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath)
+      } catch {
+        /* yoksay */
+      }
+      throw err
+    }
+
+    const actualSha256 = hash.digest('hex').toLowerCase()
+    const normalizedExpected = normalizeSha256Digest(expectedSha256)
+    if (normalizedExpected && actualSha256 !== normalizedExpected) {
+      try {
+        if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath)
+      } catch {
+        /* yoksay */
+      }
+      throw new Error(
+        `İndirilen güncelleme paketinin SHA-256 doğrulaması başarısız oldu ` +
+          `(beklenen: ${normalizedExpected.slice(0, 12)}…, alınan: ${actualSha256.slice(0, 12)}…). ` +
+          `Güvenliğiniz için kurulum iptal edildi.`,
+      )
+    }
+
+    return targetPath
+  }
+
   /** Bulunan surumu indirir. Yalnizca `available` durumunda anlamli. */
   public async download(): Promise<UpdateStatus> {
     if (this.status.stage !== 'available') {
       return this.getStatus()
     }
 
-    // Oncelik uygulama ici indirme. Kontrol artik API uzerinden yapildigi
-    // icin once autoUpdater in kendi kontrolu tetiklenmelidir; aksi halde
-    // downloadUpdate() "once kontrol et" hatasi verir.
+    this.downloadedInstallerPath = undefined
+
+    // 1. Ayni surum etiketine yuklenmis yeni derleme (hotfix rebuild) DEĞİLSE
+    //    ve paketlenmis uygulamaysa once electron-updater'i dene.
+    //    (Hotfix rebuild durumunda semver 0.0.1 === 0.0.1 oldugu icin
+    //    electron-updater indirmeyi atlar; o durumda dogrudan SHA-256
+    //    dogrulamali indirme katmanimiz devreye girer.)
     const isCustom = this.isCustomGenericFeed(this.configuredUrl)
-    if (isCustom || app.isPackaged) {
+    if ((isCustom || app?.isPackaged) && !this.status.isHotfixRebuild) {
       try {
         const u = autoUpdater as unknown as {
           checkForUpdates: () => Promise<unknown>
@@ -485,18 +862,41 @@ export class UpdateService {
         }
         await u.checkForUpdates()
         await u.downloadUpdate()
+        this.patch({ verifiedIntegrity: true })
         return this.getStatus()
       } catch (err) {
-        // autoUpdater basarisiz olursa tarayici indirmesine dus; kullanici
-        // hicbir durumda ekranda takili kalmaz.
-        this.patch({
-          stage: 'error',
-          error: this.explainUpdateError(err instanceof Error ? err : new Error(String(err))),
-        })
+        // autoUpdater basarisiz olursa SHA-256 dogrulamali dogrudan indirmeye gec.
+        void err
       }
     }
 
-    // Yedek yol: kurulum dosyasini varsayilan tarayicida ac.
+    // 2. Dogrudan SHA-256 dogrulamali uygulama ici indirme (hem hotfix rebuild
+    //    hem de autoUpdater yedegi icin).
+    if (this.latestReleaseAssetUrl && /\.exe$/i.test(this.latestReleaseAssetUrl)) {
+      try {
+        const installerPath = await this.downloadAndVerifyAsset(
+          this.latestReleaseAssetUrl,
+          this.latestReleaseAssetName,
+          this.latestReleaseAssetSha256,
+        )
+        this.downloadedInstallerPath = installerPath
+        this.patch({
+          stage: 'downloaded',
+          progress: 100,
+          verifiedIntegrity: true,
+          error: undefined,
+        })
+        return this.getStatus()
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes('SHA-256')) {
+          this.patch({ stage: 'error', verifiedIntegrity: false, error: msg })
+          return this.getStatus()
+        }
+      }
+    }
+
+    // 3. Son yedek yol: kurulum dosyasini varsayilan tarayicida ac.
     if (this.latestReleaseAssetUrl) {
       await shell.openExternal(this.latestReleaseAssetUrl)
       this.patch({
@@ -521,6 +921,28 @@ export class UpdateService {
   public quitAndInstall(): boolean {
     if (this.status.stage !== 'downloaded') return false
     try {
+      const fingerprint = this.resolveLocalFingerprint()
+      if (this.latestReleaseAssetSha256) {
+        const baselineKey = fingerprint.binarySha256
+          ? `update.baselineSha256.${fingerprint.binarySha256.slice(0, 16)}`
+          : 'update.baselineSha256.default'
+        try {
+          this.storageService.setSetting(baselineKey, this.latestReleaseAssetSha256)
+        } catch {
+          /* yoksay */
+        }
+      }
+
+      if (this.downloadedInstallerPath && fs.existsSync(this.downloadedInstallerPath)) {
+        const installer = this.downloadedInstallerPath
+        setImmediate(() => {
+          void shell.openPath(installer).then(() => {
+            app?.quit?.()
+          })
+        })
+        return true
+      }
+
       const u = autoUpdater as unknown as { quitAndInstall: () => void }
       setImmediate(() => u.quitAndInstall())
       return true

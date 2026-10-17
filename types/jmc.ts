@@ -269,6 +269,14 @@ export interface UpdateStatus {
   error?: string
   configured: boolean
   feedUrl?: string
+  /** Aynı sürüm etiketine (ör. v0.0.1) yeni bir SHA-256 derlemesi yüklendiyse `true`. */
+  isHotfixRebuild?: boolean
+  /** Sunucudaki kurulum paketinin SHA-256 özeti (varsa). */
+  remoteSha256?: string
+  /** Çalışan yerel ikili dosyanın SHA-256 özeti (varsa). */
+  localSha256?: string
+  /** İndirilen paketin SHA-256 bütünlük doğrulaması geçti mi? */
+  verifiedIntegrity?: boolean
 }
 
 export interface AiProviderConfig {

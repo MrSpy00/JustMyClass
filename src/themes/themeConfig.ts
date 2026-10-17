@@ -436,11 +436,13 @@ export function deriveLinkColors(c: ThemeColors): LinkColors {
   }
 }
 
-/** Adaylar arasindan zaten butun yuzeylerde okunabilir ilki secer. */
+/** Adaylar arasindan zaten butun yuzeylerde okunabilir ilki secer (c.text HARIC — link govde metni rengine dusmemeli). */
 function firstReadableCandidate(c: ThemeColors, bgs: string[]): string | undefined {
-  for (const candidate of [c.accent, c.primary, c.accentHover, c.primaryHover, c.text]) {
+  for (const candidate of [c.accent, c.primary, c.accentHover, c.primaryHover]) {
     if (!candidate) continue
-    if (worstContrast(candidate, bgs) >= LINK_MIN_CONTRAST) return candidate
+    if (worstContrast(candidate, bgs) >= LINK_MIN_CONTRAST && candidate.toLowerCase() !== c.text.toLowerCase()) {
+      return candidate
+    }
   }
   return undefined
 }
