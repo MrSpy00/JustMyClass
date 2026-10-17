@@ -2,6 +2,7 @@ import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { StorageService } from './storageService'
+import { resolveDownloadsDir } from './dataDir'
 
 export type ExportFormat = 'csv' | 'json' | 'markdown' | 'anki'
 
@@ -14,7 +15,10 @@ export class ExportService {
   constructor(private storageService: StorageService) {}
 
   public async exportData(format: ExportFormat, courseId?: string): Promise<{ filePath: string }> {
-    const downloadsDir = app?.getPath('downloads') || process.cwd()
+    // `process.cwd()` ASLA kullanilmaz: paketlenmis uygulamada kurulum
+    // klasorudur ve salt-okunur olabilir. Yazilabilir bir indirme klasoru
+    // zinciri kullanilir (bkz. resolveDownloadsDir).
+    const downloadsDir = resolveDownloadsDir()
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
     const version = app?.getVersion?.() ?? '1.0.0'
 
@@ -111,7 +115,19 @@ export class ExportService {
     }
 
     const fullPath = path.join(downloadsDir, fileName)
-    fs.writeFileSync(fullPath, content, 'utf8')
+    // Yazma hatasi kullaniciya ACIKCA bildirilir. Once sessizce yutuluyordu,
+    // boylece "disa aktar" tiklandiginda ekranda hicbir sey olmayip
+    // dosya hicbir yere yazilmiyordu.
+    try {
+      fs.mkdirSync(downloadsDir, { recursive: true })
+      fs.writeFileSync(fullPath, content, 'utf8')
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      throw new Error(
+        `Dışa aktarılamadı: "${downloadsDir}" klasörüne yazılamadı (${reason}). ` +
+          `Farklı bir konum seçmek için lütfen klasör izinlerini kontrol edin.`,
+      )
+    }
     return { filePath: fullPath }
   }
 

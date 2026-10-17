@@ -9,6 +9,7 @@ import { StorageService } from './storageService'
 import { VaultService } from './vaultService'
 import { AuthService } from './authService'
 import { googleHttp, HttpError } from './httpClient'
+import { log } from './logger'
 
 const API = 'https://classroom.googleapis.com/v1'
 
@@ -196,7 +197,7 @@ export class ClassroomService {
    * ONCEKI SURUM
    * -----------
    * Konu, duyuru, materyal, egitmen, odev, gonderi ve rubrik hatalarinin
-   * TAMAMI `console.warn(...)` ile yutuluyordu. `recordSyncError` yalnizca
+   * TAMAMI `log.warn(...)` ile yutuluyordu. `recordSyncError` yalnizca
    * ust duzey hatalarda cagriliyordu ve hicbir zaman bu yollara ulasmiyordu.
    *
    * Sonuc: Classroom API erisim yetkisi eksik oldugunda, ag koptugunda
@@ -210,7 +211,7 @@ export class ClassroomService {
    */
   private reportSyncFailure(what: string, err: unknown): void {
     const detail = err instanceof Error ? err.message : String(err)
-    console.warn(`[Classroom] ${what} alınamadı:`, err)
+    log.warn(`[Classroom] ${what} alınamadı:`, err)
     this.storageService.recordSyncError(`${what}: ${this.explainApiError(detail)}`)
   }
 
@@ -360,7 +361,7 @@ export class ClassroomService {
       if (!is403) {
         this.reportSyncFailure('Ogrenci listesi', err)
       } else {
-        console.info(`[Classroom] ${courseId} için öğrenci listesi kısıtlı (403). Sınıf arkadaşları yorumlardan derleniyor...`)
+        log.info(`[Classroom] ${courseId} için öğrenci listesi kısıtlı (403). Sınıf arkadaşları yorumlardan derleniyor...`)
       }
 
       // 1. Önceki oturumlardan kaydedilmiş öğrencileri koru

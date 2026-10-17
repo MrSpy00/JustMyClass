@@ -11,6 +11,7 @@ import {
   getInjectedGoogleClientSecret,
   describeClientIdSource,
 } from '../config/oauth'
+import { log } from './logger'
 
 /** OAuth geri cagirma sunucusu icin guvenli bekleme suresi (120 saniye). */
 /**
@@ -688,24 +689,46 @@ export class AuthService {
         searchDirs.push(homeDesktop)
       }
     }
-    searchDirs.push(process.cwd())
+    // Kurulum dizini (`process.cwd()`) YALNIZCA gelistirme modunda taranir.
+    // Paketlenmis uygulamada bu dizin `C:\Program Files\...` olur; oradaki
+    // bir `client_secret_*.json` dosyasi kullaniciya ait DEGILDIR ve
+    // kimlik kaynakli hatali giris yapisina yol acar.
+    if (!app?.isPackaged) {
+      searchDirs.push(process.cwd())
+    }
 
     for (const dir of searchDirs) {
       try {
-        const files = fs.readdirSync(dir)
-        for (const file of files) {
+        // `withFileTypes` ile dizinler ATLANIR: alt klasorlere inmek gerek
+        // miyorsa okunmaz. Ayrica tarama sinirlanir: Masaustunde binlerce
+        // dosya olabilir ve tam senkron liste main surecini bloklayarak
+        // uygulama acilisini geciktirir.
+        const entries = fs.readdirSync(dir, { withFileTypes: true })
+        const CANDIDATE_LIMIT = 2000
+        let scanned = 0
+        for (const entry of entries) {
+          if (scanned >= CANDIDATE_LIMIT) break
+          scanned += 1
+          if (!entry.isFile()) continue
+          const file = entry.name
           if (file.startsWith('client_secret_') && file.endsWith('.json')) {
             const fullPath = path.join(dir, file)
             const text = fs.readFileSync(fullPath, 'utf8')
             const res = this.importGoogleCredentialsJson(text)
             if (res.success) {
-              console.log('[AuthService] Yerel Google kimlik dosyası güvenli kasaya aktarıldı:', file)
+              // Dosya ADI ve YOLU konsola YAZILMAZ. Kimlik dosyalarinin
+              // adi, dosyanin hangi uygulamaya ait oldugunu ele verir ve
+              // gelistirici gunlukleri / hata raporlari paylasiminda
+              // kimlik materyali sizdirir.
+              log.info(
+                '[AuthService] Yerel Google kimlik dosyasi bulundu ve guvenli kasaya aktarildi.',
+              )
               return true
             }
           }
         }
       } catch {
-        /* yut */
+        /* yut: okunamayan dizin kimlik kaynagi degildir */
       }
     }
     return false
@@ -994,7 +1017,7 @@ export class AuthService {
         this.storageService.setAccount(null)
         return null
       }
-      console.error('[AuthService] Token yenilenemedi:', message)
+      log.error('[AuthService] Token yenilenemedi:', message)
     }
     return null
   }

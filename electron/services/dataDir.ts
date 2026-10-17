@@ -140,3 +140,54 @@ export function describeDataDir(): { dir: string; writable: boolean; cwdFallback
     cwdFallbackUsed: false,
   }
 }
+
+/**
+ * Indirme (dosya kaydetme) klasorunu cozer.
+ *
+ * SORUN
+ * -----
+ * `exportService` indirme klasorunu `app.getPath('downloads') ||
+ * process.cwd()` ile buluyordu. `getPath` bir sey dondurmezse geri dusen
+ * yer `process.cwd()` idi; paketlenmis uygulamada bu, kullanicinin EXE'yi
+ * cift tikladigi klasordur (cogu zaman `C:\Program Files\...`, yani
+ * YAZILAMAZ). Sonuc: kullanici "Disa aktar" dediginde dosya yazilamiyor,
+ * hatta sessizce hicbir hata mesaji cikmadan islem bitiyor.
+ *
+ * COZUM
+ * -----
+ * Veri klasorundekiyle ayni kural: `process.cwd()` ASLA kullanilmaz.
+ * Sirasiyla denenir, ilk YAZILABILIR olan secilir:
+ *   1. `app.getPath('downloads')`   (normal durum)
+ *   2. `os.homedir()/Downloads`      (yerel diskte olmayan kurulumlar)
+ *   3. `app.getPath('userData')/Downloads`
+ *   4. `os.tmpdir()/JustMyClass-Downloads`  (son care)
+ */
+export function resolveDownloadsDir(): string {
+  const candidates: string[] = []
+  try {
+    const downloads = app?.getPath?.('downloads')
+    if (downloads) candidates.push(downloads)
+  } catch {
+    /* Electron hazir degil */
+  }
+  try {
+    candidates.push(path.join(os.homedir(), 'Downloads'))
+  } catch {
+    /* yoksay */
+  }
+  try {
+    const userData = app?.getPath?.('userData')
+    if (userData) candidates.push(path.join(userData, 'Downloads'))
+  } catch {
+    /* yoksay */
+  }
+  try {
+    candidates.push(path.join(os.tmpdir(), `${APP_DIR_NAME}-Downloads`))
+  } catch {
+    /* yoksay */
+  }
+
+  // Ilk yazilabilir aday. Hicbiri yazilabilir degilse ilk aday donulur;
+  // cagiran taraf yazma hatasini gorup kullaniciya bildirir.
+  return candidates.find(isWritableDir) ?? candidates[0] ?? path.join(os.tmpdir(), `${APP_DIR_NAME}-Downloads`)
+}

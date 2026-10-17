@@ -143,7 +143,10 @@ export class UpdateService {
     if (!value || value.toLowerCase().includes('github.com') || value.toLowerCase().startsWith('github (')) {
       const canonical = `https://github.com/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases`
       this.configuredUrl = canonical
-      void this.storageService.setSetting('update.feedUrl', canonical)
+      // `setSetting` ESANLIYLA yaziyor; `void` ifadesi burada yanilticiydi
+      // (uygulamada sifir kazanci olan bir uyari). Yazma hatasi zaten
+      // senkron olarak firlatilir ve IPC katmanina ulasir.
+      this.storageService.setSetting('update.feedUrl', canonical)
       this.applyFeedUrl(canonical)
       return { ok: true, status: this.status }
     }
@@ -174,7 +177,7 @@ export class UpdateService {
     }
 
     this.configuredUrl = value
-    void this.storageService.setSetting('update.feedUrl', value)
+    this.storageService.setSetting('update.feedUrl', value)
     this.applyFeedUrl(value)
     return { ok: true, status: this.status }
   }

@@ -3,6 +3,7 @@ import { safeStorage, app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { log } from './logger'
 
 /**
  * KeyringService
@@ -242,7 +243,7 @@ export class KeyringService {
           if (parsed.weak && this.wrap(parsed.key.toString('base64'))) {
             try {
               this.writeKeyFile(parsed.key)
-              console.info('[KeyringService] Anahtar dosyasi guclu bicime yukseltildi.')
+              log.info('[KeyringService] Anahtar dosyasi guclu bicime yukseltildi.')
             } catch {
               /* yukseltme basarisiz olsa da anahtar gecerli */
             }
@@ -257,12 +258,12 @@ export class KeyringService {
           'Diskteki anahtar dosyasi bu oturumda cozulemedi. Dosya silinmedi; yeni anahtar ' +
           'yalnizca bellekte uretildi ve sifreli verilerinizin UZERINE yazilmayacak.'
         this.backupUnreadableKeyFile('cozulemedi')
-        console.error(`[KeyringService] ${this.keyFileUnreadableReason}`)
+        log.error(`[KeyringService] ${this.keyFileUnreadableReason}`)
       } catch (err) {
         this.keyFileUnreadable = true
         this.keyFileUnreadableReason =
           'Anahtar dosyasi okunurken hata olustu: ' + (err instanceof Error ? err.message : String(err))
-        console.warn('[KeyringService]', this.keyFileUnreadableReason)
+        log.warn('[KeyringService]', this.keyFileUnreadableReason)
       }
     }
 
@@ -272,13 +273,13 @@ export class KeyringService {
       try {
         this.writeKeyFile(key)
       } catch (err) {
-        console.error(
+        log.error(
           '[KeyringService] Ana anahtar yazilamadi; bu surec icin bellekte tutulacak:',
           err instanceof Error ? err.message : err,
         )
       }
     } else {
-      console.warn(
+      log.warn(
         '[KeyringService] Mevcut anahtar cozulemedigi icin yeni anahtar diske YAZILMADI. ' +
           'Verileriniz korunuyor; kullaniciya bu durum bildirilecek.',
       )
@@ -295,7 +296,7 @@ export class KeyringService {
     try {
       const backup = `${this.keyFilePath}.unreadable.${Date.now()}.${reason}.bak`
       fs.renameSync(this.keyFilePath, backup)
-      console.warn(`[KeyringService] Anahtar dosyasi yedeklendi: ${backup}`)
+      log.warn(`[KeyringService] Anahtar dosyasi yedeklendi: ${backup}`)
     } catch {
       /* yedeklenemezse dosya yerinde kalir; yine de silinmez */
     }

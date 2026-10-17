@@ -16,6 +16,7 @@ import {
   SyncStatus,
 } from '../../types/jmc'
 import { KeyringService, aesEncrypt, aesDecrypt } from './keyringService'
+import { log } from './logger'
 
 export interface CachedFileEntry {
   fileId: string
@@ -215,7 +216,7 @@ export class StorageService {
         this.db = { ...this.db, ...parsed }
         return
       } catch (err) {
-        console.error(
+        log.error(
           '[StorageService] Sifreli yerel depo acilamadi:',
           err instanceof Error ? err.message : err,
         )
@@ -235,7 +236,7 @@ export class StorageService {
         try {
           const corruptedPath = `${this.dbPath}.unreadable.${Date.now()}`
           fs.copyFileSync(this.dbPath, corruptedPath)
-          console.warn(`[StorageService] Depo yedegi alindi: ${corruptedPath}`)
+          log.warn(`[StorageService] Depo yedegi alindi: ${corruptedPath}`)
         } catch {
           /* yoksay */
         }
@@ -247,7 +248,7 @@ export class StorageService {
     //    Okunmaz; kullaniciya sifirli veri kaybi bildirilir.
     const legacy = path.join(this.dataDir, LEGACY_DB_FILE)
     if (fs.existsSync(legacy)) {
-      console.warn(
+      log.warn(
         '[StorageService] Eski sifreleme biçimine ait depo bulundu ve güvenlik nedeniyle okunmadı. Lütfen Google hesabınızla yeniden bağlanıp verileri yeniden çekin.',
       )
     }
@@ -261,7 +262,7 @@ export class StorageService {
         this.persist()
         fs.unlinkSync(legacyJson)
       } catch (err) {
-        console.error('[StorageService] Eski depo aktarilamadi:', err)
+        log.error('[StorageService] Eski depo aktarilamadi:', err)
       }
     }
   }
@@ -286,7 +287,7 @@ export class StorageService {
       const cipher = aesEncrypt(this.ensureKey(), plain)
       atomicWriteFileSync(this.dbPath, cipher)
     } catch (err) {
-      console.error('[StorageService] Sifreli depo yazilamadi:', err instanceof Error ? err.message : err)
+      log.error('[StorageService] Sifreli depo yazilamadi:', err instanceof Error ? err.message : err)
       throw err
     }
   }

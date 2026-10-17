@@ -18,6 +18,8 @@ import { ActiveContextService } from './services/activeContextService'
 import { ExportService, ExportFormat } from './services/exportService'
 import { UpdateService } from './services/updateService'
 import { FilePreviewService } from './services/filePreviewService'
+import { resolveDownloadsDir } from './services/dataDir'
+import { log, initLoggerFromElectron } from './services/logger'
 
 app.name = 'JustMyClass'
 if (process.platform === 'win32') {
@@ -41,19 +43,23 @@ authService.setOnAuthSuccess(() => {
 })
 
 function getDownloadsDirectory(): string {
+  // Kullanicinin secitigi klasor varsa ONCE o gecerilir.
   const custom = storageService.getSetting<string>('downloads.path', '')
   if (custom && typeof custom === 'string' && custom.trim() && fs.existsSync(custom.trim())) {
     return custom.trim()
   }
-  const defaultDir = path.join(app.getPath('downloads'), 'JustMyClass')
-  if (!fs.existsSync(defaultDir)) {
-    try {
-      fs.mkdirSync(defaultDir, { recursive: true })
-    } catch {
-      return app.getPath('downloads')
-    }
+  // Varsayilan: Electron indirme klasorunun altinda bir alt klasor.
+  // `app.getPath('downloads')` hicbir sey dondurmezse veya salt-okunursa
+  // `resolveDownloadsDir()` yazilabilir bir yere gecis yapar; boylece
+  // indirme sessizce basarisiz olmaz.
+  try {
+    const downloadsRoot = app.getPath('downloads')
+    const defaultDir = path.join(downloadsRoot, 'JustMyClass')
+    fs.mkdirSync(defaultDir, { recursive: true })
+    return defaultDir
+  } catch {
+    return path.join(resolveDownloadsDir(), 'JustMyClass')
   }
-  return defaultDir
 }
 
 const classroomService = new ClassroomService(storageService, vaultService, authService)
@@ -371,7 +377,7 @@ function createWindow() {
 
   // Renderer cokmusse kullaniciya sessizce donmez, uyari ver.
   wc.on('render-process-gone', (_e, details) => {
-    console.error('[JustMyClass] Renderer sureci sonlandi:', details.reason)
+    log.error('[JustMyClass] Renderer sureci sonlandi:', details.reason)
     dialog.showErrorBox(
       'JustMyClass durdu',
       `Arayuz sureci beklenmedik sekilde sonlandı (${details.reason}). Uygulama yeniden baslatilacak.`,
@@ -498,11 +504,11 @@ function createWindow() {
 
       // Alt kaynaklar (resim, favicon, font) ana uygulamanin acilmasini asla engellememelidir
       if (typeof isMainFrame === 'boolean' && !isMainFrame) {
-        console.warn('[JustMyClass] Alt kaynak yüklenemedi:', errorCode, errorDescription, failedUrl)
+        log.warn('[JustMyClass] Alt kaynak yüklenemedi:', errorCode, errorDescription, failedUrl)
         return
       }
 
-      console.error('[JustMyClass] Ana arayüz yüklenemedi:', errorCode, errorDescription, failedUrl)
+      log.error('[JustMyClass] Ana arayüz yüklenemedi:', errorCode, errorDescription, failedUrl)
 
       // ERR_INVALID_URL (-300) gibi durumlarda dosya URL'i ile doğrudan tekrar dene
       try {
@@ -525,7 +531,7 @@ function createWindow() {
     const directFileUrl = url.pathToFileURL(resolved).toString()
     wc.loadURL(directFileUrl).catch(() => {
       void wc.loadFile(resolved).catch(err => {
-        console.error('[JustMyClass] Arayuz yuklenemedi:', err)
+        log.error('[JustMyClass] Arayuz yuklenemedi:', err)
       })
     })
   }
@@ -1430,7 +1436,7 @@ if (!app.requestSingleInstanceLock()) {
         app.setAsDefaultProtocolClient('justmyclass')
       }
     } catch (err) {
-      console.warn('[JustMyClass] setAsDefaultProtocolClient uyarısı:', err)
+      log.warn('[JustMyClass] setAsDefaultProtocolClient uyarısı:', err)
     }
 
     // Windows'ta tarayıcıların "...... adlı uygulamayı aç" yerine
@@ -1455,13 +1461,17 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady()
     .then(() => {
+      // Gunluk dosya sistemi `userData/logs` altinda acilir. Bundan once gelen
+      // kayitlar konsola dusmus olur; kaybolmaz.
+      initLoggerFromElectron()
+
       // safeStorage ve isletim sistemi anahtar deposu artik hazir.
       try {
         vaultService.ensureLoaded()
         storageService.ensureLoaded()
         authService.tryAutoDetectDesktopCredentials()
       } catch (err) {
-        console.warn('[JustMyClass] Kasa/depo baslangic yuklemesi uyarisi:', err)
+        log.warn('[JustMyClass] Kasa/depo baslangic yuklemesi uyarisi:', err)
       }
 
       // Ekstra izin isteklerini de kapat (pano yazma haric).
@@ -1512,7 +1522,7 @@ if (!app.requestSingleInstanceLock()) {
         .then(results => {
           const ok = results.filter(r => r.count > 0)
           if (ok.length) {
-            console.log(
+            log.info(
               `[JustMyClass] Model katalogu guncellendi: ${ok
                 .map(r => `${r.providerId}(${r.count})`)
                 .join(', ')}`,
@@ -1530,7 +1540,7 @@ if (!app.requestSingleInstanceLock()) {
           }
         })
         .catch(err => {
-          console.warn('[JustMyClass] Model senkronu tamamlanamadi:', String(err))
+          log.warn('[JustMyClass] Model senkronu tamamlanamadi:', String(err))
         })
 
       app.on('activate', () => {

@@ -18,6 +18,7 @@ import {
   estimateTokens,
   CONTEXT_TRIM_USER_NOTICE,
 } from './contextBudget'
+import { log } from '../logger'
 
 type ChatRole = 'user' | 'assistant' | 'system'
 
@@ -1886,7 +1887,7 @@ export class AiOrchestrator {
       // HATA GOSTERILMEZ: acilista otomatik senkron yapildigi icin
       // gecici bir ag kesintisi kullaniciyi rahatsiz etmemeli.
       const detail = err instanceof Error ? err.message : String(err)
-      console.warn(`[AiOrchestrator] ${prov.displayName} modelleri alınamadı: ${detail}`)
+      log.warn(`[AiOrchestrator] ${prov.displayName} modelleri alınamadı: ${detail}`)
       return prov.models
     }
   }
@@ -2418,7 +2419,7 @@ export class AiOrchestrator {
           currentMessages = budgeted.messages as TurnMessage[]
           // Kullaniciya acikca bildir: gecmisinin bir kismi kirpildi.
           onChunk(`\n\n*(${CONTEXT_TRIM_USER_NOTICE})*\n\n`)
-          console.warn(
+          log.warn(
             `[AiOrchestrator] Baglam budendi: ${before} -> ${currentMessages.length} mesaj ` +
               `(pencere=${limits.contextWindow}, butce=${budgeted.budget}, atilan=${budgeted.droppedCount})`,
           )
@@ -2472,7 +2473,7 @@ export class AiOrchestrator {
                   ...cleaned,
                 ] as TurnMessage[])
               : currentMessages.slice(-1)
-            console.warn(
+            log.warn(
               `[AiOrchestrator] Baglam tasmasi kurtarmasi #${overflowAttempts}: ` +
                 `${before} -> ${currentMessages.length} mesaj (${p.id}/${model})`,
             )
@@ -2512,7 +2513,7 @@ export class AiOrchestrator {
             } catch (fallbackErr) {
               // Ilk gercek hata kullaniciya gosterilmeli; dususmenin
               // basarisizligi onu gizlememeli.
-              console.warn('[AiOrchestrator] Gemini otomatik model dususu basarisiz:', fallbackErr)
+              log.warn('[AiOrchestrator] Gemini otomatik model dususu basarisiz:', fallbackErr)
               throw err
             }
           }
@@ -2773,7 +2774,7 @@ export class AiOrchestrator {
         const lastUser = [...params.messages].reverse().find(m => m.role === 'user')?.content || ''
         this.memoryService.autoExtractMemories(lastUser, finalContent, params.sessionId)
       } catch (err) {
-        console.warn('[JustMyClassMemory] Otomatik hafıza çıkarımı hatası:', err)
+        log.warn('[JustMyClassMemory] Otomatik hafıza çıkarımı hatası:', err)
       }
     }
 

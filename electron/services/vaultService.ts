@@ -5,6 +5,7 @@ import crypto from 'node:crypto'
 import { app } from 'electron'
 import { ProviderId } from '../../types/jmc'
 import { KeyringService, aesEncrypt, aesDecrypt } from './keyringService'
+import { log } from './logger'
 
 /**
  * Kasa anahtarlarindan MASKE EDILMEYECEK degerler.
@@ -132,7 +133,7 @@ private purgeLegacyArtifacts(): void {
         const size = fs.statSync(legacyPath).size
         if (size > 0) fs.writeFileSync(legacyPath, crypto.randomBytes(size))
         fs.unlinkSync(legacyPath)
-        console.warn(
+        log.warn(
           `[VaultService] Guvensiz eski kasa dosyasi (${name}) silindi. ` +
             'Bu dosyanin sifreleme anahtari tahmin edilebilirdi. ' +
             'API anahtarlarinizi ve Google oturumunuzu yeniden girmeniz gerekir.',
@@ -159,7 +160,7 @@ private purgeLegacyArtifacts(): void {
       }
       this.lastFormat = 'aes-256-gcm'
     } catch (err) {
-      console.error(
+      log.error(
         '[VaultService] Kasa acilamadi. Ana anahtar bu isletim sisteminde cozulemiyor olabilir; anahtarlar yeniden girilmeli.',
         err instanceof Error ? err.message : err,
       )
@@ -198,7 +199,7 @@ private purgeLegacyArtifacts(): void {
       fs.renameSync(tmp, this.vaultPath)
       this.lastFormat = 'aes-256-gcm'
     } catch (err) {
-      console.error('[VaultService] Kasa yazilamadi:', err instanceof Error ? err.message : err)
+      log.error('[VaultService] Kasa yazilamadi:', err instanceof Error ? err.message : err)
       throw err
     }
   }
