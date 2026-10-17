@@ -252,6 +252,12 @@ export class DriveService {
           mime: 'application/octet-stream',
         })
 
+        const isHtml = (b: Buffer): boolean => {
+          if (b.length < 5) return false
+          const head = b.subarray(0, 1024).toString('utf8').trim().toLowerCase()
+          return head.startsWith('<!doctype html') || head.startsWith('<html') || head.includes('<head') || head.includes('<body')
+        }
+
         for (const ep of fallbackEndpoints) {
           try {
             const res = await this.withFreshToken(headers =>
@@ -259,6 +265,40 @@ export class DriveService {
             )
             const buf = Buffer.from(await res.arrayBuffer())
             if (buf.length > 500) {
+              const isBinaryDoc = /\.(pptx|docx|xlsx|pdf|zip|odt|ods|odp|png|jpg|jpeg|mp4|mp3|rar|7z)$/i.test(finalTitle) ||
+                (ep.ext && /^(pptx|docx|xlsx|pdf|zip|odt|ods|odp|png|jpg|jpeg|mp4|mp3|rar|7z)$/i.test(ep.ext))
+
+              if (isBinaryDoc && isHtml(buf)) {
+                // Google Drive virüs tarama veya onay sayfasından asıl indirme adresini çıkarmayı dene
+                const htmlStr = buf.toString('utf8')
+                const confirmMatch = htmlStr.match(/href="(\/uc\?export=download[^"]+)"/i) ||
+                  htmlStr.match(/href="(https:\/\/drive\.usercontent\.google\.com\/download[^"]+)"/i) ||
+                  htmlStr.match(/action="(https:\/\/drive\.usercontent\.google\.com\/download[^"]*)"/i)
+
+                if (confirmMatch) {
+                  try {
+                    const rawUrl = confirmMatch[1].replace(/&amp;/g, '&')
+                    const confirmUrl = rawUrl.startsWith('http') ? rawUrl : `https://drive.google.com${rawUrl}`
+                    const confirmedRes = await this.withFreshToken(headers =>
+                      providerHttp.request<Response>(confirmUrl, { headers, raw: true, timeoutMs: 60_000 }),
+                    )
+                    const confirmedBuf = Buffer.from(await confirmedRes.arrayBuffer())
+                    if (confirmedBuf.length > 500 && !isHtml(confirmedBuf)) {
+                      content = confirmedBuf
+                      finalMime = ep.mime || finalMime
+                      if (ep.ext && !finalTitle.toLowerCase().endsWith(`.${ep.ext}`)) {
+                        finalTitle = `${finalTitle.replace(/\.[^/.]+$/, '')}.${ep.ext}`
+                      }
+                      break
+                    }
+                  } catch {
+                    /* Onay url başarısız, sonraki uca geç */
+                  }
+                }
+                // HTML sayfası ikili dosya olarak kaydedilmez; sonraki uca geç
+                continue
+              }
+
               content = buf
               finalMime = ep.mime || finalMime
               if (ep.ext && !finalTitle.toLowerCase().endsWith(`.${ep.ext}`)) {

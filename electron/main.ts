@@ -125,6 +125,9 @@ const ALLOWED_SETTING_KEYS = new Set([
   'ai.lastModelId',
   'ai.favoriteModels',
   'ai.defaultMode',
+  'ai.autoFallbackEnabled',
+  'ai.fallbackProviderId',
+  'ai.fallbackModelId',
   /*
     `update.feedUrl` BILINCLI OLARAK BU LISTEDE DEGIL.
     Genel `system:setSetting` kanalina eklenirse renderer HTTPS
@@ -343,26 +346,40 @@ function applyContentSecurityPolicy(session: Session): void {
     callback({ responseHeaders: details.responseHeaders })
   })
 
-  // YouTube Embed Hata 152 ve 153 Çözümü:
+  // YouTube Embed & Medya Akışı Çözümü:
   // 1) file:// bağlamında Chromium Referer göndermez; YouTube embed oynatıcısı
-  //    bunu görünce 'Hata 153' fırlatır. Standart 'https://www.google.com/' referer'ı sağlanır.
-  // 2) Sahte 'Origin: https://www.youtube.com' başlığı GET isteklerine basıldığında
-  //    YouTube iframe oynatıcısı 'Hata kodu: 152 - 4' (Origin uyuşmazlığı) verir; bu başlık silinir.
-  // 3) User-Agent içinde 'Electron/' veya 'JustMyClass/' ibareleri YouTube bot korumasına
+  //    bunu görünce 'Hata 153' fırlatır. Embed iframe'leri için referer tamamlanır.
+  // 2) googlevideo.com medya akışı (videoplayback) istekleri KESİNLİKLE ellenmez;
+  //    sahte referer basmak Google Video sunucularının video parçalarını 403 ile
+  //    reddetmesine ve oynatıcının sonsuz yükleme çemberinde (buffer) takılmasına yol açar.
+  // 3) POST isteklerinde (youtubei/v1/player) Origin başlığı silinmez; CORS korunur.
+  // 4) User-Agent içinde 'Electron/' veya 'JustMyClass/' ibareleri YouTube bot korumasına
   //    takılır; bu tokenlar temizlenerek saf Chrome tarayıcı başlığı iletilir.
   session.webRequest.onBeforeSendHeaders(
     {
       urls: [
         '*://*.youtube.com/*',
         '*://*.youtube-nocookie.com/*',
-        '*://*.googlevideo.com/*',
-        '*://*.ytimg.com/*',
       ],
     },
     (details, callback) => {
       const requestHeaders = { ...details.requestHeaders }
-      requestHeaders['Referer'] = 'https://www.google.com/'
-      delete requestHeaders['Origin']
+      const isEmbed = details.url.includes('/embed/') || details.resourceType === 'subFrame'
+      const isNoCookie = details.url.includes('youtube-nocookie.com')
+      const targetOrigin = isNoCookie ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com'
+
+      if (isEmbed) {
+        if (!requestHeaders['Referer'] || requestHeaders['Referer'].startsWith('file://')) {
+          requestHeaders['Referer'] = 'https://www.google.com/'
+        }
+      } else if (details.method === 'POST') {
+        if (!requestHeaders['Origin']) {
+          requestHeaders['Origin'] = targetOrigin
+        }
+        if (!requestHeaders['Referer'] || requestHeaders['Referer'].startsWith('file://')) {
+          requestHeaders['Referer'] = `${targetOrigin}/`
+        }
+      }
 
       if (typeof requestHeaders['User-Agent'] === 'string') {
         requestHeaders['User-Agent'] = requestHeaders['User-Agent']

@@ -479,7 +479,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Ödevlerde veya konularda ara..."
-                  className="w-full rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-elevated)] pl-9 pr-3 py-1.5 text-[12px] text-[var(--jmc-text)] border border-[var(--jmc-border)] placeholder:text-[var(--jmc-text-dim)] focus:border-[var(--jmc-primary)] focus:outline-none"
+                  className="w-full rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-elevated)] pl-9 pr-3 py-1.5 text-[12px] text-[var(--jmc-text)] border border-[var(--jmc-border)] placeholder:text-[var(--jmc-text-dim)] focus:border-[var(--jmc-border-hover)] focus:outline-none"
                 />
               </div>
 

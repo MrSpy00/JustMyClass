@@ -83,32 +83,32 @@ En güncel sürümleri [GitHub Releases](https://github.com/MrSpy00/JustMyClass/
 
 ## 🤖 Desteklenen Yapay Zekâ Sağlayıcıları
 
-JustMyClass, **22 farklı yapay zekâ sağlayıcısını** tam kapsamlı destekler. Statik veya kısıtlayıcı bir model listesi yerine **dinamik model mimarisi** kullanır: Sağlayıcı anahtarınızı girdiğiniz anda modeller doğrudan ilgili sağlayıcının güncel API'sinden (`/v1/models` veya yerel liste uç noktası) anlık çekilir; sağlayıcının yayınladığı tüm yeni, güncel ve önizleme modeller otomatik olarak listenize eklenir.
+JustMyClass, **22 farklı yapay zekâ sağlayıcısını** tam kapsamlı ve kısıtlamasız olarak destekler. Sabit, eski veya yapay model sınırlandırmaları bulunmaz: **Dinamik Model Mimarisi** sayesinde sağlayıcı API anahtarınızı girdiğiniz anda modeller doğrudan ilgili sağlayıcının güncel API'sinden (`/v1/models`, Google AI Studio `v1beta/models` veya yerel sunucu listesi) anlık çekilir. Sağlayıcının kullanıma sunduğu tüm yeni, güncel, akıl yürütme (reasoning) ve önizleme modelleri otomatik olarak listenize yansır; sağlayıcı tarafından kapatılan veya kullanılamayan modeller dinamik olarak listeden düşer.
 
-| Sağlayıcı | Kimlik | Destek Kapsamı / Dinamik API Notları |
+| Sağlayıcı | Kimlik | Model Tipleri / Destek Kapsamı |
 | --- | --- | --- |
-| **Google Gemini** | `gemini` | Google AI Studio API üzerinden sunulan tüm güncel modeller (Gemini 2.5 / 2.0 / Flash / Pro serileri ve yeni önizleme modelleri) |
-| **Anthropic** | `anthropic` | Anthropic Console API üzerinden sunulan tüm modeller (Claude 3.7 Sonnet, Claude 3.5 Sonnet / Haiku, Claude 3 Opus ve yeni sürümler) |
-| **OpenAI** | `openai` | OpenAI API üzerinden sunulan tüm modeller (GPT-4.5, GPT-4o, GPT-4o-mini, o1, o3, o3-mini serileri ve gelecekteki tüm modeller) |
-| **Groq** | `groq` | LPU donanım hızlandırmalı ultra hızlı çıkarım; API üzerindeki tüm güncel Llama, DeepSeek, Qwen modelleri |
-| **DeepSeek** | `deepseek` | DeepSeek API üzerindeki tüm modeller (DeepSeek-V3 `deepseek-chat`, DeepSeek-R1 `deepseek-reasoner` ve güncel sürümler) |
-| **xAI (Grok)** | `xai` | xAI Console API üzerinden sunulan tüm Grok serisi modeller (Grok 4, Grok 3, Grok 2 ve güncel modeller) |
-| **Mistral AI** | `mistral` | Mistral API üzerinden sunulan tüm modeller (Mistral Large, Codestral, Pixtral, Mistral Small ve tüm güncel seriler) |
-| **OpenRouter** | `openrouter` | Tek bir API anahtarı ile 300+'den fazla küresel modele anında ve dinamik erişim |
-| **DeepInfra** | `deepinfra` | Yüksek verimli serverless çıkarım API'si ile sağlanan en yeni açık kaynaklı ve optimize modeller |
-| **Cerebras** | `cerebras` | Wafer-Scale Engine (CS-3) LPU mimarisiyle çalışan tüm güncel Llama ve açık ağırlıklı modeller |
-| **Together AI** | `together` | Together Inference API üzerinden sunulan yüzlerce açık kaynaklı, ince ayarlı ve özel çıkarım modeli |
-| **SiliconFlow** | `siliconflow` | Geniş açık ağırlıklı model kütüphanesi (DeepSeek, Qwen, Llama serileri ve özel çıkarımlar) |
-| **Novita AI** | `novita` | Serverless yapay zekâ çıkarım modelleri ve OpenAI uyumlu tüm güncel modeller |
-| **Fireworks AI** | `fireworks` | Fireworks GenAI platformu üzerinden optimize edilmiş tüm güncel açık ve özel modeller |
-| **NVIDIA NIM** | `nvidia` | NVIDIA AI Foundation ve NIM mikroservisleri üzerinden sunulan yüksek başarımlı kurumsal modeller |
-| **Alibaba Cloud** | `alibaba` | DashScope API üzerinden sunulan tüm Qwen (Tongyi Qianwen) serisi modeller ve varyantları |
-| **Moonshot AI** | `moonshot` | Kimi serisi ve uzun bağlam pencereli akıllı çıkarım modelleri |
-| **Zhipu AI** | `zhipu` | GLM serisi (ChatGLM / GLM-4) çok dilli ve akıl yürütme modelleri |
-| **Venice AI** | `venice` | Gizlilik ve sansürsüzlük odaklı, sıfır log kayıtlı yapay zekâ çıkarım modelleri |
-| **Ollama** | `ollama` | **Yerel (Local):** API anahtarı gerektirmez; kendi donanımınızda çevrimdışı çalışan tüm modeller |
-| **LM Studio** | `lmstudio` | **Yerel (Local):** Yerel OpenAI uyumlu sunucu üzerinden indirilen tüm GGUF modeller |
-| **llama.cpp** | `llamacpp` | **Yerel (Local):** Hafif C++ yerel çıkarım sunucusu (`/v1` uç noktası) ile yerel modeller |
+| **Google Gemini** | `gemini` | Google AI Studio API'sindeki tüm güncel modeller (Gemini 2.5 Flash, 2.5 Pro, Flash-Lite, 3.x ve 3.1 Pro önizleme sürümleri dâhil tüm API modelleri). |
+| **Anthropic** | `anthropic` | Anthropic Console API üzerindeki tüm modeller (Claude 3.7 Sonnet, Claude 3.5 Sonnet / Haiku, Claude 3 Opus ve yayınlanan tüm güncel seriler). |
+| **OpenAI** | `openai` | OpenAI API üzerindeki tüm modeller (GPT-4.5, GPT-4o, GPT-4o-mini, o1, o3, o3-mini serileri ve gelecekte yayınlanacak tüm modeller). |
+| **Groq** | `groq` | LPU donanım hızlandırmalı ultra hızlı çıkarım; API üzerindeki tüm güncel Llama, DeepSeek R1 Distill, Qwen modelleri (ücretsiz katman destekli). |
+| **DeepSeek** | `deepseek` | DeepSeek API üzerindeki tüm modeller (DeepSeek-V3 `deepseek-chat`, DeepSeek-R1 `deepseek-reasoner` ve güncel tüm sürümler). |
+| **xAI (Grok)** | `xai` | xAI Console API üzerindeki tüm modeller (Grok-3, Grok-2, Grok-Vision ve güncel seriler). |
+| **Mistral AI** | `mistral` | Mistral API üzerindeki tüm modeller (Mistral Large, Codestral, Pixtral, Mistral Small ve tüm güncel seriler). |
+| **OpenRouter** | `openrouter` | Tek bir API anahtarı ile 300+'den fazla küresel yapay zekâ modeline doğrudan, anlık ve dinamik erişim. |
+| **DeepInfra** | `deepinfra` | Yüksek verimli serverless çıkarım API'si; tüm güncel açık kaynaklı ve optimize modeller. |
+| **Cerebras** | `cerebras` | Wafer-Scale Engine (CS-3) LPU mimarisiyle çalışan tüm güncel Llama ve açık ağırlıklı modeller. |
+| **Together AI** | `together` | Together Inference API üzerinden sunulan yüzlerce açık kaynaklı, ince ayarlı ve özel çıkarım modeli. |
+| **SiliconFlow** | `siliconflow` | Geniş açık ağırlıklı model kütüphanesi (DeepSeek, Qwen, Llama serileri ve özel çıkarımlar). |
+| **Novita AI** | `novita` | Serverless yapay zekâ çıkarım modelleri ve OpenAI uyumlu tüm güncel modeller. |
+| **Fireworks AI** | `fireworks` | Fireworks GenAI platformu üzerinden optimize edilmiş tüm güncel açık ve özel modeller. |
+| **NVIDIA NIM** | `nvidia` | NVIDIA AI Foundation ve NIM mikroservisleri üzerinden sunulan yüksek başarımlı kurumsal modeller. |
+| **Alibaba Cloud** | `alibaba` | DashScope API üzerinden sunulan tüm Qwen (Tongyi Qianwen) serisi modeller ve varyantları. |
+| **Moonshot AI** | `moonshot` | Kimi serisi ve uzun bağlam pencereli akıllı çıkarım modelleri. |
+| **Zhipu AI** | `zhipu` | GLM serisi (ChatGLM / GLM-4) çok dilli ve akıl yürütme modelleri. |
+| **Venice AI** | `venice` | Gizlilik ve sansürsüzlük odaklı, sıfır log kayıtlı yapay zekâ çıkarım modelleri. |
+| **Ollama** | `ollama` | **Yerel (Local):** API anahtarı gerektirmez; kendi donanımınızda çevrimdışı çalışan tüm modeller. |
+| **LM Studio** | `lmstudio` | **Yerel (Local):** Yerel OpenAI uyumlu sunucu üzerinden indirilen tüm GGUF modeller. |
+| **llama.cpp** | `llamacpp` | **Yerel (Local):** Hafif C++ yerel çıkarım sunucusu (`/v1` uç noktası) ile yerel modeller. |
 
 ### Araç (Tool) Çağrısı Desteği
 

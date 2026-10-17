@@ -496,12 +496,9 @@ export function extractZipEntries(buf: Buffer): Map<string, Buffer> {
 
   // ---- 2) YEREL BAŞLIKLAR (yedek yol) ------------------------------------
   try {
-    let offset = 0
-    while (offset < buf.length - 30) {
-      if (buf.readUInt32LE(offset) !== 0x04034b50) {
-        offset++
-        continue
-      }
+    const PK_LOCAL = Buffer.from([0x50, 0x4b, 0x03, 0x04])
+    let offset = buf.indexOf(PK_LOCAL, 0)
+    while (offset >= 0 && offset < buf.length - 30) {
       const flags = buf.readUInt16LE(offset + 6)
       const method = buf.readUInt16LE(offset + 8)
       let compSize = buf.readUInt32LE(offset + 18)
@@ -519,11 +516,11 @@ export function extractZipEntries(buf: Buffer): Map<string, Buffer> {
       if (compSize > 0 && dataOffset + compSize <= buf.length) {
         const decomp = decompressZipEntry(buf.subarray(dataOffset, dataOffset + compSize), method)
         if (decomp && name && !name.endsWith('/')) entries.set(name, decomp)
-        offset = dataOffset + compSize
+        offset = buf.indexOf(PK_LOCAL, dataOffset + compSize)
         continue
       }
       if (compSize === 0 && name && !name.endsWith('/')) entries.set(name, Buffer.alloc(0))
-      offset = dataOffset
+      offset = buf.indexOf(PK_LOCAL, offset + 4)
     }
   } catch {
     /* yoksay */
@@ -534,11 +531,11 @@ export function extractZipEntries(buf: Buffer): Map<string, Buffer> {
 
 /** EOCD (End Of Central Directory) imzasini bulur. */
 function findEndOfCentralDirectory(buf: Buffer): number {
+  if (buf.length < 22) return -1
+  const PK_EOCD = Buffer.from([0x50, 0x4b, 0x05, 0x06])
   const minPos = Math.max(0, buf.length - 66_000)
-  for (let i = buf.length - 22; i >= minPos; i--) {
-    if (buf.readUInt32LE(i) === 0x06054b50) return i
-  }
-  return -1
+  const idx = buf.lastIndexOf(PK_EOCD)
+  return idx >= minPos ? idx : -1
 }
 
 function readZip64Locator(
@@ -2300,6 +2297,25 @@ export class ToolDispatcher {
       const targetIdOrName = String(args.fileId || args.fileName || args.title || '').trim()
       let cached = this.storageService.getCachedFile(targetIdOrName)
 
+      const normalizeSearchKey = (str: string): string => {
+        return str
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[ıİ]/g, 'i')
+          .replace(/[-_.\s]+/g, ' ')
+          .trim()
+      }
+      const targetNorm = normalizeSearchKey(targetIdOrName)
+
+      const isMatch = (att: any): boolean => {
+        if (!att) return false
+        if (att.id === targetIdOrName || att.driveFileId === targetIdOrName) return true
+        if (!targetNorm) return false
+        const titleNorm = normalizeSearchKey(att.title || '')
+        return titleNorm.includes(targetNorm) || targetNorm.includes(titleNorm)
+      }
+
       // Eğer henüz önbellekte yoksa, kayıtlı derslerin materyal veya ödevlerinde arayıp otomatik indir
       if (!cached && this.driveService) {
         const courses = this.storageService.getCourses()
@@ -2310,11 +2326,7 @@ export class ToolDispatcher {
           const materials = this.storageService.getMaterials(course.id)
           for (const m of materials) {
             for (const att of m.materials) {
-              if (
-                att.id === targetIdOrName ||
-                att.driveFileId === targetIdOrName ||
-                (targetIdOrName && att.title.toLowerCase().includes(targetIdOrName.toLowerCase()))
-              ) {
+              if (isMatch(att)) {
                 foundAttachment = att
                 foundCourseId = course.id
                 break
@@ -2327,11 +2339,7 @@ export class ToolDispatcher {
           const courseWorks = this.storageService.getCourseWork(course.id)
           for (const w of courseWorks) {
             for (const att of w.materials || []) {
-              if (
-                att.id === targetIdOrName ||
-                att.driveFileId === targetIdOrName ||
-                (targetIdOrName && att.title.toLowerCase().includes(targetIdOrName.toLowerCase()))
-              ) {
+              if (isMatch(att)) {
                 foundAttachment = att
                 foundCourseId = course.id
                 break
@@ -2344,11 +2352,7 @@ export class ToolDispatcher {
           const announcements = this.storageService.getAnnouncements(course.id)
           for (const a of announcements) {
             for (const att of a.materials || []) {
-              if (
-                att.id === targetIdOrName ||
-                att.driveFileId === targetIdOrName ||
-                (targetIdOrName && att.title.toLowerCase().includes(targetIdOrName.toLowerCase()))
-              ) {
+              if (isMatch(att)) {
                 foundAttachment = att
                 foundCourseId = course.id
                 break

@@ -513,7 +513,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   placeholder="http://127.0.0.1:... veya 4/0A..."
                   value={manualCode}
                   onChange={e => setManualCode(e.target.value)}
-                  className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 font-mono text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+                  className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 font-mono text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)]"
                 />
                 <button
                   type="button"
@@ -598,7 +598,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                       placeholder="Client ID: ...apps.googleusercontent.com"
                       value={clientId}
                       onChange={e => setClientId(e.target.value)}
-                      className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 font-mono text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+                      className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 font-mono text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)]"
                     />
                     <button
                       type="button"
@@ -620,7 +620,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     }
                     value={clientSecret}
                     onChange={e => setClientSecret(e.target.value)}
-                    className="w-full rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 font-mono text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+                    className="w-full rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 font-mono text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)]"
                   />
                 </div>
 
@@ -776,7 +776,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                 value={jsonInput}
                 onChange={e => setJsonInput(e.target.value)}
                 placeholder='{"installed": {"client_id": "...", ...}}'
-                className="w-full rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] p-2.5 font-mono text-[10.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)] resize-none"
+                className="w-full rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] p-2.5 font-mono text-[10.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)] resize-none"
               />
               <div className="flex justify-between items-center gap-2">
                 <button

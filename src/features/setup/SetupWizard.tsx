@@ -355,7 +355,7 @@ export function SetupWizard({
                       placeholder={
                         QUICK_PROVIDERS.find(p => p.id === quickProvider)?.placeholder || 'API Anahtarı...'
                       }
-                      className="min-w-0 flex-1 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-elevated)] px-2.5 py-1 font-mono text-[11px] text-[var(--jmc-text)] outline-none focus:border-[var(--jmc-primary)]"
+                      className="min-w-0 flex-1 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-elevated)] px-2.5 py-1 font-mono text-[11px] text-[var(--jmc-text)] outline-none focus:border-[var(--jmc-border-hover)]"
                     />
                     <button
                       type="button"

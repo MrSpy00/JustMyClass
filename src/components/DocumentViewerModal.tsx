@@ -1240,7 +1240,7 @@ export function DocumentViewerModal({
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
                       placeholder="Kod veya metin içinde ara…"
-                      className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+                      className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)]"
                     />
                   </div>
                 </div>
@@ -1316,7 +1316,7 @@ export function DocumentViewerModal({
                           ? 'Bu dil için sözdizimi tanımı yok. Bir dil seçerek renklendirmeyi etkinleştirin.'
                           : 'Sözdizimi renklendirme dilini değiştir'
                       }
-                      className={`max-w-[9.5rem] rounded bg-[var(--jmc-bg-surface)] px-1.5 py-0.5 text-[10.5px] outline-none focus:border-[var(--jmc-primary)] ${
+                      className={`max-w-[9.5rem] rounded bg-[var(--jmc-bg-surface)] px-1.5 py-0.5 text-[10.5px] outline-none focus:border-[var(--jmc-border-hover)] ${
                         grammarMissing
                           ? 'border border-amber-500/50 text-amber-300'
                           : 'border border-[var(--jmc-border)] text-[var(--jmc-text-muted)]'
@@ -1430,7 +1430,7 @@ export function DocumentViewerModal({
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
                       placeholder="PDF metninde ara…"
-                      className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+                      className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)]"
                     />
                   </div>
                 )}
@@ -1451,7 +1451,7 @@ export function DocumentViewerModal({
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder="Word dokümanında ara…"
-                    className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+                    className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)]"
                   />
                 </div>
 
@@ -1516,7 +1516,7 @@ export function DocumentViewerModal({
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder="Tabloda filtrele…"
-                    className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+                    className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)]"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -1877,7 +1877,7 @@ export function DocumentViewerModal({
                                 <button
                                   type="button"
                                   onClick={handleOpenFile}
-                                  className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-2 text-[12px] font-medium text-[var(--jmc-text)] transition-all hover:border-[var(--jmc-primary)] active:scale-95"
+                                  className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-2 text-[12px] font-medium text-[var(--jmc-text)] transition-all hover:border-[var(--jmc-border-hover)] active:scale-95"
                                 >
                                   <ExternalLink className="h-3.5 w-3.5 text-rose-400" />
                                   <span>Sistemde Aç</span>
@@ -2017,7 +2017,7 @@ export function DocumentViewerModal({
                                   <button
                                     type="button"
                                     onClick={() => setSearchQuery('')}
-                                    className="mt-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)]"
+                                    className="mt-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-border-hover)]"
                                   >
                                     Aramayı Temizle
                                   </button>

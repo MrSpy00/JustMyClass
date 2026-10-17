@@ -119,13 +119,14 @@ export function extractYouTubeVideosFromText(text?: string | null): YouTubeVideo
  */
 export function getYouTubeEmbedUrl(
   videoId: string,
-  opts?: { autoplay?: boolean; startSeconds?: number },
+  opts?: { autoplay?: boolean; startSeconds?: number; enablejsapi?: boolean },
 ): string {
   const params = new URLSearchParams({
     rel: '0',
     modestbranding: '1',
     playsinline: '1',
   })
+  if (opts?.enablejsapi) params.set('enablejsapi', '1')
   if (opts?.autoplay) params.set('autoplay', '1')
   if (opts?.startSeconds && opts.startSeconds > 0) {
     params.set('start', String(Math.floor(opts.startSeconds)))

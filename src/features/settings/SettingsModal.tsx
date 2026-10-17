@@ -1085,7 +1085,7 @@ const UpdatePanel: React.FC<{
             autoComplete="off"
             inputMode="url"
             aria-label={tr ? 'Yayın adresi' : 'Feed URL'}
-            className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-2.5 py-1.5 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-primary)]"
+            className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-2.5 py-1.5 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-border-hover)]"
           />
           <SmallButton onClick={onSaveFeed} disabled={busy}>
             {tr ? 'Kaydet' : 'Save'}
@@ -1145,6 +1145,40 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  const [autoFallback, setAutoFallback] = useState<boolean>(true)
+  const [fallbackProviderId, setFallbackProviderId] = useState<string>('')
+  const [fallbackModelId, setFallbackModelId] = useState<string>('')
+
+  useEffect(() => {
+    if (!window.jmcAPI?.getSetting) return
+    window.jmcAPI.getSetting<boolean>('ai.autoFallbackEnabled', true).then(val => {
+      setAutoFallback(val !== false)
+    }).catch(() => {})
+    window.jmcAPI.getSetting<string>('ai.fallbackProviderId', '').then(val => {
+      setFallbackProviderId(val || '')
+    }).catch(() => {})
+    window.jmcAPI.getSetting<string>('ai.fallbackModelId', '').then(val => {
+      setFallbackModelId(val || '')
+    }).catch(() => {})
+  }, [])
+
+  const handleToggleAutoFallback = async (checked: boolean) => {
+    setAutoFallback(checked)
+    await window.jmcAPI?.setSetting?.('ai.autoFallbackEnabled', checked)
+  }
+
+  const handleFallbackProviderChange = async (provId: string) => {
+    setFallbackProviderId(provId)
+    await window.jmcAPI?.setSetting?.('ai.fallbackProviderId', provId)
+    setFallbackModelId('')
+    await window.jmcAPI?.setSetting?.('ai.fallbackModelId', '')
+  }
+
+  const handleFallbackModelChange = async (modelId: string) => {
+    setFallbackModelId(modelId)
+    await window.jmcAPI?.setSetting?.('ai.fallbackModelId', modelId)
+  }
+
   const submit = async () => {
     if (!window.jmcAPI) return
     setSaving(true)
@@ -1170,6 +1204,83 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Yedek (Fallback) Sağlayıcı ve Model Tercihi */}
+      <div className="rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-elevated)] p-3.5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-semibold text-[var(--jmc-text)]">
+                {lang === 'tr' ? 'Otomatik Yedek (Fallback) Sağlayıcı' : 'Automatic Fallback Provider'}
+              </span>
+              <span className="rounded bg-[var(--jmc-primary)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--jmc-primary-text)]">
+                {lang === 'tr' ? 'Akıllı Yönlendirme' : 'Smart Routing'}
+              </span>
+            </div>
+            <p className="text-[11px] text-[var(--jmc-text-dim)]">
+              {lang === 'tr'
+                ? 'Aktif model kota aşımı (429), bakiye yetersizliği veya sunucu hatası verdiğinde otomatik olarak belirlenen yedek sağlayıcıya geçer.'
+                : 'Automatically switches to a backup provider when primary model hits quota limits (429) or server errors.'}
+            </p>
+          </div>
+          <label className="relative inline-flex cursor-pointer items-center">
+            <input
+              type="checkbox"
+              checked={autoFallback}
+              onChange={e => void handleToggleAutoFallback(e.target.checked)}
+              className="peer sr-only"
+            />
+            <div className="peer h-5 w-9 rounded-full bg-[var(--jmc-bg-surface)] border border-[var(--jmc-border)] after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:bg-[var(--jmc-text-dim)] after:transition-all peer-checked:bg-[var(--jmc-primary)] peer-checked:after:translate-x-full peer-checked:after:bg-[var(--jmc-on-primary)]" />
+          </label>
+        </div>
+
+        {autoFallback && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-[var(--jmc-border-subtle)]">
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-[var(--jmc-text-muted)]">
+                {lang === 'tr' ? 'Tercih Edilen Yedek Sağlayıcı' : 'Preferred Fallback Provider'}
+              </label>
+              <select
+                value={fallbackProviderId}
+                onChange={e => void handleFallbackProviderChange(e.target.value)}
+                className="w-full rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2.5 py-1.5 text-[11.5px] text-[var(--jmc-text)] outline-none focus:border-[var(--jmc-border-hover)]"
+              >
+                <option value="">
+                  {lang === 'tr' ? 'Otomatik Akıllı Seçim (Yerel & Ücretsiz Öncelikli)' : 'Automatic Smart Priority (Local & Free First)'}
+                </option>
+                {providers
+                  .filter(p => p.hasKey || p.isLocal)
+                  .map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.displayName} {p.isLocal ? '(Yerel)' : ''}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-[var(--jmc-text-muted)]">
+                {lang === 'tr' ? 'Yedek Model' : 'Fallback Model'}
+              </label>
+              <select
+                value={fallbackModelId}
+                disabled={!fallbackProviderId}
+                onChange={e => void handleFallbackModelChange(e.target.value)}
+                className="w-full rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2.5 py-1.5 text-[11.5px] text-[var(--jmc-text)] outline-none focus:border-[var(--jmc-border-hover)] disabled:opacity-40"
+              >
+                <option value="">
+                  {lang === 'tr' ? 'Varsayılan / En Kararlı Model' : 'Default / Most Stable Model'}
+                </option>
+                {(providers.find(p => p.id === fallbackProviderId)?.models || []).map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.name || m.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="max-w-xl text-[12px] leading-relaxed text-[var(--jmc-text-muted)]">
           {lang === 'tr'
@@ -1334,7 +1445,7 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                   spellCheck={false}
                   value={endpoints[p.id] ?? ''}
                   onChange={e => onEndpointChange(p.id, e.target.value)}
-                  className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-2.5 py-1.5 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-primary)]"
+                  className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-2.5 py-1.5 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-border-hover)]"
                 />
                 <SmallButton onClick={() => onSaveEndpoint(p.id)}>
                   {lang === 'tr' ? 'Kaydet' : 'Save'}
@@ -1356,7 +1467,7 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                   placeholder={p.maskedKey ? `${lang === 'tr' ? 'kayıtlı: ' : 'stored: '}${p.maskedKey}` : (lang === 'tr' ? 'API anahtarı' : 'API key')}
                   value={keyDrafts[p.id] ?? ''}
                   onChange={e => onKeyChange(p.id, e.target.value)}
-                  className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-2.5 py-1.5 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-primary)]"
+                  className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-2.5 py-1.5 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-border-hover)]"
                 />
                 <SmallButton onClick={() => onSaveKey(p.id)}>
                   {lang === 'tr' ? 'Kaydet' : 'Save'}
@@ -1874,7 +1985,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
                   autoComplete="off"
                   aria-label={`${t(field.label)} hex`}
                   onChange={e => onPickColor(field.key, e.target.value)}
-                  className="w-full rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2 py-1 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-primary)]"
+                  className="w-full rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2 py-1 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-border-hover)]"
                 />
               </div>
             </div>
@@ -1911,7 +2022,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
               setDraftName(e.target.value)
               if (nameError) setNameError(null)
             }}
-            className="w-full rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1.5 text-[12px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-primary)]"
+            className="w-full rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1.5 text-[12px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-border-hover)]"
           />
           <p
             className={`mt-1 text-[10.5px] ${
@@ -1995,7 +2106,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
                         if (e.key === 'Enter') commitRename()
                         if (e.key === 'Escape') setEditingId(null)
                       }}
-                      className="min-w-[120px] flex-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2 py-1 text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-primary)]"
+                      className="min-w-[120px] flex-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2 py-1 text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-border-hover)]"
                     />
                   ) : (
                     <span className="min-w-[80px] flex-1 truncate text-[12px] text-[var(--jmc-text)]">
@@ -2347,7 +2458,7 @@ const AccountPanel: React.FC<{
               placeholder="Client ID (...apps.googleusercontent.com)"
               value={clientId}
               onChange={e => setClientId(e.target.value)}
-              className="min-w-0 w-full rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 font-mono text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+              className="min-w-0 w-full rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 font-mono text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)]"
             />
             <input
               type="password"
@@ -2360,7 +2471,7 @@ const AccountPanel: React.FC<{
               }
               value={clientSecret}
               onChange={e => setClientSecretState(e.target.value)}
-              className="min-w-0 w-full rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 font-mono text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
+              className="min-w-0 w-full rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-1.5 font-mono text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)]"
             />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2910,7 +3021,7 @@ const ToolsPanel: React.FC<{
                       spellCheck={false}
                       aria-invalid={tavilyError ? true : undefined}
                       aria-describedby={tavilyError ? 'jmc-tavily-key-error' : undefined}
-                      className="min-w-0 flex-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1 font-mono text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)] aria-[invalid=true]:border-[var(--jmc-danger)]"
+                      className="min-w-0 flex-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1 font-mono text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)] aria-[invalid=true]:border-[var(--jmc-danger)]"
                     />
                     <button
                       type="button"
@@ -2994,7 +3105,7 @@ const ToolsPanel: React.FC<{
                       spellCheck={false}
                       aria-invalid={braveError ? true : undefined}
                       aria-describedby={braveError ? 'jmc-brave-key-error' : undefined}
-                      className="min-w-0 flex-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1 font-mono text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)] aria-[invalid=true]:border-[var(--jmc-danger)]"
+                      className="min-w-0 flex-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1 font-mono text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-border-hover)] aria-[invalid=true]:border-[var(--jmc-danger)]"
                     />
                     <button
                       type="button"

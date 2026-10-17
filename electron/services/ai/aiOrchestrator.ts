@@ -264,6 +264,7 @@ export const JMC_AI_TOOLS = [
   export function describeEmptyOutcome(outcome: StreamOutcome): string | null {
     if (outcome.content.trim().length > 0) return null
     if (outcome.toolCalls.length > 0) return null
+    if (outcome.reasoning && outcome.reasoning.trim().length > 0) return null
 
     const reason = (outcome.stopReason ?? '').trim()
     const key = reason.toUpperCase()
@@ -586,6 +587,25 @@ function extractTextToolCalls(
   //    "yapacagim" dedikten sonra ham JSON'u metin olarak ekrana basip
   //    DURUYORDU. Asagida denge-tanimli (balanced-brace) tarayici var.
   cleanedText = extractInlineJsonToolCalls(cleanedText, toolCalls)
+
+  // 5. Doğal dil araç niyetleri (akıl yürütme modellerinin metne döktüğü çağrı niyetlerini yakalar)
+  if (toolCalls.length === 0) {
+    const naturalCallRegex = /\b(?:let's call|calling|call|use|araç çağır)\s+(workspace_list_open_files|workspace_read_open_file|classroom_list_courses|classroom_list_recent_announcements)\b/i
+    const m = naturalCallRegex.exec(cleanedText)
+    if (m && KNOWN_TOOL_NAMES.has(m[1])) {
+      const toolName = m[1]
+      const args: Record<string, unknown> = {}
+      if (toolName === 'workspace_read_open_file') {
+        const fileMatch = /"([^"]+\.[a-zA-Z0-9]+)"/i.exec(cleanedText)
+        if (fileMatch) args.fileName = fileMatch[1]
+      }
+      toolCalls.push({
+        id: `call_${Date.now()}_intent`,
+        name: toolName,
+        args,
+      })
+    }
+  }
 
   return { cleanedText: cleanedText.trim(), toolCalls }
 }
@@ -2244,22 +2264,81 @@ export class AiOrchestrator {
     return citations.length ? citations : undefined
   }
 
-  private findFallbackProviders(currentId: ProviderId): Array<{ provider: AiProviderConfig; apiKey?: string }> {
-    const list: Array<{ provider: AiProviderConfig; apiKey?: string }> = []
+  private findFallbackProviders(currentId: ProviderId): Array<{ provider: AiProviderConfig; apiKey?: string; preferredModel?: string }> {
+    const enabled = this.storageService?.getSetting<boolean>('ai.autoFallbackEnabled', true) ?? true
+    if (enabled === false) {
+      return []
+    }
+
+    const preferredProvId = this.storageService?.getSetting<string>('ai.fallbackProviderId', '') ?? ''
+    const preferredModelId = this.storageService?.getSetting<string>('ai.fallbackModelId', '') ?? ''
+
+    const candidates: Array<{ provider: AiProviderConfig; apiKey?: string; priority: number; preferredModel?: string }> = []
+
     for (const [id, config] of this.providers.entries()) {
       if (id === currentId) continue
+      let hasAccess = false
+      let key: string | undefined = undefined
+
       if (config.isLocal) {
         if (config.healthStatus === 'healthy') {
-          list.push({ provider: config })
+          hasAccess = true
         }
       } else {
-        const key = this.vaultService.getKey(id)
-        if (key && key.trim().length > 0) {
-          list.push({ provider: config, apiKey: key.trim() })
+        const vaultKey = this.vaultService.getKey(id)
+        if (vaultKey && vaultKey.trim().length > 0) {
+          hasAccess = true
+          key = vaultKey.trim()
         }
       }
+
+      if (!hasAccess) continue
+
+      let priority = 100
+      let modelForProvider: string | undefined = undefined
+
+      if (preferredProvId && id === preferredProvId) {
+        priority = 1000
+        if (preferredModelId) {
+          modelForProvider = preferredModelId
+        }
+      } else if (config.isLocal) {
+        priority = 500
+      } else if (id === 'groq') {
+        priority = 400
+        modelForProvider = 'llama-3.3-70b-versatile'
+      } else if (id === 'gemini') {
+        priority = 350
+        modelForProvider = GEMINI_FALLBACK_MODEL
+      } else if (id === 'openai') {
+        priority = 250
+        modelForProvider = 'gpt-4o-mini'
+      } else if (id === 'deepseek') {
+        priority = 240
+        modelForProvider = 'deepseek-chat'
+      } else if (id === 'anthropic') {
+        priority = 230
+        modelForProvider = 'claude-3-5-haiku-latest'
+      } else if (id === 'openrouter') {
+        // OpenRouter son çaredir; rastgele bilinmeyen pahalı modeller yerine ücretsiz veya seçili model
+        priority = 50
+        modelForProvider = config.selectedModel || 'meta-llama/llama-3.3-70b-instruct:free'
+      }
+
+      if (!modelForProvider) {
+        modelForProvider = config.selectedModel || config.models[0]?.id
+      }
+
+      candidates.push({
+        provider: config,
+        apiKey: key,
+        priority,
+        preferredModel: modelForProvider,
+      })
     }
-    return list
+
+    candidates.sort((a, b) => b.priority - a.priority)
+    return candidates.map(c => ({ provider: c.provider, apiKey: c.apiKey, preferredModel: c.preferredModel }))
   }
 
   // =========================================================================
@@ -2640,7 +2719,7 @@ export class AiOrchestrator {
       let lastFailedProviderName = activeProv.displayName
 
       for (const fb of fallbacks) {
-        const fbModel = fb.provider.selectedModel || fb.provider.models[0]?.id
+        const fbModel = fb.preferredModel || fb.provider.selectedModel || fb.provider.models[0]?.id
         if (!fbModel) continue
         try {
           const errMsg = this.formatProviderErrorMessage(primaryErr, activeProv.displayName)
@@ -2696,7 +2775,7 @@ export class AiOrchestrator {
           const fallbacks = this.findFallbackProviders(activeProv.id)
           let recoveredTurn: StreamOutcome | null = null
           for (const fb of fallbacks) {
-            const fbModel = fb.provider.selectedModel || fb.provider.models[0]?.id
+            const fbModel = fb.preferredModel || fb.provider.selectedModel || fb.provider.models[0]?.id
             if (!fbModel) continue
             try {
               recoveredTurn = await executeStreamCallWithRetry(fb.provider, fb.apiKey, fbModel, conversation)
@@ -2745,6 +2824,12 @@ export class AiOrchestrator {
             answer = answer ? `${answer}\n\n${cleaned}`.trim() : cleaned
           }
           pendingCalls = [...pendingCalls, ...extracted.toolCalls]
+        }
+      }
+      if (pendingCalls.length === 0 && turn.reasoning) {
+        const extractedReasoning = extractTextToolCalls(turn.reasoning)
+        if (extractedReasoning.toolCalls.length) {
+          pendingCalls = [...pendingCalls, ...extractedReasoning.toolCalls]
         }
       }
 
@@ -2860,8 +2945,8 @@ export class AiOrchestrator {
     }
 
     if (!finalContent && allToolCalls.length === 0) {
-      if (reasoningContent) {
-        finalContent = reasoningContent
+      if (reasoningContent || rawReasoning.length > 0) {
+        finalContent = reasoningContent || rawReasoning
       } else {
         throw new Error(
           'Model boş bir yanıt döndürdü. Bu genellikle modelin araç döngüsünde takıldığı veya ' +

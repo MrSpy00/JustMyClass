@@ -487,7 +487,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                     placeholder={`${selectedProvider} API anahtarını buraya yapıştırın...`}
                     value={quickApiKey}
                     onChange={e => setQuickApiKey(e.target.value)}
-                    className="flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-1.5 font-mono text-[11.5px] border border-[var(--jmc-border)] text-[var(--jmc-text)] outline-none focus:border-[var(--jmc-primary)]"
+                    className="flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-1.5 font-mono text-[11.5px] border border-[var(--jmc-border)] text-[var(--jmc-text)] outline-none focus:border-[var(--jmc-border-hover)]"
                   />
                   <button
                     type="button"

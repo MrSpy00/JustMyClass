@@ -2228,7 +2228,7 @@ const resetSessionUiState = useCallback(() => {
                       value={sessionSearchQuery}
                       onChange={e => setSessionSearchQuery(e.target.value)}
                       placeholder="Sohbetlerde ara..."
-                      className="w-full rounded bg-[var(--jmc-bg)] px-2 py-1 text-[11px] border border-[var(--jmc-border-subtle)] text-[var(--jmc-text)] placeholder:text-[var(--jmc-text-dim)] outline-none focus:border-[var(--jmc-primary)]"
+                      className="w-full rounded bg-[var(--jmc-bg)] px-2 py-1 text-[11px] border border-[var(--jmc-border-subtle)] text-[var(--jmc-text)] placeholder:text-[var(--jmc-text-dim)] outline-none focus:border-[var(--jmc-border-hover)]"
                     />
                   </div>
                 )}
@@ -2332,14 +2332,14 @@ const resetSessionUiState = useCallback(() => {
                     placeholder="Konu / Başlık (Örn: Çözüm Dili, Matematik, Format)"
                     value={newMemoryKey}
                     onChange={e => setNewMemoryKey(e.target.value)}
-                    className="rounded bg-[var(--jmc-bg)] px-2 py-1 text-[11px] border border-[var(--jmc-border)] text-[var(--jmc-text)] outline-none focus:border-[var(--jmc-primary)]"
+                    className="rounded bg-[var(--jmc-bg)] px-2 py-1 text-[11px] border border-[var(--jmc-border)] text-[var(--jmc-text)] outline-none focus:border-[var(--jmc-border-hover)]"
                   />
                   <textarea
                     placeholder="Kural veya Alışkanlık (Örn: Her zaman Türkçe açıkla, formülleri LaTeX olarak yaz)"
                     value={newMemoryValue}
                     onChange={e => setNewMemoryValue(e.target.value)}
                     rows={2}
-                    className="rounded bg-[var(--jmc-bg)] px-2 py-1 text-[11px] border border-[var(--jmc-border)] text-[var(--jmc-text)] outline-none focus:border-[var(--jmc-primary)] resize-none"
+                    className="rounded bg-[var(--jmc-bg)] px-2 py-1 text-[11px] border border-[var(--jmc-border)] text-[var(--jmc-text)] outline-none focus:border-[var(--jmc-border-hover)] resize-none"
                   />
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex items-center gap-2 text-[10.5px] text-[var(--jmc-text-muted)]">
@@ -2849,7 +2849,7 @@ const resetSessionUiState = useCallback(() => {
                 }
                 disabled={isGenerating || !aiReady}
                 aria-label={t('ai.inputPlaceholder')}
-                className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-2 text-[12px] text-[var(--jmc-text)] shadow-[var(--jmc-shadow-sm)] border border-[var(--jmc-border)] placeholder:text-[var(--jmc-text-dim)] focus:outline-none focus:border-[var(--jmc-primary)] disabled:opacity-50"
+                className="min-w-0 flex-1 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-2 text-[12px] text-[var(--jmc-text)] shadow-[var(--jmc-shadow-sm)] border border-[var(--jmc-border)] placeholder:text-[var(--jmc-text-dim)] focus:outline-none focus:border-[var(--jmc-border-hover)] disabled:opacity-50"
               />
               {/*
                 DURDUR DUGMESI

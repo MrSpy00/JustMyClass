@@ -26,6 +26,8 @@
   --jmc-bg-surface: #1c1435;
   --jmc-border: #2e2350;
   --jmc-border-subtle: #241a40;
+  --jmc-border-hover: #48397a;
+  --jmc-border-focus: #48397a;
   --jmc-text: #efe8fb;
   --jmc-text-muted: #b3a3d0;
   --jmc-text-dim: #8a7bab;
@@ -142,14 +144,32 @@ textarea,
 }
 
 /* ==========================================================================
-   Odak ve Dış Çizgi Temizliği (Sıfır İstenmeyen Dış Halka)
+   Odak ve Dış Çizgi Temizliği (Sıfır İstenmeyen Dış Halka / Mor Çerçeve)
    Yazı alanları, arama çubukları ve form girdilerinde kaba mor dış halka
    (outline/ring) tamamen kaldırılmıştır; sade ve zarif bir arayüz sağlanır.
    ========================================================================== */
+*,
+*::before,
+*::after {
+  outline: none !important;
+}
+
+:focus,
+:focus-visible,
+:focus-within {
+  outline: none !important;
+  outline-offset: 0 !important;
+}
+
 input,
 textarea,
 select,
+button,
 [contenteditable],
+[tabindex] {
+  outline: none !important;
+}
+
 input:focus,
 input:focus-visible,
 textarea:focus,
@@ -161,14 +181,7 @@ select:focus-visible,
   outline: none !important;
   outline-offset: 0 !important;
   box-shadow: none !important;
-}
-
-:focus-visible {
-  outline: none !important;
-}
-
-:focus:not(:focus-visible) {
-  outline: none !important;
+  border-color: var(--jmc-border-hover) !important;
 }
 
 /* ==========================================================================

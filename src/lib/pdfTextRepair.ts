@@ -7,10 +7,23 @@
  */
 
 export function repairPdfSpacedText(line: string): string {
-  if (!line || line.length < 4) return line
+  if (!line || line.length < 2) return line
+
+  // 0) Ligatürleri ve yumuşak tireleri (soft hyphen) düzelt
+  let res = line
+    .replace(/\u00AD/g, '')
+    .replace(/\uFB01/g, 'fi')
+    .replace(/\uFB02/g, 'fl')
+    .replace(/\uFB03/g, 'ffi')
+    .replace(/\uFB04/g, 'ffl')
+    .replace(/\uFB00/g, 'ff')
+    .replace(/\uFB05/g, 'ft')
+    .replace(/\uFB06/g, 'st')
+
+  if (res.length < 4) return res
 
   // 1) HTML/XML etiketleri: "< h t m l >", "< / h e a d >", "< / h t m l >" vb.
-  let res = line.replace(/<\s*([/!?]?\s*[a-zA-Z0-9_-]+(?:\s+[/a-zA-Z0-9_-]+)*)\s*>/g, (_, inner) => {
+  res = res.replace(/<\s*([/!?]?\s*[a-zA-Z0-9_-]+(?:\s+[/a-zA-Z0-9_-]+)*)\s*>/g, (_, inner) => {
     return `<${inner.replace(/\s+/g, '')}>`
   })
 

@@ -13,6 +13,7 @@ import {
   deriveOnColorText,
   deriveRoleTextColors,
   isLightTheme,
+  mixHex,
   parseCustomThemes,
   serializeCustomThemes,
   validateCustomThemeName,
@@ -204,6 +205,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     set('--jmc-bg-surface', colors.bgSurface)
     set('--jmc-border', colors.border)
     set('--jmc-border-subtle', colors.borderSubtle)
+    const borderHover = mixHex(colors.border, colors.text, 0.22)
+    set('--jmc-border-hover', borderHover)
+    set('--jmc-border-focus', borderHover)
     set('--jmc-text', colors.text)
     set('--jmc-text-muted', colors.textMuted)
     set('--jmc-text-dim', colors.textDim)
