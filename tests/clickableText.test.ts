@@ -109,6 +109,13 @@ describe('findUrls — YANLIS POZITIF korumalari', () => {
   it('sadece rakam iceren etiketleri adres saymaz', () => {
     expect(first('123.456 adet')).toBeNull()
   })
+
+  it('kod icindeki nesne.alan atamalarini (this.ad = ad) adres saymaz', () => {
+    expect(first('this.ad = ad; this.fiyat = fiyat;')).toBeNull()
+    expect(first('self.id = 42')).toBeNull()
+    expect(first('urun.ad = "Elma"')).toBeNull()
+    expect(first('nesne.io(param)')).toBeNull()
+  })
 })
 
 describe('findUrls — sondaki isaretler', () => {

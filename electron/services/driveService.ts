@@ -50,6 +50,10 @@ export class DriveService {
    * belirtec, kullanicidan istenmeden yenileniyor.
    */
   private async getAccessToken(): Promise<string> {
+    if (this.authService && typeof this.authService.getValidAccessToken === 'function') {
+      const valid = await this.authService.getValidAccessToken()
+      if (valid) return valid
+    }
     const cached = this.vaultService.getKey('google_access_token')
     if (cached) return cached
     if (this.authService) {

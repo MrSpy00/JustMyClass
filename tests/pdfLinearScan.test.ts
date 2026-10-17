@@ -159,6 +159,29 @@ describe('extractTextFromPdf - sozluk icindeki sahte "stream"', () => {
     // Sahte kelime metne sizmamali.
     expect(out).not.toContain('my stream notes')
   })
+
+  it('cok sayida ters egik cizgi kacisi (\\347\\366\\374) iceren TJ dizisinde ustel geri-izleme (backtracking) yapmaz', () => {
+    // Eski opRe kalibinda `\(([^)]*(?:\\.[^)]*)*)\)\s*Tj` dali, TJ dizisi icindeki
+    // cok kacisli parantezde `)` sonrasinda Tj bulamayinca O(2^30) geri-izleme ile
+    // Electron ana surecini sonsuza dek donduruyordu ("Belge Hazirlaniyor...").
+    const escapedText = Array.from({ length: 35 }, () => '\\347\\366\\374a').join('')
+    const streamBytes = Buffer.from(
+      `BT /F1 12 Tf [ (${escapedText}) -200 (Turkce Metin) ] TJ ET`,
+      'latin1',
+    )
+    const compressed = zlib.deflateSync(streamBytes)
+    const pdf = Buffer.concat([
+      Buffer.from('%PDF-1.7\n', 'latin1'),
+      Buffer.from(`4 0 obj\n<< /Length ${compressed.length} /Filter /FlateDecode >>\nstream\n`, 'latin1'),
+      compressed,
+      Buffer.from('\nendstream\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n', 'latin1'),
+    ])
+    const t0 = performance.now()
+    const out = extractTextFromPdf(pdf)
+    const elapsed = performance.now() - t0
+    expect(elapsed).toBeLessThan(200)
+    expect(out).toContain('Turkce Metin')
+  })
 })
 describe('extractTextFromPdf - maliyet dogrusal', () => {
   it('dosya 4 kat buyudugunde sure 4 kattan CAT katinin altinda kalir', () => {

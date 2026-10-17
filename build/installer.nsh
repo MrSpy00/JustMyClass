@@ -43,19 +43,24 @@
   SetOutPath "$TEMP"
 
   DetailPrint "JustMyClass onbellegi (indirilen gecici dosyalar) temizleniyor..."
-  ; DIKKAT: Kullanici verisi (dersler, odevler, sohbet gecmisi, API
-  ; anahtarlari) SILINMEZ. Onceki surum burada
-  ;   RMDir /r "$APPDATA\JustMyClass"
-  ; calistiriyordu; bu, programi bir kez kaldirip yeniden kurmak
-  ; kullanicinin butun emegini ve ayarlarini geri donus olmayan sekilde
-  ; siliyordu. Belgeler (docs/KULLANIM.md) "kaldirma verileri silmez"
-  ; diyordu ama kod tersini yapiyordu.
-  ;
-  ; Verileri kalici olarak silmek icin: Ayarlar > Gizlilik > Tum verileri
-  ; temizle (bu yol onay diyalogu ister).
   RMDir /r "$LOCALAPPDATA\justmyclass-updater"
   RMDir /r "$TEMP\JustMyClass"
   RMDir /r "$TEMP\justmyclass"
+
+  ; Kullaniciya tum uygulama verilerini, ayarlari, onbellegi ve oturum bilgilerini
+  ; de tamamen silip sifirlamak isteyip istemedigini sor (Sessiz kaldirmada varsayilan: Hayir).
+  MessageBox MB_YESNO|MB_ICONQUESTION "JustMyClass kaldırılıyor.$\r$\n$\r$\nKullanıcı verileriniz, indirilen ders önbelleği, özel temalarınız, API anahtarlarınız ve oturum bilgileriniz de tamamen silinsin mi?$\r$\n$\r$\n• Evet: Geride JustMyClass ile ilgili hiçbir iz/veri bırakmadan tertemiz kaldır$\r$\n• Hayır: Yalnızca programı kaldır, ayarlarımı ve verilerimi koru" /SD IDNO IDYES WipeAllUserData IDNO KeepUserData
+
+  WipeAllUserData:
+    DetailPrint "Kullanici onayiyla tum JustMyClass verileri (%APPDATA% ve %LOCALAPPDATA%) temizleniyor..."
+    SetShellVarContext current
+    RMDir /r "$APPDATA\JustMyClass"
+    RMDir /r "$APPDATA\justmyclass"
+    RMDir /r "$LOCALAPPDATA\JustMyClass"
+    RMDir /r "$LOCALAPPDATA\justmyclass"
+    RMDir /r "$LOCALAPPDATA\com.aegissoft.justmyclass"
+
+  KeepUserData:
 
   DetailPrint "JustMyClass kisayollari ve baslat menusu kayitlari kaldiriliyor..."
   SetShellVarContext current

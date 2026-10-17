@@ -761,7 +761,7 @@ function parseToolResultForGemini(content: string): Record<string, unknown> {
  * 404 veriyor, yani kullaniciya gosterilen hata mesaji her seferinde
  * "bulunamayan modeli secin" diyordu.
  */
-const GEMINI_FALLBACK_MODEL = 'gemini-3.8-flash'
+const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash'
 
 /** Model kimliginden akil yurutme destegi tahmini (yalnizca yerellestirme icin). */
 function modelSupportsReasoning(id: string): boolean {
@@ -1236,11 +1236,12 @@ export class AiOrchestrator {
         // 12 ay destekleniyor. Liste acilista canli `/models` cagrisiyla
         // tazelenir; gomulu liste yalnizca ag yokken kullanilir.
         models: [
-          { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: true, isDefault: true },
-          { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: true },
-          { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: false },
-          { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: false },
-          { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro (önizleme)', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: true },
+          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: true, isDefault: true },
+          { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: true },
+          { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: false },
+          { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: true },
+          { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview', contextWindow: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsTools: true, supportsReasoning: true },
+          { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1_048_576, maxOutputTokens: 8_192, supportsVision: true, supportsTools: true, supportsReasoning: false },
         ],
       },
       {
@@ -1665,7 +1666,12 @@ export class AiOrchestrator {
       if (!Array.isArray(models) || models.length === 0) continue
       const prov = this.providers.get(providerId)
       if (!prov) continue
-      const merged = mergeFetchedWithCatalog(prov.models, models)
+      const validModels =
+        providerId === 'gemini'
+          ? models.filter(m => !/^gemini-3\.[158]/i.test(String(m?.id ?? '')))
+          : models
+      if (validModels.length === 0) continue
+      const merged = mergeFetchedWithCatalog(prov.models, validModels)
       prov.models = merged
       if (!prov.selectedModel || !merged.some(m => m.id === prov.selectedModel)) {
         prov.selectedModel = pickDefaultModel(merged).id
@@ -1857,7 +1863,7 @@ export class AiOrchestrator {
     try {
       if (prov.protocolType === 'ollama') {
         const res = await providerHttp.request<any>(`${prov.baseUrl}/api/tags`, {
-          timeoutMs: 8_000,
+          timeoutMs: 1_500,
           maxRetries: 0,
         })
         const raw: any[] = Array.isArray(res?.models) ? res.models : []
@@ -1888,8 +1894,8 @@ export class AiOrchestrator {
           `${prov.baseUrl}/models?key=${encodeURIComponent(apiKey)}`,
           {
             headers: { 'x-goog-api-key': apiKey },
-            timeoutMs: 15_000,
-            maxRetries: 1,
+            timeoutMs: 12_000,
+            maxRetries: 0,
           },
         )
         const raw: any[] = Array.isArray(res?.models) ? res.models : []
@@ -1916,8 +1922,8 @@ export class AiOrchestrator {
         if (!apiKey) return prov.models
         const res = await providerHttp.request<any>(`${prov.baseUrl}/models`, {
           headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-          timeoutMs: 15_000,
-          maxRetries: 1,
+          timeoutMs: 12_000,
+          maxRetries: 0,
         })
         const raw: any[] = Array.isArray(res?.data) ? res.data : []
         const models = normalizeFetchedModels(
@@ -1940,8 +1946,8 @@ export class AiOrchestrator {
 
       const res = await providerHttp.request<any>(`${prov.baseUrl}/models`, {
         headers,
-        timeoutMs: 15_000,
-        maxRetries: 1,
+        timeoutMs: prov.isLocal ? 1_500 : 12_000,
+        maxRetries: 0,
       })
       const raw: any[] = Array.isArray(res?.data)
         ? res.data
@@ -1962,49 +1968,42 @@ export class AiOrchestrator {
       // Kesif basarisiz olursa gomulu katalog korunur. Kullaniciya
       // HATA GOSTERILMEZ: acilista otomatik senkron yapildigi icin
       // gecici bir ag kesintisi kullaniciyi rahatsiz etmemeli.
+      if (prov.isLocal) {
+        prov.healthStatus = 'unreachable'
+      }
       const detail = err instanceof Error ? err.message : String(err)
       log.warn(`[AiOrchestrator] ${prov.displayName} modelleri alınamadı: ${detail}`)
       return prov.models
     }
   }
 
-  /**
-   * Tum KULLANILABILIR saglayicilarin modellerini paralel olarak ceker.
-   *
-   * NEDEN VAR
-   * ---------
-   * Kullanici istemisti: "Modelleri sorgula düğmesine basmadan, her
-   * uygulama açılışında otomatik güncel modelleri çek."
-   *
-   * ONCEKI SURUMDE model listesi gomuldu ve yalnizca elle bir dugmeye
-   * basildiginda yenileniyordu. Google/OpenAI yeni model cikardiginda
-   * kullanici uygulamayi guncelleyene kadar o modeli GOREMIYORDU.
-   *
-   * TASARIM KARARLARI
-   * ----------------
-   *   • Yalnizca anahtari olan (veya yerel) saglayicilar sorgulanir;
-   *     anahtarsiz bir saglayiciya yapilan istek 401 doner.
-   *   • HATALAR YUTULUR. Tek bir saglayicinin cokmemesi digerlerini
-   *     etkilemez ve uygulama acilmaya devam eder.
-   *   • Es zamanli calisir; 6 saglayici sirayla degil paralel gider,
-   *     acilista belirgin bir gecikme olusmaz.
-   */
-  public async syncAllProviderModels(): Promise<{ providerId: ProviderId; count: number }[]> {
-    this.ensureCustomProvidersRestored()
-    const targets = [...this.providers.values()].filter(
-      p => p.isEnabled !== false && (p.isLocal || this.vaultService.hasKey(p.id)),
-    )
+  private syncModelsInFlight: Promise<{ providerId: ProviderId; count: number }[]> | null = null
 
-    return Promise.all(
-      targets.map(async prov => {
-        try {
-          const models = await this.fetchProviderModels(prov.id)
-          return { providerId: prov.id, count: models.length }
-        } catch {
-          return { providerId: prov.id, count: 0 }
-        }
-      }),
-    )
+  public async syncAllProviderModels(): Promise<{ providerId: ProviderId; count: number }[]> {
+    if (this.syncModelsInFlight) {
+      return this.syncModelsInFlight
+    }
+    const run = async (): Promise<{ providerId: ProviderId; count: number }[]> => {
+      this.ensureCustomProvidersRestored()
+      const targets = [...this.providers.values()].filter(
+        p => p.isEnabled !== false && (p.isLocal || this.vaultService.hasKey(p.id)),
+      )
+
+      return Promise.all(
+        targets.map(async prov => {
+          try {
+            const models = await this.fetchProviderModels(prov.id)
+            return { providerId: prov.id, count: models.length }
+          } catch {
+            return { providerId: prov.id, count: 0 }
+          }
+        }),
+      )
+    }
+    this.syncModelsInFlight = run().finally(() => {
+      this.syncModelsInFlight = null
+    })
+    return this.syncModelsInFlight
   }
 
   // Baglanti testi - GERCEK HTTP istegi
@@ -2257,7 +2256,9 @@ export class AiOrchestrator {
     for (const [id, config] of this.providers.entries()) {
       if (id === currentId) continue
       if (config.isLocal) {
-        list.push({ provider: config })
+        if (config.healthStatus === 'healthy') {
+          list.push({ provider: config })
+        }
       } else {
         const key = this.vaultService.getKey(id)
         if (key && key.trim().length > 0) {
@@ -2614,7 +2615,7 @@ export class AiOrchestrator {
           const isGeminiModelIssue =
             p.protocolType === 'gemini' &&
             !isContextOverflow &&
-            ((err instanceof HttpError && (err.status === 404 || err.status === 403 || err.status === 400)) ||
+            ((err instanceof HttpError && (err.status === 404 || err.status === 403)) ||
               /not found|not granted access|model.*not.*exist|invalid argument.*model|unsupported/i.test(String(err)))
 
           if (isGeminiModelIssue && model !== GEMINI_FALLBACK_MODEL) {
@@ -2663,20 +2664,6 @@ export class AiOrchestrator {
       }
 
       if (!fallbackSuccess) {
-        /*
-          ASIL NEDEN KORUNUR
-          -------------------
-          Onceki surum `lastErr = fbErr` yaptigi icin, yedek saglayici
-          FARKLI bir sebepten basarisiz oldugunda kullaniciya yedegin
-          hatasi gosteriliyordu. Ornek: birincil saglayici "bos yanit"
-          donduruyor, yedek "Cannot read properties of undefined" ile
-          patliyor -> ekranda kimseye bir sey ifade etmeyen ikinci hata
-          gorunuyor ve asil neden kayboluyordu.
-
-          Artik BIRINCIL hata esas alinir; yedegin hatasi yalnizca ek
-          baglam olarak eklenir. Boylece "bos yanit", "guvenlik filtresi"
-          gibi gercek nedenler kullaniciya ulasir.
-        */
         const primaryMessage = this.formatProviderErrorMessage(primaryErr, activeProv.displayName)
         if (lastErr === primaryErr || String(lastErr) === String(primaryErr)) {
           throw new Error(primaryMessage)
@@ -2686,15 +2673,6 @@ export class AiOrchestrator {
       }
     }
 
-    // ---- Arac dongusu ----------------------------------------------------
-    //
-    // Her turda model ya metin uretir ya da arac cagirir. Arac
-    // cagrilari calistirilir, sonuclari sohbete geri beslenir ve model
-    // bir sonraki turda sentezler. Dongu, model arac istemeyi birakana
-    // kadar veya sinira ulasana kadar tekrarlanir.
-    //
-    // `MAX_TOOL_ROUNDS` bir guvenlik/ag maliyeti tavani: model sonsuza
-    // kadar "bir arac daha cagirayim" dediginde istek kuyrugu tukenmez.
     const MAX_TOOL_ROUNDS = 8
     const allToolCalls: ToolCallRecord[] = []
     let reasoningParts: string[] = []
@@ -2704,11 +2682,6 @@ export class AiOrchestrator {
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
       if (signal?.aborted) throw new Error('Yanıt üretimi kullanıcı tarafından iptal edildi.')
 
-      // NOT: Onceki surumde tur basinda `{ role: 'assistant', content: '(araç çağrısı)' }`
-      // yer tutucusu ekleniyordu. Artik dogru bicim, turun sonunda
-      // `modelTurn` (arac cagrilariyla) + `toolTurns` (sonuclarla)
-      // ekleniyor; basa ayrica tur eklemek konusmasi bozardi.
-
       const turn = round === 0
         ? outcome
         : await executeStreamCallWithRetry(
@@ -2716,29 +2689,8 @@ export class AiOrchestrator {
             activeApiKey,
             activeModelId,
             conversation,
-            // ONCEKI SURUM: `round >= 2 ? false` ile 2. turdan itibaren
-            // arac semasi GONDERILMIYORDU. Yani model en fazla BIR tur
-            // native arac cagirabiliyor, sonraki turlarda sema yokken
-            // sistem istemi "araclari KESINLIKLE cagir" demeye devam
-            // ediyor ve model JSON'u METIN olarak yaziyordu.
-            // Araclar her turda gonderilir.
           )
 
-      // ONCEKI HATA — DUSUNME SIZINTISI
-      // -----------------------------------
-      // Her turun gerekcesi birlestiriliyordu. Arac dongusunun ARA
-      // turlari da buna dahildi; o turlarda model "once sunu yapacagim,
-      // simdi web_search cagiracagim" gibi bir PLANLAMA ic konusmasi
-      // uretir. Bu metin kullaniciya "MODELIN DUSUNME SURECI" altinda
-      // gosteriliyordu ve aslinda kullaniciya ait degildi:
-      //
-      //   "The user asks: ... According to rules, we must not ask for
-      //    permission... So we call web_search."
-      //
-      // Kullanici Turkce soruyor, ekranda Ingilizce ic yorum goruyor.
-      //
-      // COZUM: yalnizca YANITI ureten son turun gerekcesi gosterilir.
-      // Ara turlerin gerekcesi arac secimi icindir; gosterilmez.
       if (turn.reasoning) reasoningParts = [turn.reasoning]
       if (round === 0) {
         answer = turn.content
@@ -2768,9 +2720,6 @@ export class AiOrchestrator {
       }
 
       if (pendingCalls.length === 0) {
-        // Model arac istemiyor: dongu bitti.
-        // ANCAK yanitta ayristirilamayan ham arac JSON'u kalmis olabilir.
-        // Kullaniciya JSON gostermek yerine acikca belirtiyoruz.
         if (hasUnparsedToolJson(answer)) {
           onChunk(
             '\n\n*(Bu model, arac çağrısını standart biçimde gönderemedi; ' +
@@ -2781,19 +2730,15 @@ export class AiOrchestrator {
         break
       }
 
+      // Ara turlarin gerekcesi ("The user asks... According to rules... So we call web_search")
+      // yalnizca arac secimi icindir; son yanita sizmamasi icin sifirlanir.
+      reasoningParts = []
+
       const executed = await this.runToolCalls(pendingCalls)
       for (const rec of executed.records) allToolCalls.push(rec)
 
       if (executed.results.length === 0) {
-        // Onay gerektiren bir arac kuyruğa alindi; kullaniciya devam
-        // etmek icin baglam birakiyoruz. Sonraki turda model cevap
-        // uretir ve onay akisi ayri bir yerde ilerler.
         if (executed.awaitingApproval.length > 0) {
-          // Onay gerektiren araclar icin kullaniciya acik bir durum
-          // bildirilir. Onceki surum "sonuclar otomatik iletilecek"
-          // diyordu ama onay akisi bir sonraki turda modele geri
-          // donmuyordu; kullanici onay kartini onaylayip sessizlik
-          // icinde kaliyordu.
           onChunk(
             `\n\n*(${executed.awaitingApproval.length} islem onayinizi bekliyor. ` +
               `Onayladiktan sonra islem calistirilacak; sonucu gormek icin ` +
@@ -2803,21 +2748,6 @@ export class AiOrchestrator {
         break
       }
 
-      // ---- NATIVE PROTOKOL DONGUSU -------------------------------------
-      //
-      // ONCEKI SURUM BURADA:
-      //   { role: 'assistant', content: '(araç çağrısı)' }   <- YER TUTUCU
-      //   { role: 'user',      content: '<düz sonuç metni>' }
-      // yaziyordu. Bu bicim native tool destekleyen HICBIR saglayici
-      // icin gecersizdi:
-      //   • Gemini 3.x  -> "Function call is missing a thought_signature"
-      //   • Gemini 2.5  -> "must have a text parameter"
-      //   • Anthropic   -> tool_use / tool_result blokları eksik
-      // ve 2. turda HTTP 400 ile arac kullanimi tamamen kiriyordu.
-      //
-      // Artik model turu `functionCall` / `tool_use` / `tool_calls`
-      // bloklariyla, sonuc turu de protokole uygun `role: 'tool'` turu
-      // olarak geri besleniyor.
       const nativeToolCalls = pendingCalls.filter(tc => KNOWN_TOOL_NAMES.has(tc.name))
       const nativeToolsActive =
         params.toolsEnabled !== false && modelSupportsTools(activeProv, activeModelId) && nativeToolCalls.length > 0
@@ -2836,8 +2766,6 @@ export class AiOrchestrator {
             toolName: res.name,
           }))
         : [
-            // Dizi-katmanı desteği yok: model sonucu düz metin olarak
-            // görmek zorunda (protokol-yorumlanabilir yedek yol).
             { role: 'user' as const, content: this.formatToolResultsForModel(executed.results) },
           ]
 
@@ -2852,7 +2780,24 @@ export class AiOrchestrator {
     }
 
     let finalContent = answer.trim()
-    const reasoningContent = reasoningParts.join('\n\n').trim() || undefined
+    // Bazi modeller <think>...</think> etiketini metin govdesine yazar; temizleyip dusunme alanina tasi.
+    const thinkBlocks: string[] = []
+    finalContent = finalContent
+      .replace(/<think>([\s\S]*?)<\/think>/gi, (_m, inner: string) => {
+        if (inner && inner.trim()) thinkBlocks.push(inner.trim())
+        return ''
+      })
+      .trim()
+    if (thinkBlocks.length > 0 && reasoningParts.length === 0) {
+      reasoningParts = thinkBlocks
+    }
+    const rawReasoning = reasoningParts.join('\n\n').trim()
+    // Ic sistem kurallarina ve arac secim mekanigine dair Ingilizce/Turkce meta-gerekceleri filtrele
+    const isMetaToolMonologue =
+      /according to rules|we must not ask for permission|so we call\s+\w+|tool_call|function_call|the user asks:/i.test(
+        rawReasoning,
+      )
+    const reasoningContent = rawReasoning && !isMetaToolMonologue ? rawReasoning : undefined
 
     // Model bir araç çağrısı yaptıysa ve son turda metin dönmediyse,
     // hata fırlatmak yerine araçların sonuçlarını sentezleyip kullanıcıya sun.
@@ -3447,192 +3392,188 @@ export class AiOrchestrator {
     const userIndices = params.messages.map((m, i) => (m.role === 'user' ? i : -1)).filter(i => i !== -1)
     const lastUserIdx = userIndices.length > 0 ? userIndices[userIndices.length - 1] : -1
 
-    const rawTurns: Array<{ role: 'user' | 'model'; parts: any[] }> = []
+    const buildGeminiTurns = (forceTextToolHistory: boolean): Array<{ role: 'user' | 'model'; parts: any[] }> => {
+      const turns: Array<{ role: 'user' | 'model'; parts: any[] }> = []
+      let nativeNamesThisTurn: string[] = []
+      const textOnlyCallsThisTurn: string[] = []
 
-    // NATIVE OLAN ARAC CAGIRILARI (yalnizca imzali olanlar)
-    // ---------------------------------------------------
-    // Gemini 3.x icin `functionCall` imzasi (`thoughtSignature`) olmadan
-    // geri oynatilamaz; imzasiz bir `functionCall` ya da ona karsilik gelmeyen
-    // bir `functionResponse` dogrudan HTTP 400 donuyordu.
-    //
-    // NEDEN SORUN? Cogu saglayici native arac cagirmaz; model arac cagrisini
-    // METIN olarak JSON yazar ve biz `extractTextToolCalls` ile cikaririz.
-    // Bu durumda dogal olarak `thoughtSignature` YOKTUR. Onceki surum yine de
-    // bu cagrilari native `functionCall` olarak gonderiyor, ardindan da
-    // `functionResponse` ekliyordu -> iki kosulda da 400.
-    //
-    // COZUM: yalnizca GERCEKTEN imzali (native) cagrilar native protokolle
-    // oynatilir. Digeri duz metne cevrilir; boylece model yine de arac
-    // sonucunu gorur, ama API reddi olmaz.
-    /** Bu model turunde native olarak oynatilacak arac adlari. */
-    let nativeNamesThisTurn = new Set<string>()
-    /** Bu model turunde native OYNATILAMAYAN (imzasiz) cagri aciklamalari. */
-    const textOnlyCallsThisTurn: string[] = []
+      for (let idx = 0; idx < params.messages.length; idx++) {
+        const m = params.messages[idx]
+        if (m.role === 'system') continue
+        const parts: any[] = []
 
-    for (let idx = 0; idx < params.messages.length; idx++) {
-      const m = params.messages[idx]
-      if (m.role === 'system') continue
-      const parts: any[] = []
+        if (m.role !== 'tool') {
+          nativeNamesThisTurn = []
+          textOnlyCallsThisTurn.length = 0
+        }
 
-      // DIKKAT: sifirlama yalnizca ASISTAN turu basinda yapilir.
-      // Arac sonucu (`role: 'tool'`) AYRI bir dongu adiminda gelir; her
-      // adimda sifirlarsak kume sonuc islerken zaten bos olur ve native
-      // arac geri oynatimi tamamen bozulur.
-      if (m.role !== 'tool') {
-        nativeNamesThisTurn = new Set()
-        textOnlyCallsThisTurn.length = 0
-      }
+        if (m.role === 'tool') {
+          const toolName = m.toolName || 'tool'
+          const matchIdx = forceTextToolHistory ? -1 : nativeNamesThisTurn.indexOf(toolName)
+          if (matchIdx !== -1) {
+            nativeNamesThisTurn.splice(matchIdx, 1)
+            parts.push({
+              functionResponse: {
+                name: toolName,
+                response: parseToolResultForGemini(m.content),
+              },
+            })
+          } else {
+            parts.push({
+              text:
+                `[Araç sonucu — ${toolName}]\n` +
+                `${String(m.content ?? '').slice(0, 20_000)}`,
+            })
+          }
+          const last = turns[turns.length - 1]
+          if (last && last.role === 'user') last.parts.push(...parts)
+          else turns.push({ role: 'user', parts })
+          continue
+        }
 
-      // ARAC SONUCU: Gemini arac cagrisi sonucunu `functionResponse`
-      // PART'i olarak ister. Onceki surum sonucu duz `{ text: ... }`
-      // olarak gonderiyordu; Gemini 3.x buna
-      // "Function call is missing a thought_signature" / "must have a
-      // text parameter" seklinde HTTP 400 donuyordu ve arac kullanimi
-      // TAMAMEN calismiyordu.
-      if (m.role === 'tool') {
-        const toolName = m.toolName || 'tool'
-        if (nativeNamesThisTurn.has(toolName)) {
-          nativeNamesThisTurn.delete(toolName)
-          parts.push({
-            functionResponse: {
-              name: toolName,
-              response: parseToolResultForGemini(m.content),
-            },
-          })
+        const targetRole = m.role === 'assistant' ? 'model' : 'user'
+
+        if (idx === lastUserIdx && hasAttachments) {
+          const { textContent, images, nonImages } = formatUserMessageWithAttachments(m.content, params.attachments)
+          if (textContent.trim()) {
+            parts.push({ text: textContent })
+          }
+          for (const img of images) {
+            if (img.base64Data) {
+              parts.push({
+                inlineData: {
+                  mimeType: img.mimeType,
+                  data: img.base64Data,
+                },
+              })
+            }
+          }
+          for (const doc of nonImages) {
+            if (doc.mimeType === 'application/pdf' && doc.base64Data && !doc.textContent) {
+              parts.push({
+                inlineData: {
+                  mimeType: 'application/pdf',
+                  data: doc.base64Data,
+                },
+              })
+            }
+          }
         } else {
-          // KARSILIGI OLMAYAN ARAC SONUCU -> sahipsiz `functionResponse`
-          // gondermek de 400 yaratir. Duz metne cevir.
-          parts.push({
-            text:
-              `[Araç sonucu — ${toolName}]\n` +
-              `${String(m.content ?? '').slice(0, 20_000)}`,
-          })
-        }
-        const last = rawTurns[rawTurns.length - 1]
-        if (last && last.role === 'user') last.parts.push(...parts)
-        else rawTurns.push({ role: 'user', parts })
-        continue
-      }
-
-      const targetRole = m.role === 'assistant' ? 'model' : 'user'
-
-      // MODEL TURU: `functionCall` part'i ve `thoughtSignature` geri
-      // oynatilir. Gemini 3.x imzayi zorunlu ister.
-      if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
-        for (const tc of m.toolCalls) {
-          if (!tc.thoughtSignature) {
-            // Imzasiz (metinden cikarilmis) cagri: native olarak gonderme.
-            textOnlyCallsThisTurn.push(
-              `Araç çağrısı: ${tc.name} ${JSON.stringify(tc.args ?? {}).slice(0, 1_000)}`,
-            )
-            continue
+          const trimmed = (m.content || '').trim()
+          if (trimmed) {
+            parts.push({ text: trimmed })
           }
-          const fn: Record<string, unknown> = {
-            name: tc.name,
-            args: tc.args ?? {},
-            thoughtSignature: tc.thoughtSignature,
-          }
-          parts.push({ functionCall: fn })
-          nativeNamesThisTurn.add(tc.name)
         }
-        // Imzasiz cagrilar duz metin olarak da belirtilir (bilgi kaybi yok).
-        if (textOnlyCallsThisTurn.length > 0) {
-          parts.push({ text: textOnlyCallsThisTurn.join('\n') })
-        }
-      }
 
-      if (idx === lastUserIdx && hasAttachments) {
-        const { textContent, images, nonImages } = formatUserMessageWithAttachments(m.content, params.attachments)
-        if (textContent.trim()) {
-          parts.push({ text: textContent })
-        }
-        for (const img of images) {
-          if (img.base64Data) {
-            parts.push({
-              inlineData: {
-                mimeType: img.mimeType,
-                data: img.base64Data,
+        // MODEL TURU: `functionCall` part'i ve `thoughtSignature` geri oynatilir.
+        // DIKKAT: Google Gemini v1beta semasinda `thoughtSignature`, `functionCall`
+        // icinde DEGIL, dogrudan `Part` nesnesi uzerinde kardes alandir!
+        if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+          for (const tc of m.toolCalls) {
+            if (forceTextToolHistory || !tc.thoughtSignature) {
+              textOnlyCallsThisTurn.push(
+                `Araç çağrısı: ${tc.name} ${JSON.stringify(tc.args ?? {}).slice(0, 1_000)}`,
+              )
+              continue
+            }
+            const partObj: Record<string, unknown> = {
+              functionCall: {
+                name: tc.name,
+                args: tc.args ?? {},
               },
-            })
+              thoughtSignature: tc.thoughtSignature,
+            }
+            parts.push(partObj)
+            nativeNamesThisTurn.push(tc.name)
+          }
+          if (textOnlyCallsThisTurn.length > 0) {
+            parts.push({ text: textOnlyCallsThisTurn.join('\n') })
           }
         }
-        for (const doc of nonImages) {
-          if (doc.mimeType === 'application/pdf' && doc.base64Data && !doc.textContent) {
-            parts.push({
-              inlineData: {
-                mimeType: 'application/pdf',
-                data: doc.base64Data,
-              },
-            })
-          }
-        }
-      } else {
-        const trimmed = (m.content || '').trim()
-        if (trimmed) {
-          parts.push({ text: trimmed })
+
+        if (parts.length === 0) continue
+
+        const lastTurn = turns[turns.length - 1]
+        if (lastTurn && lastTurn.role === targetRole) {
+          lastTurn.parts.push(...parts)
+        } else {
+          turns.push({ role: targetRole, parts })
         }
       }
 
-      if (parts.length === 0) continue
-
-      // Gemini REST API gereği: roller kesinlikle 'user' ve 'model' olarak ardışık gitmelidir.
-      // Aynı roldeki art arda gelen mesajlar birleştirilir.
-      const lastTurn = rawTurns[rawTurns.length - 1]
-      if (lastTurn && lastTurn.role === targetRole) {
-        lastTurn.parts.push(...parts)
+      if (turns.length === 0) {
+        turns.push({ role: 'user', parts: [{ text: 'Merhaba' }] })
       } else {
-        rawTurns.push({ role: targetRole, parts })
+        if (turns[0].role === 'model') {
+          turns.unshift({ role: 'user', parts: [{ text: 'Merhaba' }] })
+        }
+        if (turns[turns.length - 1].role === 'model') {
+          turns.push({ role: 'user', parts: [{ text: 'Lütfen yukarıdaki bulguları toparlayarak nihai yanıtını tamamla ve sun.' }] })
+        }
       }
+      return turns
     }
 
-    if (rawTurns.length === 0) {
-      rawTurns.push({ role: 'user', parts: [{ text: 'Merhaba' }] })
-    } else {
-      if (rawTurns[0].role === 'model') {
-        rawTurns.unshift({ role: 'user', parts: [{ text: 'Merhaba' }] })
+    const buildGeminiBody = (forceTextToolHistory: boolean): Record<string, unknown> => {
+      const body: Record<string, unknown> = {
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: buildGeminiTurns(forceTextToolHistory),
+        generationConfig: {
+          temperature: 0.35,
+          maxOutputTokens: 16_384,
+        },
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+        ],
       }
-      if (rawTurns[rawTurns.length - 1].role === 'model') {
-        rawTurns.push({ role: 'user', parts: [{ text: 'Lütfen yukarıdaki bulguları toparlayarak nihai yanıtını tamamla ve sun.' }] })
+      if (params.toolsEnabled !== false && modelSupportsTools(prov, params.modelId)) {
+        body.tools = toGeminiTools()
+        body.toolConfig = { functionCallingConfig: { mode: 'AUTO' } }
       }
-    }
-
-    const contents = rawTurns
-
-    const geminiBody: Record<string, unknown> = {
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents,
-      generationConfig: {
-        temperature: 0.35,
-        maxOutputTokens: 16_384,
-      },
-      // Ogrenci/okul icerikleri varsayilan guvenlik filtrelerine takilip
-      // BOS YANIT donuyordu. Kullanici bu ayari degistiremiyordu.
-      safetySettings: [
-        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-      ],
-    }
-    if (params.toolsEnabled !== false && modelSupportsTools(prov, params.modelId)) {
-      geminiBody.tools = toGeminiTools()
-      geminiBody.toolConfig = { functionCallingConfig: { mode: 'AUTO' } }
+      return body
     }
 
     const cleanModelId = (params.modelId || GEMINI_FALLBACK_MODEL).replace(/^models\//, '')
     const url = `${prov.baseUrl}/models/${encodeURIComponent(cleanModelId)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`
-    const res = await providerHttp.request<Response>(
-      url,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify(geminiBody),
-        raw: true,
-        timeoutMs: 180_000,
-        maxRetries: 1,
-        signal,
-      },
+    const hasToolHistory = params.messages.some(
+      m => m.role === 'tool' || (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0),
     )
+
+    let res: Response
+    try {
+      res = await providerHttp.request<Response>(
+        url,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body: JSON.stringify(buildGeminiBody(false)),
+          raw: true,
+          timeoutMs: 180_000,
+          maxRetries: 1,
+          signal,
+        },
+      )
+    } catch (err) {
+      if (hasToolHistory && err instanceof HttpError && err.status === 400) {
+        res = await providerHttp.request<Response>(
+          url,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+            body: JSON.stringify(buildGeminiBody(true)),
+            raw: true,
+            timeoutMs: 180_000,
+            maxRetries: 1,
+            signal,
+          },
+        )
+      } else {
+        throw err
+      }
+    }
 
     let content = ''
     let reasoning = ''

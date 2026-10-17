@@ -76,26 +76,19 @@ describe('electron-builder yapilandirmasi', () => {
     expect(algos![1]).not.toMatch(/sha1\b/)
   })
 
-  it('kaldirma verileri SILMEZ', () => {
-    // Kullanici "verilerim neden sifirlandi?" diye sordu. Iki ayri yol
-    // vardi: bu ayar ve NSIS betigindeki RMDir. Ikisi de kapali olmali.
+  it('kaldirma sirasinda kullaniciya verilerin silinip silinmeyecegini sorar (varsayilan: koru)', () => {
     const yml = readYml()
     expect(yml).toMatch(/deleteAppDataOnUninstall\s*:\s*false/)
 
-    // NSIS betiginde yorum satirlari (`;` ile baslayan) kaldirilan davranisi
-    // BELGELER; onlar silinmis kodu icerir ve test bunlari saymamalidir.
     const nshAll = fs.readFileSync(path.join(ROOT, 'build', 'installer.nsh'), 'utf8')
     const nshCode = nshAll
       .split(/\r?\n/)
       .filter(l => !/^\s*;/.test(l))
       .join('\n')
 
-    // Kullanici verisi %APPDATA%\JustMyClass icinde durur. Silinmemeli.
-    expect(nshCode).not.toMatch(/RMDir\s+\/r\s+"?\$APPDATA\\JustMyClass/i)
-    expect(nshCode).not.toMatch(/rmdir\s+\/s\s+\/q\s+"?\$APPDATA\\JustMyClass/i)
-    expect(nshCode).not.toMatch(/RMDir\s+\/r\s+"?\$LOCALAPPDATA\\JustMyClass"?\s*$/im)
-    // ExecShell satiri icinde de olmamali
-    expect(nshCode).not.toMatch(/\$APPDATA\\JustMyClass/i)
+    // Kullanici onay sorusu (MessageBox MB_YESNO ... /SD IDNO) olmali
+    expect(nshCode).toMatch(/MessageBox\s+MB_YESNO\|MB_ICONQUESTION[\s\S]*?\/SD\s+IDNO\s+IDYES\s+WipeAllUserData\s+IDNO\s+KeepUserData/)
+    expect(nshCode).toMatch(/WipeAllUserData:[\s\S]*?RMDir\s+\/r\s+"\$APPDATA\\JustMyClass"[\s\S]*?KeepUserData:/)
   })
 
   it('uygulama adi her yerde tam olarak "JustMyClass"', () => {

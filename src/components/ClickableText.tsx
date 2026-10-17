@@ -62,7 +62,23 @@ const AMBIGUOUS_EXTENSIONS = new Set(['md', 'mov', 'py', 'java', 'rs', 'sh', 'zi
  * Ayrica "ornek.com.tr" gibi cok etiketli adlar ve iki harfli ulke
  * uzantilari (.tr, .de, .uk) desteklenir.
  */
-function isPlausibleBareDomain(host: string): boolean {
+/**
+ * Kod parcalarinda nesne/anahtar sozcuk olarak sikca gecen on-ekler.
+ * Orn. Java/JS icinde `this.ad = ad;` veya `self.id = id;` yazildiginda
+ * `.ad` (Andorra) ve `.id` (Endonezya) gercek ulke TLD'si oldugu icin
+ * yanlislikla baglanti sayiliyordu. Iki etiketli ve yolsuz (`slash` olmayan)
+ * adaylarda ilk etiket bu listedeyse baglanti kabul edilmez.
+ */
+const CODE_IDENTIFIER_PREFIXES = new Set([
+  'this', 'self', 'super', 'window', 'document', 'console', 'process',
+  'math', 'json', 'object', 'array', 'string', 'number', 'boolean',
+  'props', 'state', 'item', 'elem', 'el', 'ev', 'err', 'req', 'res',
+  'ctx', 'std', 'sys', 'os', 'io', 'fs', 'path', 'net', 'http', 'url',
+  'util', 'fmt', 'log', 'cfg', 'config', 'opts', 'options', 'args',
+  'params', 'data', 'result', 'val', 'value', 'obj', 'node', 'user',
+])
+
+function isPlausibleBareDomain(host: string, hasPath = false): boolean {
   if (!host || host.length < 4 || host.length > 253) return false
   if (/^\d/.test(host)) return false
   const labels = host.split('.')
@@ -73,6 +89,10 @@ function isPlausibleBareDomain(host: string): boolean {
   // IANA dogrulamasi: uydurma uzantilar burada elenir.
   if (!isRealTld(tld)) return false
   if (AMBIGUOUS_EXTENSIONS.has(tld.toLowerCase())) return false
+  // `this.ad`, `self.id`, `console.in` gibi 2 etiketli kod degiskenlerini ele
+  if (labels.length === 2 && !hasPath && CODE_IDENTIFIER_PREFIXES.has(labels[0].toLowerCase())) {
+    return false
+  }
   // Her etiket kurallara uymali
   for (const label of labels) {
     if (!label || label.length > 63) return false
@@ -89,16 +109,6 @@ function normalizeCandidate(raw: string): string | null {
   if (/^https?:\/\//i.test(raw) || /^mailto:/i.test(raw)) return raw
   if (/^www\./i.test(raw)) return raw
 
-  // DUZ E-POSTA ADRESI -> mailto:
-  //
-  // ONCEKI HATA: `odev@example.com` icin alan adi deseninin ACIK KISMASI
-  // yakalaniyordu; sonuc `odev@` atilip `example.com` baglanti olarak
-  // cikiyordu. Kullanici mail gondermek istiyordu, tarayici web sayfasi
-  // acmaya calisiyordu.
-  //
-  // IKINCI HATA: e-posta deseni TLD dogrulamiyordu; `ornek@baglanti.adres`
-  // gibi uydurma alan adlari da gecerli sayiliyordu. Artik ayni IANA
-  // denetimi uygulanir.
   const emailMatch = /^([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+)$/.exec(raw)
   if (emailMatch) {
     const host = emailMatch[2]
@@ -120,43 +130,12 @@ function normalizeCandidate(raw: string): string | null {
   const slash = raw.indexOf('/')
   const host = slash === -1 ? raw : raw.slice(0, slash)
   const path = slash === -1 ? '' : raw.slice(slash)
-  if (!isPlausibleBareDomain(host)) return null
+  if (!isPlausibleBareDomain(host, slash !== -1 && path.length > 1)) return null
   return host + path
 }
 
-/**
- * Metindeki adresleri bulur.
- *
- * Kapsam:
- *   • `https://...` / `http://...`
- *   • `www....`
- *   • `mailto:...`
- *   • DUZ e-posta: `odev@example.com` (otomatik `mailto:` olur)
- *   • YAYLISIZ alan adlari: `aegissoft.com.tr`, `github.com/user/repo`
- *
- * TLD deseninde `(?![\w-])` LOOKAHEAD'i sarttir: olmadan `video.mp4`
- * dosyasi `video.mp` olarak kesilip YANLIS adres sayilirdi (TLD deseni
- * rakam kabul etmedigi icin `4`'te duruyordu).
- *
- * NEDEN BIR "KISA ADRES" ESIGI YOK?
- * -------------------------------
- * Onceki surumde `raw.length < 8` diye bir kapı vardı ve şema ya da e-posta
- * içermeyen 8 karakterden kısa her adres atılıyordu. O kapı, TLD denetimi
- * YALNIZCA "2-24 harf" diye baktigi dönemin kalıntısıydı: `1.5`, `N.O`,
- * `ok.irs` gibi yanlış pozitifleri basitçe eliyordu.
- *
- * Artık `isPlausibleBareDomain` IANA listesine baktığı için o sınıfların
- * her biri KESIN ve HESAPLANABILIR bir kuralla zaten eleniyor. Sabit 8
- * karakterlik eşik ise gerçek alan adlarını siliyordu: `edu.tr` (6),
- * `site.ai` (7), `vk.com` (6). Bu bir yanlış negatifti.
- */
 export function findUrls(text: string): Array<{ start: number; end: number; url: string }> {
   const out: Array<{ start: number; end: number; url: string }> = []
-  // NOT: karakter sinifi `)` ve `(` karakterlerini DISLAMAZ. Wikipedia
-  // tarzi adreslerde parantez adresin gercek bir parcasidir
-  // (`.../Ankara_(disambiguation)`). Onceki surumde `)` sinif disinda
-  // birakildigi icin DENGELI parantezli adresler hicbir zaman tam
-  // yakalanamiyordu; asagidaki denge kirpmasi da bu yuzden ise yaramiyordu.
   const re =
     /\b(?:(?:https?:\/\/|mailto:)|www\.)[^\s<>"'`\]}。，、]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}(?![\w-])|(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,24}(?![\w-])(?:\/[^\s<>"'`\]}。，、]*)?/g
   let m: RegExpExecArray | null
@@ -173,6 +152,16 @@ export function findUrls(text: string): Array<{ start: number; end: number; url:
     while (raw.endsWith(')') && (raw.match(/\(/g)?.length ?? 0) < (raw.match(/\)/g)?.length ?? 0)) {
       raw = raw.slice(0, -1)
       end--
+    }
+    // Semasiz (`http`/`www`/`@` icermeyen) 2 etiketli ciplak alan adlarinda
+    // hemen ardindan `=` atama operatoru veya `(` fonksiyon cagrisi geliyorsa
+    // (`nesne.ad = "Ali"`, `nesne.io()`) bu bir kod ifadesidir, URL degildir.
+    const isBare = !/^(?:https?:\/\/|mailto:|www\.)/i.test(raw) && !raw.includes('@') && !raw.includes('/')
+    if (isBare && raw.split('.').length === 2) {
+      const afterSlice = text.slice(end, end + 8)
+      if (/^\s*=[^=]/.test(afterSlice) || /^\(/.test(afterSlice)) {
+        continue
+      }
     }
     const normalized = normalizeCandidate(raw)
     if (!normalized) continue

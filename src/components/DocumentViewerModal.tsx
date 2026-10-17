@@ -547,10 +547,12 @@ export function DocumentViewerModal({
       if (total === 0) return
       const clamped = Math.max(0, Math.min(idx, total - 1))
       setActiveSlideIndex(clamped)
+      const root = slideScrollRef.current
       if (slideView === 'continuous') {
         const el = slideRefs.current[clamped]
-        const root = slideScrollRef.current
         if (el && root) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else if (root) {
+        root.scrollTo({ top: 0, behavior: 'smooth' })
       }
     },
     [preview?.slides?.length, slideView],
@@ -2178,7 +2180,7 @@ export function DocumentViewerModal({
                             </div>
                           ))
                         ) : slides[activeSlideIndex] ? (
-                          <div className="w-full max-w-4xl shrink-0 my-auto min-h-[380px] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl flex flex-col justify-between transition-all">
+                          <div className="w-full max-w-4xl shrink-0 my-auto h-fit min-h-[380px] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl flex flex-col justify-between transition-all">
                             <div>
                               <div className="flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)] border-b border-[var(--jmc-border-subtle)] pb-3">
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-400 px-2.5 py-0.5 font-semibold text-[10.5px]">

@@ -276,10 +276,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     if (refreshingModels) return
     setRefreshingModels(true)
     try {
-      await window.jmcAPI.syncAllProviderModels()
+      await Promise.race([
+        window.jmcAPI.syncAllProviderModels(),
+        new Promise<void>(resolve => setTimeout(resolve, 10_000)),
+      ])
       // Liste senkronu bitince saglayici listesini de tazele.
       const list = await window.jmcAPI.getProviders()
       setProviders(list)
+    } catch {
+      // Zaman asimi veya ag hatasinda sessizce devam et
     } finally {
       setRefreshingModels(false)
     }
@@ -731,7 +736,10 @@ const chatScrollRef = useRef<HTMLDivElement | null>(null)
 
   const handleSwitchSession = useCallback(async (sess: ChatSession) => {
     setCurrentSessionId(sess.id)
-    setMessages(sess.messages || [])
+    const sanitized = (sess.messages || []).filter(
+      m => m.role !== 'assistant' || Boolean(m.content?.trim()) || Boolean(m.isError),
+    )
+    setMessages(sanitized)
     setChatAttachment(null)
     setInputPrompt('')
     setIsHistoryOpen(false)
@@ -1162,6 +1170,7 @@ const resetSessionUiState = useCallback(() => {
           hasRubric: !!data.rubric,
           rubricCriteriaCount: data.rubric?.criteria.length ?? 0,
         }
+        activeContextRef.current = ctx
         setActiveContext(ctx)
         void window.jmcAPI.updateActiveContext(ctx)
       } catch (err) {
@@ -1244,10 +1253,23 @@ const resetSessionUiState = useCallback(() => {
       setInspectorOpen(true)
       const title = preview.title || 'Belge'
       setInputPrompt(`Lütfen "${title}" belgesini ayrıntılı incele, ana temaları ve önemli noktaları özetle.`)
+      if (preview.kind === 'image' && preview.dataUrl) {
+        const commaIdx = preview.dataUrl.indexOf(',')
+        const base64Data = commaIdx !== -1 ? preview.dataUrl.slice(commaIdx + 1) : undefined
+        setChatAttachment({
+          name: title,
+          mimeType: preview.mimeType || 'image/png',
+          dataUrl: preview.dataUrl,
+          base64Data,
+        })
+      }
       const updated: ActiveContext = {
         ...activeContextRef.current,
+        activeCourseId: activeContextRef.current.activeCourseId ?? selectedCourseRef.current?.id,
+        activeCourseName: activeContextRef.current.activeCourseName ?? selectedCourseRef.current?.name,
         activeFileId: preview.fileId,
         activeFileName: preview.title,
+        activeFileMimeType: preview.mimeType,
         activeFileContent: preview.text ? preview.text.slice(0, 16000) : undefined,
       }
       activeContextRef.current = updated
@@ -1263,16 +1285,47 @@ const resetSessionUiState = useCallback(() => {
       setInspectorOpen(true)
       const title = att.title || 'Dosya'
       setInputPrompt(`Lütfen "${title}" ekini/materyalini ayrıntılı incele, ana temaları ve ders için önemini özetle.`)
-      const updated: ActiveContext = {
+      const baseUpdated: ActiveContext = {
         ...activeContextRef.current,
+        activeCourseId: activeContextRef.current.activeCourseId ?? selectedCourseRef.current?.id,
+        activeCourseName: activeContextRef.current.activeCourseName ?? selectedCourseRef.current?.name,
         activeFileId: att.driveFileId ?? att.id,
         activeFileName: att.title,
         activeFileMimeType: att.mimeType,
       }
-      activeContextRef.current = updated
-      setActiveContext(updated)
-      void window.jmcAPI?.updateActiveContext(updated)
+      activeContextRef.current = baseUpdated
+      setActiveContext(baseUpdated)
+      void window.jmcAPI?.updateActiveContext(baseUpdated)
       onNotify('success', `"${title}" asistan bağlamına eklendi.`)
+
+      // Arka planda dosyanin ayiklanmis metnini veya gorsel verisini yukleyip baglama ekle
+      void (async () => {
+        try {
+          const preview = await window.jmcAPI?.getFilePreview?.(att, selectedCourseRef.current?.id)
+          if (!preview) return
+          if (preview.kind === 'image' && preview.dataUrl) {
+            const commaIdx = preview.dataUrl.indexOf(',')
+            const base64Data = commaIdx !== -1 ? preview.dataUrl.slice(commaIdx + 1) : undefined
+            setChatAttachment({
+              name: title,
+              mimeType: preview.mimeType || att.mimeType || 'image/png',
+              dataUrl: preview.dataUrl,
+              base64Data,
+            })
+          }
+          if (preview.text) {
+            const enriched: ActiveContext = {
+              ...activeContextRef.current,
+              activeFileContent: preview.text.slice(0, 16000),
+            }
+            activeContextRef.current = enriched
+            setActiveContext(enriched)
+            void window.jmcAPI?.updateActiveContext(enriched)
+          }
+        } catch {
+          // Onizleme alinamadiysa asistan read_drive_file araci ile kendisi okur
+        }
+      })()
     },
     [onNotify],
   )
@@ -1383,8 +1436,11 @@ const resetSessionUiState = useCallback(() => {
     let reasoning = ''
 
     try {
-      // Token tasarrufu ve hız: son 12 mesaj gönderilir, hafıza sistemi genel bağlamı korur
-      const payloadMessages = history.slice(-12).map(m => ({ role: m.role, content: m.content }))
+      // Token tasarrufu ve hız: son 12 temiz mesaj gönderilir (eski hata balonları model geçmişini kirletmez)
+      const payloadMessages = history
+        .filter(m => !m.isError && Boolean(m.content?.trim()))
+        .slice(-12)
+        .map(m => ({ role: m.role, content: m.content }))
 
       const completed = await window.jmcAPI.sendChatMessage(
         {

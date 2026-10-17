@@ -620,10 +620,12 @@ function resolveFontResources(
   const fonts = new Map<string, PdfFontInfo>()
 
   // 1) Tum `/Font << /F1 12 0 R ... >>` sozluklerini (inline veya ref)
+  // Ham ikili akislari (stream) taramak yerine yalnizca sozluk govdelerini tara
   const fontDicts: string[] = []
+  const searchSpace = objDict.size > 0 ? Array.from(objDict.values()).join('\n') : str
   const fontDictRe = /\/Font\s*(?:(\d+)\s+\d+\s+R|<<)/g
   let fm: RegExpExecArray | null
-  while ((fm = fontDictRe.exec(str)) !== null) {
+  while ((fm = fontDictRe.exec(searchSpace)) !== null) {
     if (fm[1]) {
       const referenced = objDict.get(parseInt(fm[1], 10))
       if (referenced) fontDicts.push(referenced)
@@ -631,8 +633,8 @@ function resolveFontResources(
     }
     // Inline sozluk: `<< ... >>` blokunu dengeli sekilde bul
     const start = fm.index + fm[0].length - 2
-    const end = findDictEnd(str, start)
-    if (end > start) fontDicts.push(str.slice(start + 2, end))
+    const end = findDictEnd(searchSpace, start)
+    if (end > start) fontDicts.push(searchSpace.slice(start + 2, end))
   }
 
   // 2) Her sozlukte `/Ad 12 0 R` ciftlerini oku
@@ -1255,12 +1257,7 @@ export function extractTextFromPdf(buf: Buffer): string {
       }
 
       if (token === 'endobj') {
-        // Govde, gercek `endobj` konumuna kadar alinir. Onceki surum
-        // `indexOf('endobj', ...)` ile ayni sonucu veriyordu ama her
-        // nesne icin dosyanin sonuna kadar tarama yaptigi icin O(n^2)
-        // idi; simdi `endobj` TETIKLENDIGI icin konum zaten elimizde ve
-        // toplam maliyet O(n).
-        if (currentObjNum !== null && currentObjBodyStart >= 0 && tm.index > currentObjBodyStart) {
+        if (currentObjNum !== null && currentObjBodyStart >= 0 && tm.index > currentObjBodyStart && !objDict.has(currentObjNum)) {
           objDict.set(currentObjNum, str.slice(currentObjBodyStart, tm.index))
         }
         currentObjNum = null
@@ -1269,6 +1266,9 @@ export function extractTextFromPdf(buf: Buffer): string {
       }
 
       if (token === 'stream') {
+        if (currentObjNum !== null && currentObjBodyStart >= 0 && tm.index > currentObjBodyStart) {
+          objDict.set(currentObjNum, str.slice(currentObjBodyStart, tm.index))
+        }
         pendingStreamKeyword = tm.index
         insideStream = true
         continue
@@ -1440,9 +1440,13 @@ export function extractTextFromPdf(buf: Buffer): string {
       let activeFont: PdfFontInfo = fallbackFont
       const tokenizeWithFont = (source: string): string => {
         const out: string[] = []
-        // Metni operator sirasiyla tara: once `Tf`, sonra gosterme operatoru
+        // Metni operator sirasiyla tara: once `Tf`, sonra gosterme operatoru.
+        // DIKKAT: `\(([^\\)]*(?:\\[\s\S][^\\)]*)*)\)` kalibi sifir geri-izleme
+        // (zero-backtracking) ile calisir; eski `\(([^)]*(?:\\.[^)]*)*)\)` kalibi
+        // Turkce oktal kacis dizileri (\347, \366, \374) iceren TJ dizilerinde
+        // O(2^n) ustel kilitlenmeye yol acip "Belge Hazirlaniyor..." ekranini donduruyordu.
         const opRe =
-          /\/([A-Za-z0-9#._-]+)\s+[-\d.]+\s+Tf|\(([^)]*(?:\\.[^)]*)*)\)\s*Tj|<([0-9a-fA-F]+)>\s*Tj|\[([\s\S]*?)\]\s*TJ|\bTd\b|\bTD\b|\bT\*\b/g
+          /\/([A-Za-z0-9#._-]+)\s+[-\d.]+\s+Tf|\(([^\\)]*(?:\\[\s\S][^\\)]*)*)\)\s*Tj|<([0-9a-fA-F]+)>\s*Tj|\[((?:[^\]\\(]|\([^\\)]*(?:\\[\s\S][^\\)]*)*\)|\\[\s\S])*)\]\s*TJ|\bTd\b|\bTD\b|\bT\*\b/g
         let op: RegExpExecArray | null
         while ((op = opRe.exec(source)) !== null) {
           if (op[1] !== undefined) {
@@ -1457,7 +1461,7 @@ export function extractTextFromPdf(buf: Buffer): string {
           } else if (op[4] !== undefined) {
             // TJ dizisi: literal ve hex parcalarini birlestir
             const inner = op[4]
-            const tjToken = /\(([^)]*(?:\\.[^)]*)*)\)|<([0-9a-fA-F]+)>/g
+            const tjToken = /\(([^\\)]*(?:\\[\s\S][^\\)]*)*)\)|<([0-9a-fA-F]+)>/g
             let t: RegExpExecArray | null
             while ((t = tjToken.exec(inner)) !== null) {
               if (t[1] !== undefined) out.push(decodeWithFont(unescapePdfLiteral(t[1]), activeFont))

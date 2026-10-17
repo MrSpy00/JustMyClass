@@ -381,4 +381,67 @@ describe('Asistan araç döngüsü', () => {
     expect(requestMock.mock.calls.length).toBeLessThanOrEqual(9)
     expect(result.content.length).toBeGreaterThanOrEqual(0)
   })
+
+  it('Gemini arac dongusunde thoughtSignature Part duzeyinde gonderilir (functionCall icine gomulmez) ve ara dusunme sizmaz', async () => {
+    orchestrator.setProviderKey('gemini', 'AIzaSyTestKey0123456789abcdefghijk')
+
+    const geminiToolChunk = `data: ${JSON.stringify({
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [
+              { text: 'According to rules, we should call classroom_search.', thought: true },
+              {
+                functionCall: { name: 'classroom_search', args: { query: 'ders' } },
+                thoughtSignature: 'sig_abc123',
+              },
+            ],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+    })}`
+
+    const geminiFinalChunk = `data: ${JSON.stringify({
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [{ text: 'Toplam 2 aktif dersiniz bulunuyor.' }],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+    })}`
+
+    requestMock
+      .mockResolvedValueOnce(sseResponse([geminiToolChunk]))
+      .mockResolvedValueOnce(sseResponse([geminiFinalChunk]))
+
+    const result = await orchestrator.sendChatMessage(
+      {
+        providerId: 'gemini',
+        modelId: 'gemini-2.5-flash',
+        messages: [{ role: 'user', content: 'Derslerimi listele' }],
+        context: {},
+        mode: 'general',
+      },
+      () => {},
+    )
+
+    expect(requestMock).toHaveBeenCalledTimes(2)
+    const [, secondCallOpts] = requestMock.mock.calls[1]
+    const secondBody = JSON.parse(secondCallOpts.body)
+    const modelTurn = secondBody.contents.find((c: any) => c.role === 'model')
+    expect(modelTurn).toBeDefined()
+    const fnPart = modelTurn.parts.find((p: any) => p.functionCall)
+    expect(fnPart).toBeDefined()
+    // thoughtSignature Part uzerinde olmali, functionCall icinde OLMAMALI
+    expect(fnPart.thoughtSignature).toBe('sig_abc123')
+    expect(fnPart.functionCall.thoughtSignature).toBeUndefined()
+    // Ara turdaki ingilizce meta-dusunme nihai yanita sizmamali
+    expect(result.reasoningContent ?? '').not.toContain('According to rules')
+    expect(result.content).toContain('Toplam 2 aktif dersiniz bulunuyor.')
+  })
 })

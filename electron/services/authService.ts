@@ -993,7 +993,31 @@ export class AuthService {
     return description || code || `Google isteği başarısız oldu (HTTP ${status}).`
   }
 
+  private refreshInFlight: Promise<string | null> | null = null
+
+  public async getValidAccessToken(): Promise<string | null> {
+    const token = this.vaultService.getKey('google_access_token')
+    const expiryRaw = this.vaultService.getKey('google_token_expiry')
+    const expiry = expiryRaw ? Number(expiryRaw) : 0
+    if (token && (!expiry || Date.now() < expiry - 120_000)) {
+      return token
+    }
+    const refreshed = await this.refreshAccessToken()
+    if (refreshed) return refreshed
+    return token || null
+  }
+
   public async refreshAccessToken(): Promise<string | null> {
+    if (this.refreshInFlight) {
+      return this.refreshInFlight
+    }
+    this.refreshInFlight = this.doRefreshAccessToken().finally(() => {
+      this.refreshInFlight = null
+    })
+    return this.refreshInFlight
+  }
+
+  private async doRefreshAccessToken(): Promise<string | null> {
     const refreshToken = this.vaultService.getKey('google_refresh_token')
     if (!refreshToken) return null
 
@@ -1007,13 +1031,16 @@ export class AuthService {
       )
       if (data.access_token) {
         this.vaultService.setKey('google_access_token', data.access_token)
+        const expiresInSec = Number(data.expires_in) || 3500
+        this.vaultService.setKey('google_token_expiry', String(Date.now() + expiresInSec * 1000))
         return data.access_token as string
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      if (message.includes('invalid_grant')) {
+      if (message.includes('invalid_grant') || message.includes('süresi doldu veya onay iptal')) {
         this.vaultService.deleteKey('google_refresh_token')
         this.vaultService.deleteKey('google_access_token')
+        this.vaultService.deleteKey('google_token_expiry')
         this.storageService.setAccount(null)
         return null
       }
@@ -1552,6 +1579,7 @@ function buildAuthErrorHtml(title: string, message: string): string {
               this.vaultService.setKey('google_refresh_token', tokens.refresh_token)
             }
             this.vaultService.setKey('google_access_token', tokens.access_token)
+            this.vaultService.setKey('google_token_expiry', String(Date.now() + (Number(tokens.expires_in) || 3500) * 1000))
 
             const email = String(profile.email || '').trim().toLowerCase()
             const hostedDomain = profile.hd
@@ -1716,6 +1744,7 @@ function buildAuthErrorHtml(title: string, message: string): string {
 
     this.vaultService.deleteKey('google_refresh_token')
     this.vaultService.deleteKey('google_access_token')
+    this.vaultService.deleteKey('google_token_expiry')
     this.vaultService.deleteKey('oauth_code_verifier')
     this.storageService.setAccount(null)
     // DERS/ODEV/TESLIM VERISI KORUNUR. Kullanici yeniden girdiginde ayni
@@ -1810,6 +1839,7 @@ function buildAuthErrorHtml(title: string, message: string): string {
       this.vaultService.setKey('google_refresh_token', tokens.refresh_token)
     }
     this.vaultService.setKey('google_access_token', tokens.access_token)
+    this.vaultService.setKey('google_token_expiry', String(Date.now() + (Number(tokens.expires_in) || 3500) * 1000))
     this.vaultService.deleteKey('oauth_code_verifier')
 
     const email = String(profile.email || '').trim().toLowerCase()

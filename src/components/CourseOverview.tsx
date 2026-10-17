@@ -320,7 +320,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
 
             {course.descriptionHeading && (
               <p className="text-[12.5px] leading-relaxed text-[var(--jmc-text-muted)]">
-                {course.descriptionHeading}
+                <ClickableText text={course.descriptionHeading} preserveWhitespace={false} />
               </p>
             )}
 

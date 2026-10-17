@@ -29,27 +29,69 @@ export class ClassroomService {
   ) {}
 
   private async getValidAccessToken(): Promise<string | null> {
+    if (typeof this.authService.getValidAccessToken === 'function') {
+      return this.authService.getValidAccessToken()
+    }
     const token = this.vaultService.getKey('google_access_token')
     if (token) return token
     return this.authService.refreshAccessToken()
   }
 
   /**
+   * 401 Unauthorized alındığında Google OAuth erişim belirtecini (access_token)
+   * otomatik yenileyip isteği kullanıcıya hata yansıtmadan tekrarlar.
+   */
+  private async withFreshToken<T>(
+    run: (token: string) => Promise<T>,
+    initialToken?: string,
+  ): Promise<T> {
+    const token = initialToken || (await this.getValidAccessToken())
+    if (!token) {
+      throw new Error('Google Classroom oturumu bulunamadı. Lütfen yeniden giriş yapın.')
+    }
+    try {
+      return await run(token)
+    } catch (err) {
+      const is401 =
+        (err instanceof HttpError && (err.status === 401 || err.isAuthError)) ||
+        /\b401\b|unauthorized/i.test(err instanceof Error ? err.message : String(err))
+      if (!is401) throw err
+      const refreshed = await this.authService.refreshAccessToken()
+      if (!refreshed) {
+        throw new Error('Oturumunuzun süresi doldu (401). Lütfen Ayarlar > Hesap bölümünden yeniden bağlanın.')
+      }
+      return await run(refreshed)
+    }
+  }
+
+  private async authedPaginate<T>(
+    urlForPage: (pageToken?: string) => string,
+    extract: (page: any) => T[] | undefined,
+    initialToken?: string,
+  ): Promise<T[]> {
+    return this.withFreshToken(
+      activeToken =>
+        googleHttp.paginate<T>(urlForPage, extract, {
+          headers: { Authorization: `Bearer ${activeToken}` },
+        }),
+      initialToken,
+    )
+  }
+
+  /**
    * Yetkili GET. 401 alinirsa token bir kez yenilenir ve istek tekrarlanir.
    * 403 ise kapsam/rol eksikligidir ve kullaniciya acikca bildirilir.
    */
-  private async authedGet<T>(url: string, token: string): Promise<T> {
-    const headers = { Authorization: `Bearer ${token}` }
+  private async authedGet<T>(url: string, token?: string): Promise<T> {
     try {
-      return await googleHttp.request<T>(url, { headers })
+      return await this.withFreshToken(
+        activeToken =>
+          googleHttp.request<T>(url, {
+            headers: { Authorization: `Bearer ${activeToken}` },
+          }),
+        token,
+      )
     } catch (err) {
-      if (err instanceof HttpError && err.isAuthError) {
-        const refreshed = await this.authService.refreshAccessToken()
-        if (refreshed) {
-          return googleHttp.request<T>(url, { headers: { Authorization: `Bearer ${refreshed}` } })
-        }
-        throw new Error('Google oturumunun süresi doldu. Lütfen yeniden bağlanın.')
-      }
       if (err instanceof HttpError && err.isPermissionError) {
         throw new Error(
           'Bu kaynağa erişim için gerekli Google izni verilmemiş. Ayarlar > Hesap bölümünden izinleri yenileyin.',
@@ -67,11 +109,6 @@ export class ClassroomService {
     const stableId = (prefix: string, key: string) => `${prefix}_${crypto.createHash('sha1').update(`${courseId}/${workId}/${key}`).digest('hex').slice(0, 16)}`
 
     for (const m of rawMaterials) {
-      // Bozuk/eksik veri DERSIN TUM SENKRONIZASYONUNU cokertmemeli.
-      // Google bazen materyal dizisinde `null` ya da primitives donduruyor;
-      // `m.driveFile` dogrudan okundugu anda servis cokuyor ve o dersin
-      // topic/odev/duyuru verisinin TAMAMI kayboluyordu. Ilgisiz ya da
-      // bozuk girdi sessizce atlanir.
       if (!m || typeof m !== 'object') continue
       if (m.driveFile) {
         const df = m.driveFile.driveFile || m.driveFile
@@ -133,10 +170,6 @@ export class ClassroomService {
   public async syncAll(): Promise<void> {
     const token = await this.getValidAccessToken()
     if (!token) {
-      // SESSIZ HATA DUZELTMESI: Onceki surum burada sessizce `return`
-      // ediyordu. Arayuz "0 ders basariyla senkronize edildi" yazip
-      // islemi BASARILI gosteriyordu; kullanici hatanin gercek nedenini
-      // (oturum yok / belirteç gecersiz) hicbir yerde goremiyordu.
       this.storageService.recordSyncError(
         'Google oturumu bulunamadı. Senkronizasyon için önce Ayarlar > Hesap bölümünden ' +
           'Google ile bağlanın. Mevcut yerel ders ve ödev verileriniz korunuyor.',
@@ -149,10 +182,9 @@ export class ClassroomService {
       const courses: Course[] = []
       // Kullanicinin gercekten uye oldugu tum sinif durumlari.
       for (const courseState of ['ACTIVE', 'ARCHIVED'] as const) {
-        const fetched = await googleHttp.paginate<any>(
+        const fetched = await this.authedPaginate<any>(
           token2 => pageUrl(`${API}/courses?courseStates=${courseState}`, token2),
           p => p?.courses,
-          { headers: { Authorization: `Bearer ${token}` } },
         )
         for (const raw of fetched) {
           courses.push({
@@ -175,12 +207,13 @@ export class ClassroomService {
       this.storageService.setSyncProgress(0, courses.length, 'Sınıf içerikleri alınıyor')
 
       let index = 0
+      const latestToken = (await this.getValidAccessToken()) || token
       for (const course of courses) {
         try {
-          await this.syncCourseDetails(course.id, token)
+          await this.syncCourseDetails(course.id, latestToken)
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          this.storageService.recordSyncError(`${course.name}: ${message}`)
+          const rawMsg = err instanceof Error ? err.message : String(err)
+          this.storageService.recordSyncError(`${course.name}: ${this.explainApiError(rawMsg)}`)
         }
         index += 1
         this.storageService.setSyncProgress(index, courses.length, 'Sınıf içerikleri alınıyor')
@@ -188,9 +221,10 @@ export class ClassroomService {
 
       this.storageService.updateLastSynced()
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      this.storageService.recordSyncError(message)
-      throw err
+      const rawMsg = err instanceof Error ? err.message : String(err)
+      const explained = this.explainApiError(rawMsg)
+      this.storageService.recordSyncError(explained)
+      throw new Error(explained)
     } finally {
       this.storageService.endSync()
     }
@@ -257,10 +291,10 @@ export class ClassroomService {
   private async syncCourseDetails(courseId: string, token: string): Promise<void> {
     // A. Konular
     try {
-      const rawTopics = await googleHttp.paginate<any>(
+      const rawTopics = await this.authedPaginate<any>(
         t => pageUrl(`${API}/courses/${encodeURIComponent(courseId)}/topics`, t),
         p => p?.topic,
-        { headers: { Authorization: `Bearer ${token}` } },
+        token,
       )
       this.storageService.saveTopics(
         courseId,
@@ -272,10 +306,10 @@ export class ClassroomService {
 
     // B. Duyurular
     try {
-      const rawAnnouncements = await googleHttp.paginate<any>(
+      const rawAnnouncements = await this.authedPaginate<any>(
         t => pageUrl(`${API}/courses/${encodeURIComponent(courseId)}/announcements`, t),
         p => p?.announcements,
-        { headers: { Authorization: `Bearer ${token}` } },
+        token,
       )
       this.storageService.saveAnnouncements(
         courseId,
@@ -297,10 +331,10 @@ export class ClassroomService {
 
     // C. Ders materyalleri
     try {
-      const rawMaterials = await googleHttp.paginate<any>(
+      const rawMaterials = await this.authedPaginate<any>(
         t => pageUrl(`${API}/courses/${encodeURIComponent(courseId)}/courseWorkMaterials`, t),
         p => p?.courseWorkMaterial,
-        { headers: { Authorization: `Bearer ${token}` } },
+        token,
       )
       this.storageService.saveMaterials(
         courseId,
@@ -324,10 +358,10 @@ export class ClassroomService {
     // D. Katilimcilar (ogretmenler ve ogrenciler)
     const participants: CourseParticipant[] = []
     try {
-      const rawTeachers = await googleHttp.paginate<any>(
+      const rawTeachers = await this.authedPaginate<any>(
         t => pageUrl(`${API}/courses/${encodeURIComponent(courseId)}/teachers`, t),
         p => p?.teachers,
-        { headers: { Authorization: `Bearer ${token}` } },
+        token,
       )
       for (const t of rawTeachers) {
         participants.push({
@@ -344,10 +378,10 @@ export class ClassroomService {
     }
 
     try {
-      const rawStudents = await googleHttp.paginate<any>(
+      const rawStudents = await this.authedPaginate<any>(
         t => pageUrl(`${API}/courses/${encodeURIComponent(courseId)}/students`, t),
         p => p?.students,
-        { headers: { Authorization: `Bearer ${token}` } },
+        token,
       )
       for (const s of rawStudents) {
         participants.push({
@@ -387,9 +421,9 @@ export class ClassroomService {
         const announcements = this.storageService.getAnnouncements(courseId)
         for (const ann of announcements.slice(0, 10)) {
           try {
-            const commentsRes = await googleHttp.request<any>(
+            const commentsRes = await this.authedGet<any>(
               `${API}/courses/${encodeURIComponent(courseId)}/announcements/${encodeURIComponent(ann.id)}/comments`,
-              { headers: { Authorization: `Bearer ${token}` } },
+              token,
             )
             const comments: any[] = commentsRes?.comments || []
             for (const c of comments) {
@@ -413,9 +447,9 @@ export class ClassroomService {
         const courseWorks = this.storageService.getCourseWork(courseId)
         for (const cw of courseWorks.slice(0, 10)) {
           try {
-            const cwCommentsRes = await googleHttp.request<any>(
+            const cwCommentsRes = await this.authedGet<any>(
               `${API}/courses/${encodeURIComponent(courseId)}/courseWork/${encodeURIComponent(cw.id)}/comments`,
-              { headers: { Authorization: `Bearer ${token}` } },
+              token,
             )
             const comments: any[] = cwCommentsRes?.comments || []
             for (const c of comments) {
@@ -466,10 +500,10 @@ export class ClassroomService {
     // E. Odevler, gonderiler ve rubrikler
     let rawCourseWork: any[] = []
     try {
-      rawCourseWork = await googleHttp.paginate<any>(
+      rawCourseWork = await this.authedPaginate<any>(
         t => pageUrl(`${API}/courses/${encodeURIComponent(courseId)}/courseWork`, t),
         p => p?.courseWork,
-        { headers: { Authorization: `Bearer ${token}` } },
+        token,
       )
     } catch (err) {
       this.reportSyncFailure('Odevler', err)
@@ -519,9 +553,9 @@ export class ClassroomService {
         let addedNew = false
         for (const w of works.slice(0, 10)) {
           try {
-            const cwCommentsRes = await googleHttp.request<any>(
+            const cwCommentsRes = await this.authedGet<any>(
               `${API}/courses/${encodeURIComponent(courseId)}/courseWork/${encodeURIComponent(w.id)}/comments`,
-              { headers: { Authorization: `Bearer ${token}` } },
+              token,
             )
             const comments: any[] = cwCommentsRes?.comments || []
             for (const c of comments) {
@@ -567,19 +601,19 @@ export class ClassroomService {
 
     try {
       // Öncelikli olarak öğrencinin kendi gönderisini çekmek için userId=me kullanılır.
-      raw = await googleHttp.paginate<any>(
+      raw = await this.authedPaginate<any>(
         t => pageUrl(`${API}/courses/${encodeURIComponent(courseId)}/courseWork/${encodeURIComponent(workId)}/studentSubmissions?userId=me`, t),
         p => p?.studentSubmissions,
-        { headers: { Authorization: `Bearer ${token}` } },
+        token,
       )
     } catch (err) {
       // Eğer kullanıcı öğretmen rolündeyse ve tüm sınıfı çekme yetkisine sahipse parametresiz dener:
       if (account?.role === 'TEACHER') {
         try {
-          raw = await googleHttp.paginate<any>(
+          raw = await this.authedPaginate<any>(
             t => pageUrl(`${API}/courses/${encodeURIComponent(courseId)}/courseWork/${encodeURIComponent(workId)}/studentSubmissions`, t),
             p => p?.studentSubmissions,
-            { headers: { Authorization: `Bearer ${token}` } },
+            token,
           )
         } catch {
           /* yut */
@@ -615,26 +649,6 @@ export class ClassroomService {
     }
   }
 
-  /**
-   * Coktan secmeli gonderiyi okunur metne cevirir.
-   *
-   * ONCEKI SURUM
-   * ------------
-   * Bu alan HIC ayristirilmiyordu; `multipleChoiceSubmission` gelen
-   * gonderide tutuluyordu ama `StudentSubmission` kaydinda `undefined`
-   * kaliyordu. Arayuzde cogu zaman bos "Cevap: " satiri gorunuyor,
-   * kullanici odevini gonderdigini saniyordu.
-   *
-   * API iki farkli alan adi kullanir ve bu bir tutarsizlik degil,
-   * Classroom API'sinin gercek davranisi:
-   *   • StudentSubmission.multipleChoiceSubmission
-   *   • StudentSubmission.multipleChoiceQuestionSubmission
-   * Hangisi donerse onsunu okuruz.
-   *
-   * `answers` yalnizca `choiceId` UCGUNU icerir ("CHOICE_1"), okunabilir
-   * metin degil. Bu yuzden odevin kendi `multipleChoiceQuestion.choices`
-   * listesinden metin cozulur; eslesme bulunamazsa kimlik gosterilir.
-   */
   private parseMultipleChoice(
     sub: any,
     work: any,
@@ -706,35 +720,31 @@ export class ClassroomService {
   // Yazma islemleri - yalnizca cevrimici ve acik kullanici onayiyla
   // =========================================================================
   private async writePost(url: string, action: string): Promise<void> {
-    const token = await this.getValidAccessToken()
-    if (!token) {
-      throw new Error('Bu işlem için Google Classroom bağlantısı gerekiyor.')
-    }
     try {
-      await googleHttp.request(url, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: '{}',
-      })
+      await this.withFreshToken(activeToken =>
+        googleHttp.request(url, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${activeToken}`, 'Content-Type': 'application/json' },
+          body: '{}',
+        }),
+      )
     } catch (err) {
-      const detail = err instanceof HttpError ? err.bodySnippet : ''
+      const detail = err instanceof HttpError ? err.bodySnippet : (err instanceof Error ? err.message : '')
       throw new Error(`${action} işlemi başarısız oldu. ${detail}`.trim())
     }
   }
 
   private async writePatch(url: string, action: string, payload: unknown): Promise<any> {
-    const token = await this.getValidAccessToken()
-    if (!token) {
-      throw new Error('Bu işlem için Google Classroom bağlantısı gerekiyor.')
-    }
     try {
-      return await googleHttp.request<any>(url, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      return await this.withFreshToken(activeToken =>
+        googleHttp.request<any>(url, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${activeToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+      )
     } catch (err) {
-      const detail = err instanceof HttpError ? err.bodySnippet : ''
+      const detail = err instanceof HttpError ? err.bodySnippet : (err instanceof Error ? err.message : '')
       throw new Error(`${action} işlemi başarısız oldu. ${detail}`.trim())
     }
   }

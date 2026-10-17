@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { Attachment, Course, CourseWork, DraftEntry, Rubric, StudentSubmission } from '../../types/jmc'
 import { useI18n } from '../../i18n/i18nContext'
+import { ClickableText } from '../../components/ClickableText'
 
 interface DocumentStudioProps {
   course: Course | null
@@ -463,7 +464,7 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
               <SectionHeading>{t('coursework.instructions')}</SectionHeading>
               {courseWork.description?.trim() ? (
                 <p className="whitespace-pre-wrap text-[13px] leading-[1.7] text-[var(--jmc-text)]">
-                  {courseWork.description}
+                  <ClickableText text={courseWork.description} />
                 </p>
               ) : (
                 <p className="text-[12.5px] italic text-[var(--jmc-text-dim)]">
@@ -543,8 +544,13 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
                     : 'Seçiminiz'}
                 </SectionHeading>
                 <div className="whitespace-pre-wrap rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-3 py-2.5 text-[12.5px] leading-relaxed text-[var(--jmc-text)]">
-                  {submission?.shortAnswerSubmission?.answer ||
-                    submission?.multipleChoiceSubmission?.answer}
+                  <ClickableText
+                    text={
+                      submission?.shortAnswerSubmission?.answer ||
+                      submission?.multipleChoiceSubmission?.answer ||
+                      ''
+                    }
+                  />
                 </div>
               </section>
             )}
@@ -571,7 +577,7 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
                 </div>
                 {crit.description && (
                   <p className="text-[12px] leading-relaxed text-[var(--jmc-text-muted)]">
-                    {crit.description}
+                    <ClickableText text={crit.description} />
                   </p>
                 )}
                 <ul className="grid gap-1.5 sm:grid-cols-3">
@@ -590,7 +596,7 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
                       </div>
                       {level.description && (
                         <p className="mt-1 text-[11px] leading-snug text-[var(--jmc-text-dim)]">
-                          {level.description}
+                          <ClickableText text={level.description} />
                         </p>
                       )}
                     </li>
