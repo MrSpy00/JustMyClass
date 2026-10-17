@@ -391,45 +391,118 @@ function decompressZipEntry(data: Buffer, method: number): Buffer | null {
 }
 
 /**
+ * CMap anahtarlarini 4 haneli ondalik (CID) veya 2 haneli ondalik
+ * (basit font) bicimine NORMALIZE eder.
+ *
+ * NEDEN GEREKLI?
+ * Bir CMap icinde anahtar uzunlugu karisik olabilir (`<03>`, `<0003>`).
+ * Onceki surum anahtari OLDUGU GIBI kaydediyordu, ama metin akisi her
+ * zaman 4 hanelik parcalar ariyordu. `<03>` yazan bir CMap ile 4 haneli
+ * arama hicbir zaman eslesmiyor, sessizce TUM METIN BOS donuyordu.
+ */
+function normalizeCMapKey(hex: string, widths: 1 | 2): string {
+  const h = hex.toLowerCase().replace(/[^0-9a-f]/g, '')
+  return widths === 2 ? h.padStart(4, '0').slice(-4) : h.padStart(2, '0').slice(-2)
+}
+
+/**
  * PDF ToUnicode CMap bloklarını ayıklar ve Unicode karakter karşılıklarını haritalandırır.
- */function parsePdfCMap(decompressedText: string): Map<string, string> {
+ *
+ * DUZELTMELER (onceki surumun hatalari):
+ *  1. `beginbfchar`/`beginbfrange` satir sonu ZORUNLU TUTULUYORDU. Tek
+ *     satirlik CMap'ler (`1 beginbfchar <03> <0020> endbfchar`) hicbir
+ *     zaman eslesmiyordu.
+ *  2. satir satir ilk ESLESME aliniyordu; ayni satirda birden fazla
+ *     cift olan CMap'lerde kayitin geri kalani kayboluyordu.
+ *  3. `bfrange` DIZI bicimi (`<lo> <hi> [<d1> <d2> ...]`) HIC islenmiyordu
+ *     (yorumda vardi, kodda yoktu). Word/LibreOffice sik olarak uretir.
+ *  4. Anahtarlar normalize edilmiyordu (yukarida anlatildi).
+ *  5. Hedefte >BMP bir karakter iki yalniz suroga bolunuyordu.
+ */
+function parsePdfCMap(decompressedText: string, widths: 1 | 2 = 2): Map<string, string> {
   const cmap = new Map<string, string>()
 
-  // bfchar blokları: <0001> <0041>
-  const bfCharRegex = /beginbfchar[\r\n]+([\s\S]*?)endbfchar/g
+  /** <4A> veya <004A> -> gercek Unicode metni (surrogate-safe). */
+  const utf16beToString = (hex: string): string => {
+    const h = hex.toLowerCase().replace(/[^0-9a-f]/g, '')
+    if (h.length === 0) return ''
+    if (h.length <= 2) return String.fromCharCode(parseInt(h, 16))
+    // CMap hedefleri UTF-16BE'dir. 4 haneli surrogate ciftlerini birlestir.
+    let out = ''
+    for (let i = 0; i + 4 <= h.length; i += 4) {
+      out += String.fromCharCode(parseInt(h.slice(i, i + 4), 16))
+    }
+    if (h.length % 4 !== 0) {
+      // Tek bayt kalan son parca
+      const tail = h.slice(h.length - (h.length % 4))
+      if (tail.length === 2) out += String.fromCharCode(parseInt(tail, 16))
+    }
+    return out
+  }
+
+  // --- beginbfchar -------------------------------------------------------
+  const bfCharRegex = /beginbfchar([\s\S]*?)endbfchar/g
   let bfMatch: RegExpExecArray | null
+  const charPairRe = /<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>/g
   while ((bfMatch = bfCharRegex.exec(decompressedText)) !== null) {
-    const lines = bfMatch[1].trim().split(/\r?\n/)
-    for (const line of lines) {
-      const parts = line.match(/<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>/)
-      if (parts) {
-        const srcHex = parts[1].toLowerCase()
-        const dstHex = parts[2]
-        let uniStr = ''
-        for (let i = 0; i < dstHex.length; i += 4) {
-          uniStr += String.fromCharCode(parseInt(dstHex.slice(i, i + 4), 16))
-        }
-        cmap.set(srcHex, uniStr)
-      }
+    charPairRe.lastIndex = 0
+    let pair: RegExpExecArray | null
+    while ((pair = charPairRe.exec(bfMatch[1])) !== null) {
+      cmap.set(normalizeCMapKey(pair[1], widths), utf16beToString(pair[2]))
     }
   }
 
-  // bfrange blokları: <0001> <0005> <0041> veya <0001> <0002> [<0041> <0042>]
-  const bfRangeRegex = /beginbfrange[\r\n]+([\s\S]*?)endbfrange/g
+  // --- beginbfrange ------------------------------------------------------
+  //Uc bicim:
+  //   <lo> <hi> <dstStart>              -> ardisik Unicode
+  //   <lo> <hi> [<d1> <d2> ...]         -> dizi (ATLANIYORDU)
+  const bfRangeRegex = /beginbfrange([\s\S]*?)endbfrange/g
   let rgMatch: RegExpExecArray | null
   while ((rgMatch = bfRangeRegex.exec(decompressedText)) !== null) {
-    const lines = rgMatch[1].trim().split(/\r?\n/)
-    for (const line of lines) {
-      const simpleRange = line.match(/<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>/)
-      if (simpleRange) {
-        const start = parseInt(simpleRange[1], 16)
-        const end = parseInt(simpleRange[2], 16)
-        let dstStart = parseInt(simpleRange[3], 16)
-        const hexLen = simpleRange[1].length
-        for (let code = start; code <= end; code++) {
-          const hexKey = code.toString(16).padStart(hexLen, '0').toLowerCase()
-          cmap.set(hexKey, String.fromCharCode(dstStart++))
+    const body = rgMatch[1]
+    const headRe = /<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*/g
+    let head: RegExpExecArray | null
+    while ((head = headRe.exec(body)) !== null) {
+      const lo = parseInt(head[1], 16)
+      const hi = parseInt(head[2], 16)
+      if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi < lo) continue
+      // Guvenlik: absurd araliklar (bozuk CMap) sonsuz dongu yaratir.
+      if (hi - lo > 0x10000) continue
+      const rest = body.slice(head.index + head[0].length)
+
+      if (rest.startsWith('[')) {
+        // DIZI BICIMI: <lo> <hi> [<0041> <0042> ...]
+        const end = rest.indexOf(']')
+        if (end === -1) break
+        const items = rest.slice(1, end).match(/<([0-9a-fA-F]+)>/g) ?? []
+        for (let k = 0; k < lo + items.length && k <= hi; k++) {
+          const dst = items[k - lo]?.replace(/[<>\s]/g, '')
+          if (dst) cmap.set(normalizeCMapKey(k.toString(16), widths), utf16beToString(dst))
         }
+        headRe.lastIndex = head.index + head[0].length + end + 1
+      } else {
+        // DUZ BICIM: <lo> <hi> <dstStart>
+        const dstMatch = /^<([0-9a-fA-F]+)>/.exec(rest)
+        if (!dstMatch) {
+          headRe.lastIndex = head.index + head[0].length
+          continue
+        }
+        let dst = parseInt(dstMatch[1], 16)
+        for (let code = lo; code <= hi; code++) {
+          cmap.set(normalizeCMapKey(code.toString(16), widths), String.fromCharCode(dst))
+          // Hedef 4 haneli surrogate ise tam kod noktasini yaz.
+          if (dst >= 0xd800 && dst <= 0xdbff && code + 1 <= hi) {
+            const low = dst + 1
+            if (low >= 0xdc00 && low <= 0xdfff) {
+              cmap.set(normalizeCMapKey((code + 1).toString(16), widths), String.fromCharCode(low))
+              dst += 2
+              code++
+              continue
+            }
+          }
+          dst++
+        }
+        headRe.lastIndex = head.index + head[0].length + dstMatch[0].length
       }
     }
   }
@@ -438,111 +511,361 @@ function decompressZipEntry(data: Buffer, method: number): Buffer | null {
 }
 
 /**
- * PDF literal string içeriğindeki octal, UTF-16BE ve Türkçe karakterleri çözer.
+ * Bir yazitipinin cozumlemesi icin gereken her sey.
+ *
+ * `widths` bu yazitipinin karakter basina kac bayt tukettigini belirtir:
+ *   1 -> basit font (Type1 / TrueType / Type3): her karakter 1 bayt
+ *   2 -> CID font (Type0 + Identity-H): her karakter 2 bayt
+ *
+ * ONCEKI SURUMUN HATASI
+ * --------------------
+ * Yazitipi cozumlemesi HIC YAPILMIYORDU. Tum ToUnicode haritalari tek bir
+ * `Map`e dolduruluyor ve TEK bir bayt adimiyla butun metne uygulaniyordu.
+ * Boylece `Identity-H` bir metinde her karakter 2 bayt olmasina ragmen
+ * 0x00 + 0xNN olarak ayristiriliyordu. 0x00 -> bosluk, 0xNN -> Latin-1.
+ * Sonuc: kullanici "u hafta koaja enzdiA.P smiyomy#,zctnzooö#" goruyordu.
+ * (# = 0x23, Y = 0xA5 -> dogrudan CID alt baytlari.)
  */
-function decodePdfLiteralString(raw: string, cmap?: Map<string, string>): string {
-  // UTF-16BE BOM kontrolü: \376\377 veya \xFE\xFF
-  if (raw.startsWith('\xfe\xff') || raw.startsWith('\\376\\377')) {
-    const clean = raw.replace(/^(\xfe\xff|\\376\\377)/, '')
-    const bytes: number[] = []
-    let i = 0
-    while (i < clean.length) {
-      if (clean[i] === '\\' && i + 3 < clean.length && /^[0-7]{3}$/.test(clean.slice(i + 1, i + 4))) {
-        bytes.push(parseInt(clean.slice(i + 1, i + 4), 8))
-        i += 4
-      } else if (clean[i] === '\\' && i + 1 < clean.length) {
-        bytes.push(clean.charCodeAt(i + 1))
-        i += 2
-      } else {
-        bytes.push(clean.charCodeAt(i))
+interface PdfFontInfo {
+  /** Karakter basina bayt sayisi. */
+  widths: 1 | 2
+  /** Bu yazitipinin KENDI ToUnicode haritasi (yalnizca bu yazitipine ait). */
+  toUnicode: Map<string, string>
+  /** `/Differences` ile acikca tanimlanmis kodlar (basit fontlar). */
+  differences: Map<number, string>
+}
+
+/** AGL (Adobe Glyph List) alt kumesi: yazitip adindan Unicode. */
+const GLYPH_NAME_UNICODE: Record<string, string> = {
+  space: ' ', exclam: '!', quotedbl: '"', numbersign: '#', dollar: '$', percent: '%',
+  ampersand: '&', quotesingle: "'", parenleft: '(', parenright: ')', asterisk: '*',
+  plus: '+', comma: ',', hyphen: '-', period: '.', slash: '/', zero: '0', one: '1',
+  two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8',
+  nine: '9', colon: ':', semicolon: ';', less: '<', equal: '=', greater: '>', question: '?',
+  at: '@', bracketleft: '[', backslash: '\\', bracketright: ']', asciicircum: '^',
+  underscore: '_', grave: '`', braceleft: '{', bar: '|', braceright: '}', asciitilde: '~',
+  bullet: '\u2022', quotedblleft: '\u201C', quotedblright: '\u201D', quotesinglbase: '\u201A',
+  quotedblbase: '\u201E', endash: '\u2013', emdash: '\u2014', ellipsis: '\u2026',
+  fi: '\uFB01', fl: '\uFB02', dagger: '\u2020', daggerdbl: '\u2021',
+  trademark: '\u2122', copyright: '\u00A9', registered: '\u00AE', degree: '\u00B0',
+  section: '\u00A7', paragraph: '\u00B6', sterling: '\u00A3', yen: '\u00A5',
+  euro: '\u20AC', cent: '\u00A2', currency: '\u00A4', ordfeminine: '\u00AA',
+  ordmasculine: '\u00BA', onesuperior: '\u00B9', twosuperior: '\u00B2', threesuperior: '\u00B3',
+  onequarter: '\u00BC', onehalf: '\u00BD', threequarters: '\u00BE',
+  minus: '\u2212', multiply: '\u00D7', divide: '\u00F7', plusminus: '\u00B1',
+  periodcentered: '\u00B7', radical: '\u221A', infinity: '\u221E', notequal: '\u2260',
+  lessequal: '\u2264', greaterequal: '\u2265', partialdiff: '\u2202', summation: '\u2211',
+  product: '\u220F', pi: '\u03C0', Delta: '\u0394', Omega: '\u03A9', alpha: '\u03B1',
+  beta: '\u03B2', gamma: '\u03B3', delta: '\u03B4', pi2: '\u03C0', sigma: '\u03C3',
+  lambda: '\u03BB', mu: '\u03BC', theta: '\u03B8', phi: '\u03C6', omega: '\u03C9',
+  A: 'A', B: 'B', C: 'C', D: 'D', E: 'E', F: 'F', G: 'G', H: 'H', I: 'I', J: 'J',
+  K: 'K', L: 'L', M: 'M', N: 'N', O: 'O', P: 'P', Q: 'Q', R: 'R', S: 'S', T: 'T',
+  U: 'U', V: 'V', W: 'W', X: 'X', Y: 'Y', Z: 'Z',
+  a: 'a', b: 'b', c: 'c', d: 'd', e: 'e', f: 'f', g: 'g', h: 'h', i: 'i', j: 'j',
+  k: 'k', l: 'l', m: 'm', n: 'n', o: 'o', p: 'p', q: 'q', r: 'r', s: 's', t: 't',
+  u: 'u', v: 'v', w: 'w', x: 'x', y: 'y', z: 'z',
+}
+
+/** `/g42` gibi adlandirilmis alt kume glifleri, adindan cozulemez. */
+function glyphNameToUnicode(name: string): string | null {
+  if (!name) return null
+  const direct = GLYPH_NAME_UNICODE[name]
+  if (direct !== undefined) return direct
+  // uniXXXX / uXXXX[XX]
+  const uni = /^uni([0-9a-fA-F]{4,6})$/.exec(name)
+  if (uni) return String.fromCodePoint(parseInt(uni[1], 16))
+  const u = /^u([0-9a-fA-F]{4,6})$/.exec(name)
+  if (u) return String.fromCodePoint(parseInt(u[1], 16))
+  // space.period -> space
+  const dot = name.indexOf('.')
+  if (dot > 0) {
+    const base = name.slice(0, dot)
+    if (base === 'uni' || base === 'u') return glyphNameToUnicode(name.slice(dot + 1))
+  }
+  return null
+}
+
+/** `/F1 12 0 R` kalibindeki nesne numarasini dondurur. */
+function parseIndirectRef(text: string, key: string): number | null {
+  const m = new RegExp(`/${key}\\s+(\\d+)\\s+\\d+\\s+R`).exec(text)
+  return m ? parseInt(m[1], 10) : null
+}
+
+/**
+ * Belgenin yazitip kaynaklarini cozer: `/F1 -> PdfFontInfo`.
+ *
+ * NEDEN GEREKLI?
+ * --------------
+ * Onceki surumde yazitip cozumlemesi YOKTU. Butun ToUnicode haritalari
+ * tek bir `Map`e konuyor ve metin TEK bayt adimiyla cozuluyordu. Bu:
+ *   1. Farkli yazitipin haritalari BIRBIRINI EZIYORDU (son yazan kazanir)
+ *      -> bir yazitipin metni digerinin kodlariyla acilip sahte karakter
+ *      uretiyordu.
+ *   2. `Identity-H` (2 bayt/karakter) metinleri 1 bayt/karakter gibi
+ *      okunuyordu -> "hafta" yazan yerde "u hafta koaja enzdi#" cikiyordu.
+ *
+ * COZUM
+ * -----
+ *   • `/Font` sozlugunden ad -> nesne eslesmesi kurulur.
+ *   • Her yazitipinin `/Subtype` ve `/Encoding` degerine bakilarak karakter
+ *     basina bayt sayisi (1 veya 2) belirlenir.
+ *   • `/ToUnicode` akisi o yazitipye OZEL olarak cozulur.
+ *   • `/Differences` dizisi varsa glif adlarindan Unicode uretilir.
+ */
+function resolveFontResources(
+  str: string,
+  objDict: Map<number, string>,
+  streamByObj: Map<number, string>,
+): Map<string, PdfFontInfo> {
+  const fonts = new Map<string, PdfFontInfo>()
+
+  // 1) Tum `/Font << /F1 12 0 R ... >>` sozluklerini (inline veya ref)
+  const fontDicts: string[] = []
+  const fontDictRe = /\/Font\s*(?:(\d+)\s+\d+\s+R|<<)/g
+  let fm: RegExpExecArray | null
+  while ((fm = fontDictRe.exec(str)) !== null) {
+    if (fm[1]) {
+      const referenced = objDict.get(parseInt(fm[1], 10))
+      if (referenced) fontDicts.push(referenced)
+      continue
+    }
+    // Inline sozluk: `<< ... >>` blokunu dengeli sekilde bul
+    const start = fm.index + fm[0].length - 2
+    const end = findDictEnd(str, start)
+    if (end > start) fontDicts.push(str.slice(start + 2, end))
+  }
+
+  // 2) Her sozlukte `/Ad 12 0 R` ciftlerini oku
+  for (const dict of fontDicts) {
+    const entryRe = /\/([A-Za-z0-9#._-]+)\s+(\d+)\s+\d+\s+R/g
+    let em: RegExpExecArray | null
+    while ((em = entryRe.exec(dict)) !== null) {
+      const name = em[1]
+      const fontObjNum = parseInt(em[2], 10)
+      const fontDict = objDict.get(fontObjNum)
+      if (!fontDict) continue
+
+      const info = describeFont(fontDict, streamByObj)
+      if (info) fonts.set(name, info)
+    }
+  }
+
+  return fonts
+}
+
+/** `<<` ile baslayan bir sozlugun kapanis `>>` konumunu bulur. */
+function findDictEnd(text: string, startAt: number): number {
+  let depth = 0
+  for (let i = startAt; i < text.length - 1; i++) {
+    const c = text[i]
+    if (c === '(') {
+      // Literal string: kacisli parantezleri atla
+      i++
+      while (i < text.length && text[i] !== ')') {
+        if (text[i] === '\\') i++
         i++
       }
+      continue
     }
-    let res = ''
-    for (let b = 0; b < bytes.length - 1; b += 2) {
-      res += String.fromCharCode((bytes[b] << 8) | bytes[b + 1])
+    if (c === '<' && text[i + 1] !== '<') {
+      // Hex string
+      i++
+      while (i < text.length && text[i] !== '>') i++
+      continue
     }
-    return res
-  }
-
-  // Octal kaçış dizilerini bayt dizisine dönüştür
-  const byteList: number[] = []
-  let pos = 0
-  while (pos < raw.length) {
-    if (raw[pos] === '\\') {
-      if (pos + 3 < raw.length && /^[0-7]{3}$/.test(raw.slice(pos + 1, pos + 4))) {
-        byteList.push(parseInt(raw.slice(pos + 1, pos + 4), 8))
-        pos += 4
-      } else if (raw[pos + 1] === 'n') {
-        byteList.push(10)
-        pos += 2
-      } else if (raw[pos + 1] === 'r') {
-        byteList.push(13)
-        pos += 2
-      } else if (raw[pos + 1] === 't') {
-        byteList.push(9)
-        pos += 2
-      } else if (raw[pos + 1] === 'b') {
-        byteList.push(8)
-        pos += 2
-      } else if (raw[pos + 1] === 'f') {
-        byteList.push(12)
-        pos += 2
-      } else if (raw[pos + 1] === '(' || raw[pos + 1] === ')' || raw[pos + 1] === '\\') {
-        byteList.push(raw.charCodeAt(pos + 1))
-        pos += 2
-      } else {
-        pos++
-      }
-    } else {
-      byteList.push(raw.charCodeAt(pos))
-      pos++
+    if (c === '<' && text[i + 1] === '<') {
+      depth++
+      i++
+      continue
+    }
+    if (c === '>' && text[i + 1] === '>') {
+      depth--
+      i++
+      if (depth === 0) return i + 1
+      continue
     }
   }
-
-  // Eğer font ToUnicode CMap varsa, karakter kodlarını haritadan geçir
-  if (cmap && cmap.size > 0) {
-    let mapped = ''
-    let matchCount = 0
-    for (const b of byteList) {
-      const hex2 = b.toString(16).padStart(2, '0').toLowerCase()
-      const hex4 = b.toString(16).padStart(4, '0').toLowerCase()
-      if (cmap.has(hex2)) {
-        mapped += cmap.get(hex2)!
-        matchCount++
-      } else if (cmap.has(hex4)) {
-        mapped += cmap.get(hex4)!
-        matchCount++
-      } else if (b >= 32 && b <= 126) {
-        mapped += String.fromCharCode(b)
-      } else {
-        const win = WINANSI_HIGH_MAP[b]
-        if (win) mapped += win
-        else if (TURKISH_WIN1254_MAP[b]) mapped += TURKISH_WIN1254_MAP[b]
-      }
-    }
-    if (matchCount > 0 && mapped.trim().length > 0) {
-      return mapped
-    }
-  }
-
-  // UTF-8 veya Windows-1254 (Türkçe) çözümlemesi
-  const buf = Buffer.from(byteList)
-  try {
-    const utf8Str = buf.toString('utf8')
-    if (!utf8Str.includes('\ufffd') && /[^\x00-\x7F]/.test(utf8Str)) {
-      return utf8Str
-    }
-  } catch {
-    /* fallback to win1254 */
-  }
-
-  let result = ''
-  for (const b of byteList) {
-    result += pdfByteToChar(b)
-  }
-  return result
+  return -1
 }
+
+/** Bir yazitip nesnesinin sozlugunden `PdfFontInfo` uretir. */
+function describeFont(fontDict: string, streamByObj: Map<number, string>): PdfFontInfo | null {
+  // Karakter basina bayt sayisi
+  const isType0 = /\/Subtype\s*\/Type0\b/.test(fontDict)
+  const isIdentity = /\/Encoding\s*\/Identity-[HV]\b/.test(fontDict)
+  const widths: 1 | 2 = isType0 || isIdentity ? 2 : 1
+
+  // ToUnicode
+  const toUnicode = new Map<string, string>()
+  const tuNum = parseIndirectRef(fontDict, 'ToUnicode')
+  if (tuNum !== null) {
+    const stream = streamByObj.get(tuNum)
+    if (stream) {
+      for (const [k, v] of parsePdfCMap(stream, widths).entries()) toUnicode.set(k, v)
+    }
+  }
+
+  // /Differences: `[ /bullet /A /B 5 /C ]`
+  const differences = new Map<number, string>()
+  const diffMatch = /\/Differences\s*\[([^\]]*)\]/.exec(fontDict)
+  if (diffMatch) {
+    let code = 0
+    const tokenRe = /\/([^\s/\[\]]+)|(-?\d+)/g
+    let tm: RegExpExecArray | null
+    while ((tm = tokenRe.exec(diffMatch[1])) !== null) {
+      if (tm[2] !== undefined) {
+        code = parseInt(tm[2], 10)
+      } else {
+        const ch = glyphNameToUnicode(tm[1])
+        if (ch !== null) differences.set(code, ch)
+        code++
+      }
+    }
+  }
+
+  if (toUnicode.size === 0 && differences.size === 0 && widths === 1) return null
+  return { widths, toUnicode, differences }
+}
+
+/**
+ * Bir yazitip ve bir bayt dizisi ile metin uretir.
+ *
+ * 2 baytlik (CID) yazitipinda ciftler halinde, 1 baytlik yazitipinda tek
+ * tek ilerler. Cozumleme sirasi:
+ *   1. Yazitipin kendi ToUnicode haritasi
+ *   2. `/Differences` ile tanimlanmis kod
+ *   3. WinAnsi / Turkce Latin-5 tabanli karsilik (en iyi tahmin)
+ */
+function decodeWithFont(bytes: number[], font: PdfFontInfo | null): string {
+  if (!font) {
+    // Yazitip bilinmiyor: eski davranis (bayt bayt) ama taban kodlama ile
+    const s = bytes.map(b => pdfByteToChar(b)).join('')
+    return scrubPdfText(s)
+  }
+
+  let out = ''
+  const step = font.widths
+
+  // UTF-16BE BOM: metin zaten Unicode esdegeridir, yazitip haritasi
+  // UYGULANMAZ. Bu kontrol yazitip cozumlemesinden ONCE yapilir.
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    for (let i = 2; i + 1 < bytes.length; i += 2) {
+      out += String.fromCharCode((bytes[i] << 8) | bytes[i + 1])
+    }
+    return scrubPdfText(out)
+  }
+
+  if (step === 1) {
+    for (const b of bytes) {
+      const key = b.toString(16).padStart(2, '0')
+      const mapped = font.toUnicode.get(key)
+      if (mapped !== undefined) {
+        out += mapped
+        continue
+      }
+      const diff = font.differences.get(b)
+      if (diff !== undefined) {
+        out += diff
+        continue
+      }
+      out += pdfByteToChar(b)
+    }
+  } else {
+    for (let i = 0; i + 1 < bytes.length; i += 2) {
+      const code = (bytes[i] << 8) | bytes[i + 1]
+      const key = code.toString(16).padStart(4, '0')
+      const mapped = font.toUnicode.get(key)
+      if (mapped !== undefined) {
+        out += mapped
+        continue
+      }
+      // CMap yoksa ya da bu kod icermiyorsa: ONEMLI.
+      // Onceki surum burada 0x00 -> bosluk, 0xNN -> Latin-1 yaziyordu ve
+      // kullanici "hafta" yerine "u hafta koaja" goruyordu.
+      // Su an kodun TAMAMINI tek bir karakter gibi ele aliyoruz; cogu
+      // Identity-H alt kume yazitipinde kod dogrudan Unicode esdegeridir.
+      if (code >= 0x20 && code <= 0x7e) {
+        out += String.fromCharCode(code)
+      } else if (code >= 0xa0 && code <= 0xff) {
+        out += String.fromCharCode(code)
+      } else {
+        // Gercekten cozulemeyen kod: sessizce AT (sahte karakter uretme).
+        out += ' '
+      }
+    }
+    // Tek bayt artik kaldiysa (bozuk akis)
+    if (bytes.length % 2 === 1) out += pdfByteToChar(bytes[bytes.length - 1])
+  }
+
+  return scrubPdfText(out)
+}
+
+
+/**
+ * PDF literal string `(...)` icerigini bayt dizisine cevirir.
+ *
+ * Yazitip cozumlemesi bayt BAZINDA calistigi icin once kacislar
+ * cozulmeli, byte degerleri korunmali. `decodePdfLiteralString` ise
+ * dogrudan metin uretiyordu; yazitip genisligi bilinmeden kullanilamaz.
+ */
+function unescapePdfLiteral(raw: string): number[] {
+  const bytes: number[] = []
+  let i = 0
+  while (i < raw.length) {
+    const ch = raw[i]
+    if (ch !== '\\') {
+      // PDF literal string'leri PDFDocEncoding/8-bit ile saklanir; JS string
+      // UTF-16 oldugu icin dusuk bayt alinir.
+      bytes.push(ch.charCodeAt(0) & 0xff)
+      i++
+      continue
+    }
+    // Kacis
+    const next = raw[i + 1]
+    if (next === undefined) break
+    // Octal: 1-3 hane
+    const octal = /^[0-7]{1,3}/.exec(raw.slice(i + 1, i + 4))
+    if (octal) {
+      bytes.push(parseInt(octal[0], 8) & 0xff)
+      i += 1 + octal[0].length
+      continue
+    }
+    switch (next) {
+      case 'n': bytes.push(10); i += 2; break
+      case 'r': bytes.push(13); i += 2; break
+      case 't': bytes.push(9); i += 2; break
+      case 'b': bytes.push(8); i += 2; break
+      case 'f': bytes.push(12); i += 2; break
+      case '\r':
+        // Satir sonu devam (line continuation)
+        i += 2
+        if (raw[i] === '\n') i++
+        break
+      case '\n':
+        i += 2
+        break
+      default:
+        bytes.push(next.charCodeAt(0) & 0xff)
+        i += 2
+        break
+    }
+  }
+  return bytes
+}
+
+/** PDF hex string `<...>` icerigini yazitipina gore cozer. */
+function decodePdfHexString(hex: string, font: PdfFontInfo | null): string {
+  const clean = hex.replace(/[^0-9a-fA-F]/g, '')
+  if (clean.length === 0) return ''
+  // Tek haneli (yarim bayt) veri: sonda bir ondalik atlanir.
+  const padded = clean.length % 2 === 1 ? clean + '0' : clean
+  const bytes: number[] = []
+  for (let i = 0; i < padded.length; i += 2) {
+    bytes.push(parseInt(padded.slice(i, i + 2), 16))
+  }
+  return decodeWithFont(bytes, font)
+}
+
 
 /** ASCII85 (PDF/PostScript) akışını çözer. */
 function decodeAscii85(raw: string): Buffer | null {
@@ -755,8 +1078,29 @@ export function extractTextFromPdf(buf: Buffer): string {
     return '[Bu PDF parola korumalıdır. Parolayı bilmeden metin çıkarılamaz; dosyayı harici bir PDF okuyucusunda açıp metni kopyalayabilir veya asistanla paylaşabilirsiniz.]'
   }
 
-  // 1) Tüm akışları aç ve ToUnicode haritalarını çıkar
+  // -------------------------------------------------------------------------
+  // NESNE DIZINI: nesne no -> sozluk metni
+  // -------------------------------------------------------------------------
+  // Yazitip cozumlemesi icin gerekli. Onceki surumde nesne dizini HIC
+  // kurulmuyordu; `/F1 12 0 R` gibi bir referans `12` sayisi saniliyordu.
+  const objDict = new Map<number, string>()
+  {
+    const objRe = /(?:^|[\s>])(\d+)\s+(\d+)\s+obj\b/g
+    let om: RegExpExecArray | null
+    while ((om = objRe.exec(str)) !== null) {
+      const num = parseInt(om[1], 10)
+      if (!Number.isFinite(num)) continue
+      const endIdx = str.indexOf('endobj', om.index)
+      const bodyEnd = endIdx === -1 ? Math.min(str.length, om.index + 4000) : endIdx
+      objDict.set(num, str.slice(om.index + om[0].length, bodyEnd))
+    }
+  }
+
+  // 1) Tüm akışları aç. Ayrica nesne no -> acik akis haritasi kurulur
+  //    (yazitip `/ToUnicode` referanslarini cozmek icin gerekli).
   const decompressedStreams: string[] = []
+  /** nesne no -> cozulmus akis metni */
+  const streamByObj = new Map<number, string>()
   const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g
   let match: RegExpExecArray | null
 
@@ -765,6 +1109,10 @@ export function extractTextFromPdf(buf: Buffer): string {
     const objIndex = str.lastIndexOf('obj', match.index)
     const dictStart = Math.max(0, objIndex !== -1 ? objIndex : match.index - 1500)
     const dictSlice = str.slice(dictStart, match.index)
+
+    // Bu akis hangi nesneye ait? (`12 0 obj << ... stream`)
+    const objNumMatch = /(\d+)\s+\d+\s+obj\s*$/.exec(str.slice(Math.max(0, dictStart), objIndex + 3).trimEnd() + ' ') || /(\d+)\s+\d+\s+obj\b/.exec(str.slice(Math.max(0, objIndex - 24), objIndex + 3))
+    const objNum = objNumMatch ? parseInt(objNumMatch[1], 10) : null
 
     // Resim (Image), Font programı (FontFile/Type1/CIDFont), XObject ve ikili akışları atla
     if (
@@ -840,19 +1188,47 @@ export function extractTextFromPdf(buf: Buffer): string {
       const controlChars = (sample.match(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g) || []).length
       if (sample.length === 0 || controlChars / sample.length < 0.02) {
         decompressedStreams.push(decodedStr)
+        if (objNum !== null) streamByObj.set(objNum, decodedStr)
       }
     }
   }
 
-  // ToUnicode CMaps'i tüm akışlardan topla
+  // -------------------------------------------------------------------------
+  // YAZITIP COZUMLEMESI (per-font, global CMap DEGIL)
+  // -------------------------------------------------------------------------
+  // ONCEKI SURUM: tum ToUnicode haritalari tek bir `Map`e dolduruluyor ve
+  // metin TEK bayt adimiyla cozuluyordu. Iki sonuc:
+  //   1. Son yazan yazitip digerlerinin kodlarini EZIYORDU.
+  //   2. `Identity-H` (2 bayt/karakter) metinler yanlis okunuyordu.
+  const fontsByName = resolveFontResources(str, objDict, streamByObj)
+
+  // -------------------------------------------------------------------------
+  // YEDEK YOL: yazitip cozumlemesi basarisIZ oldugunda
+  // -------------------------------------------------------------------------
+  // REGRESYON KORUMASI
+  // ------------------
+  // Per-font cozumleme bazen hic sonuc vermez: yazitip sozlugu sıkistirilmis
+  // nesne akisinda (object stream) saklanirsa `/Font << >>` duz metin
+  // taramasinda gorunmez. Onceki surum bu durumda TUM ToUnicode haritalarini
+  // birlestirip metne uyguluyordu; cok sayida PDF'i bu sayede okuyordu.
+  //
+  // Bu yuzden global harita KORUNUR. Per-font cozumleme onceliklidir, global
+  // harita yalnizca yazitip bulunamayan metin icin devreye girer.
+  //
+  // Iki genislikte de anahtar uretilir (`41` ve `0041`) ve belgede
+  // `/Identity-H` varsa 2 bayt, yoksa 1 bayt varsayilir. Boylece yazitip
+  // cozumlemesi calissin ya da calismasin, metin HICBIR ZAMAN
+  // daha kotu hale gelmez.
   const globalCMap = new Map<string, string>()
-  for (const st of decompressedStreams) {
-    if (st.includes('beginbfchar') || st.includes('beginbfrange')) {
-      const localMap = parsePdfCMap(st)
-      for (const [k, v] of localMap.entries()) {
-        globalCMap.set(k, v)
-      }
-    }
+  for (const st of streamByObj.values()) {
+    if (!st.includes('beginbfchar') && !st.includes('beginbfrange')) continue
+    for (const [k, v] of parsePdfCMap(st, 1).entries()) globalCMap.set(k, v)
+    for (const [k, v] of parsePdfCMap(st, 2).entries()) globalCMap.set(k, v)
+  }
+  const fallbackFont: PdfFontInfo = {
+    widths: /\/Identity-[HV]\b/.test(str) ? 2 : 1,
+    toUnicode: globalCMap,
+    differences: new Map(),
   }
 
   // 2) SADECE BT ... ET metin bloklarını tara (Grafik ve PostScript operatörleri filtrelenir)
@@ -866,71 +1242,59 @@ export function extractTextFromPdf(buf: Buffer): string {
       const textBlock = btMatch[1]
       const currentBlockLines: string[] = []
 
-      // [...] TJ operatörleri
-      const tjBlockRegex = /\[([\s\S]*?)\]\s*TJ/g
-      let tjMatch: RegExpExecArray | null
-      while ((tjMatch = tjBlockRegex.exec(textBlock)) !== null) {
-        const inner = tjMatch[1]
-        const tokenRegex = /\(([^)]*(?:\\.[^)]*)*)\)|<([0-9a-fA-F]+)>/g
-        let tokMatch: RegExpExecArray | null
-        const parts: string[] = []
-        while ((tokMatch = tokenRegex.exec(inner)) !== null) {
-          if (tokMatch[1] !== undefined) {
-            parts.push(decodePdfLiteralString(tokMatch[1], globalCMap))
-          } else if (tokMatch[2] !== undefined) {
-            const hex = tokMatch[2].toLowerCase()
-            if (globalCMap.has(hex)) {
-              parts.push(globalCMap.get(hex)!)
-            } else if (hex.length % 4 === 0) {
-              let uStr = ''
-              for (let i = 0; i < hex.length; i += 4) {
-                const chunk = hex.slice(i, i + 4)
-                uStr += globalCMap.get(chunk) || String.fromCharCode(parseInt(chunk, 16))
-              }
-              parts.push(uStr)
-            } else {
-              let uStr = ''
-              for (let i = 0; i < hex.length; i += 2) {
-                const byteVal = parseInt(hex.slice(i, i + 2), 16)
-                uStr += pdfByteToChar(byteVal)
-              }
-              parts.push(uStr)
+      // `/F1 12 Tf` operatörü AKTIF YAZITIPI belirtir.
+      //
+      // NEDEN ONEMLI?
+      // Bir BT/ET blogu icinde birden fazla yazitipi kullanilabilir
+      // (orn. baslik kalin, govde normal). `Tf` takip edilmezse sonraki
+      // tum metin yanlis yazitiple cozulur.
+      let activeFont: PdfFontInfo = fallbackFont
+      const tokenizeWithFont = (source: string): string => {
+        const out: string[] = []
+        // Metni operator sirasiyla tara: once `Tf`, sonra gosterme operatoru
+        const opRe =
+          /\/([A-Za-z0-9#._-]+)\s+[-\d.]+\s+Tf|\(([^)]*(?:\\.[^)]*)*)\)\s*Tj|<([0-9a-fA-F]+)>\s*Tj|\[([\s\S]*?)\]\s*TJ|\bTd\b|\bTD\b|\bT\*\b/g
+        let op: RegExpExecArray | null
+        while ((op = opRe.exec(source)) !== null) {
+          if (op[1] !== undefined) {
+            const f = fontsByName.get(op[1])
+            if (f) activeFont = f
+            continue
+          }
+          if (op[2] !== undefined) {
+            out.push(decodeWithFont(unescapePdfLiteral(op[2]), activeFont))
+          } else if (op[3] !== undefined) {
+            out.push(decodePdfHexString(op[3], activeFont))
+          } else if (op[4] !== undefined) {
+            // TJ dizisi: literal ve hex parcalarini birlestir
+            const inner = op[4]
+            const tjToken = /\(([^)]*(?:\\.[^)]*)*)\)|<([0-9a-fA-F]+)>/g
+            let t: RegExpExecArray | null
+            while ((t = tjToken.exec(inner)) !== null) {
+              if (t[1] !== undefined) out.push(decodeWithFont(unescapePdfLiteral(t[1]), activeFont))
+              else if (t[2] !== undefined) out.push(decodePdfHexString(t[2], activeFont))
             }
+          } else {
+            // Td / TD / T* -> satir kirlmasi
+            out.push('\n')
           }
         }
-        const line = scrubPdfText(parts.join(''))
-        if (line.length > 0) currentBlockLines.push(line)
+        return out.join('')
       }
 
-      // (...) Tj operatörleri
-      const singleTjRegex = /\(([^)]*(?:\\.[^)]*)*)\)\s*Tj/g
-      let sTjMatch: RegExpExecArray | null
-      while ((sTjMatch = singleTjRegex.exec(textBlock)) !== null) {
-        const line = scrubPdfText(decodePdfLiteralString(sTjMatch[1], globalCMap))
-        if (line.length > 0) currentBlockLines.push(line)
-      }
 
-      // <hex> Tj operatörleri
-      const hexSingleRegex = /<([0-9a-fA-F]+)>\s*Tj/g
-      let hxMatch: RegExpExecArray | null
-      while ((hxMatch = hexSingleRegex.exec(textBlock)) !== null) {
-        const hex = hxMatch[1].toLowerCase()
-        let decoded = ''
-        if (globalCMap.has(hex)) {
-          decoded = globalCMap.get(hex)!
-        } else if (hex.length % 4 === 0) {
-          for (let i = 0; i < hex.length; i += 4) {
-            const chunk = hex.slice(i, i + 4)
-            decoded += globalCMap.get(chunk) || String.fromCharCode(parseInt(chunk, 16))
-          }
-        } else {
-          for (let i = 0; i < hex.length; i += 2) {
-            const byteVal = parseInt(hex.slice(i, i + 2), 16)
-            decoded += pdfByteToChar(byteVal)
-          }
-        }
-        const hexLine = scrubPdfText(decoded)
-        if (hexLine.length > 0) currentBlockLines.push(hexLine)
+      // Butun BT/ET blogunu TEK GECISLE coz.
+      //
+      // ONCEKI SURUM: TJ dizileri, sonra tekil Tj, sonra hex Tj AYRI AYRI
+      // taraniyordu ve ucu da global CMap uzerinden cozuluyordu. Bu yuzden
+      // (a) metin operator sirasi KAYBOLUYORDU (`Tj` metinden sonra gelen
+      // `Tf` yazitipi degisimi gorunmezdi) ve (b) yazitip cozumlemesi yoktu.
+      // Artik operatorler sirasiyla isleniyor ve `Tf` ile aktif yazitip
+      // guncellendikce her parca dogru haritadan geciriliyor.
+      const blockText = tokenizeWithFont(textBlock)
+      for (const rawLine of blockText.split('\n')) {
+        const t = scrubPdfText(rawLine).trim()
+        if (t.length > 0) currentBlockLines.push(t)
       }
 
       if (currentBlockLines.length > 0) {

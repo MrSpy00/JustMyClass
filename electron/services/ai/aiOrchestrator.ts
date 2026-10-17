@@ -941,6 +941,25 @@ function pickDefaultModel(models: AiModel[]): AiModel {
   return [...pool].sort((a, b) => b.contextWindow - a.contextWindow)[0]
 }
 
+/**
+ * Tek bir ek olarak gomulabilecek azami base64 boyutu.
+ *
+ * NEDEN BOYUT SINIRI VAR?
+ * ---------------------
+ * Ekler dogrudan `inlineData` / `image_url` olarak istek govdesine yazilir.
+ * Gemıni REST API'nin istek basina ~20 MB siniri vardir ve asilim sinirini
+ * asan bir istek `INVALID_ARGUMENT` (HTTP 400) ile REDDEDILIR.
+ *
+ * Gozlenen belirti: kullanici buyuk bir PDF (veya ekran goruntusu) eklediginde
+ * Gemini "HTTP 400" veriyor, ayni isttek Groq'da sorunsuz gidiyordu. Sebep
+ * model degil, GOVDE BOYUTUYDU.
+ *
+ * 8 MB base64 ~= 6 MB dosya. Bu hem saglayici sinirlarinin altinda kalir hem
+ * de icerigi zaten metin olarak gonderilmeye uygun bir boyuttur. Daha buyuk
+ * dosyalar metin akisiyla (veya arac cagrisiyla) gonderilir.
+ */
+const MAX_INLINE_BASE64_BYTES = 8 * 1024 * 1024
+
 function formatUserMessageWithAttachments(
   content: string,
   attachments?: ChatAttachment[],
@@ -953,6 +972,10 @@ function formatUserMessageWithAttachments(
   const nonImages = attachments.filter(a => !a.mimeType.startsWith('image/'))
 
   let textContent = content
+
+  /** Inline gommeden once base64 boyutunu kontrol eder. */
+  const fitsInline = (a: ChatAttachment): boolean =>
+    !!a.base64Data && a.base64Data.length <= MAX_INLINE_BASE64_BYTES
 
   for (const doc of nonImages) {
     const sizeKb = doc.size ? Math.round(doc.size / 1024) : 0
@@ -981,15 +1004,35 @@ function formatUserMessageWithAttachments(
       const docLabel = isPdf ? 'Ekli PDF Metni' : isDocx ? 'Ekli Word/DOCX Metni' : 'Ekli Belge'
       textContent += `\n\n[${docLabel}: ${doc.name}${sizeKb ? ` (${sizeKb} KB)` : ''}]\n\`\`\`\n${extractedText.slice(0, 30_000)}\n\`\`\`\n`
     } else if (isPdf) {
-      textContent +=
-        `\n\n[Ekli PDF Dosyası: ${doc.name}${sizeKb ? ` (${sizeKb} KB)` : ''}]` +
-        `\n(Bu PDF taranmış resim veya metin katmanı içermeyen bir yapıya sahip olabilir. Gerekirse ilgili ders veya ödev açıkken workspace_read_open_file aracıyla inceleyebilirsin.)`
+      if (fitsInline(doc)) {
+        textContent +=
+          `\n\n[Ekli PDF Dosyası: ${doc.name}${sizeKb ? ` (${sizeKb} KB)` : ''}]` +
+          `\n(Bu PDF taranmış resim veya metin katmanı içermeyen bir yapıya sahip olabilir. Gerekirse ilgili ders veya ödev açıkken workspace_read_open_file aracıyla inceleyebilirsin.)`
+      } else {
+        // BUYUK + METIN KATMANI YOK: gommek 400 hatasi uretirdi.
+        textContent +=
+          `\n\n[Ekli PDF Dosyası: ${doc.name}${sizeKb ? ` (${sizeKb} KB)` : ''}]` +
+          `\n(Bu dosya çok büyük olduğu için doğrudan gönderilemiyor. ` +
+          `İçeriği için workspace_read_open_file aracını kullan; gerekirse ` +
+          `yalnızca ilgili sayfaları oku.)`
+      }
     } else {
       textContent += `\n\n[Ekli Dosya: ${doc.name}${sizeKb ? ` (${sizeKb} KB)` : ''}]`
     }
   }
 
-  return { textContent, images, nonImages }
+  // Inline gomulmesi ASIL MAYACAK olan ekleri burada eleriz. Boylece hicbir
+  // saglayici (Gemini / OpenAI / Anthropic) buyuk govde gondermez.
+  const safeImages = images.filter(img => {
+    if (fitsInline(img)) return true
+    textContent +=
+      `\n\n[Ekli Görsel: ${img.name}${img.size ? ` (${Math.round(img.size / 1024)} KB)` : ''}]` +
+      `\n(Görsel çok büyük olduğu için doğrudan gönderilemedi.)`
+    return false
+  })
+  const safeNonImages = nonImages.filter(doc => fitsInline(doc))
+
+  return { textContent, images: safeImages, nonImages: safeNonImages }
 }
 
  /**

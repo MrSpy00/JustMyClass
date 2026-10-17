@@ -39,6 +39,38 @@ const NEVER_REDACT_KEYS = new Set(['google_client_id', 'oauth_client_id'])
 /** Bilesik anahtar tanimlari icin ayri bir kaynak dizini kullanilir. */
 const VAULT_FILE = 'secrets.vault'
 
+/**
+ * Veri URI'si ya da uzun saf base64 yuku mu?
+ *
+ * `redact()` bunlara DOKUNMAZ. Gerekce:
+ *
+ *   • `data:application/pdf;base64,JVBERi0xLj...` -> dosya onizlemesi
+ *   • `JVBERi0xLj...` (yuzlerce KB) -> gorsel/ses onizlemesi
+ *
+ * Bunlar kullaniciya ait IKILI dosyalardir; iclerinde sir yoktur. Ve
+ * sirlama desenleri base64 ile tesadufen eslesip metni bozdugu icin
+ * uzerlerinden GECMELER dogru davranistir. Ayrica tek bir API anahtari
+ * bile base64 icinde gecebilir; kullanici kendi PDF'ini yuklediginde
+ * dosya bozulmamalidir.
+ *
+ * Esik degerleri:
+ *   • 512 karakter: normal bir API anahtari (~44-100 karakter) veya bir
+ *     hata mesaji bu esigi gecmez, dolayisiyla sirlama ETKILENMEZ.
+ *   • Yalnizca tamamen base64 alfabesinden olusan, sonunda `=` dolgulu
+ *     bir dizi kabul edilir. NormalTurkce metin, JSON, URL veya hata
+ *     mesaji bu bicime girmez.
+ */
+function isBinaryPayload(s: string): boolean {
+  if (!s) return false
+  // data URI: base64 ya da URL-encoded ikili
+  if (/^data:[\w.+-]+\/[\w.+-]+(;[\w-]+=[\w-]+)*;base64,/i.test(s)) return true
+  // Duz base64 yuku. Satir sonu kirilmalari (RFC 2045) tolere edilir.
+  const body = s.replace(/\s+/g, '')
+  if (body.length < 512) return false
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(body)) return false
+  return true
+}
+
 export class VaultService {
   private readonly vaultPath: string
   private readonly keyring: KeyringService
@@ -266,6 +298,22 @@ private purgeLegacyArtifacts(): void {
  */
   public redact(message: string): string {
     this.ensureLoaded()
+
+    // IKILI YUK (BASE64 / DATA URI) KORUMASI
+    // ---------------------------------------
+    // PDF/gorsel/ses onizleme verisi IPC donusu sirasinda buradan gecer.
+    // Asagidaki desenlerden biri base64 icinde YANLISLIKLA eslesirse
+    // ciktiya `[REDACTED]` yazilir; `[` ve `]` base64 alfabesinde YOKTUR,
+    // dolayisiyla `atob()` cagirildiginda InvalidCharacterError firlatir.
+    // Sonuc: kullanici "PDF Gorunumu Acilamadi" / bozuk resim gorur.
+    //
+    // Bu, gercek bir hatayi maskeliyordu: buyuk dosyalarda neredeyse
+    // HER KEZ oluyordu (1 MB uzeri PDF'de olma olasiligi ~%95).
+    //
+    // Cozum: base64/data URI bicimindeki bir yuk hicbir zaman yeniden
+    // yazilmaz. Bu zaten bir "sirlar" degil, kullaniciya ait dosyadır.
+    if (isBinaryPayload(message)) return message
+
     let result = message
     for (const [key, secret] of this.memoryKeys.entries()) {
       if (NEVER_REDACT_KEYS.has(key)) continue
@@ -276,6 +324,11 @@ private purgeLegacyArtifacts(): void {
 
     // Uzunluğa duyarli desenler. Yanlis pozitif riski dusuk tutmak icin
     // her biri belirli bir on ek ve minimum uzunluk ister.
+    //
+    // DIKKAT: bu desenler saf base64 ALT KUMELERIYLE eslesir
+    // (`1`, `/`, `-` hepsi base64 alfabesindedir). Yuk zaten yukarida
+    // `isBinaryPayload` ile elendi; buradaki desenler yalnizca
+    // ORDAN SONRA uygulanir.
     const patterns: RegExp[] = [
       /sk-[A-Za-z0-9_-]{16,}/g, // OpenAI / Anthropic
       /sk-ant-[A-Za-z0-9_-]{16,}/g,

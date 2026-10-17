@@ -551,6 +551,24 @@ function setupIpcHandlers() {
    * Maskeleme burada, tek noktada yapilir: her cagri ve her hata
    * icin geçerlidir, unutulma riski yoktur.
    */
+  // IPC donuslerinde maskeleme YAPILMAYACAK alanlar.
+  //
+  // NEDEN?
+  // -----
+  // `redact()` bir API anahtari kalibini metin icinde arar. Bu kaliplar
+  // (ornegin `1/[A-Za-z0-9_-]{20,}`) saf base64 dizilerinin ICIYLE de
+  // eslesir. Bir eslesme bulundugunda `[REDACTED]` yazilir; `[` ve `]`
+  // base64 alfabesinde olmadigi icin tarayicida `atob()` patlar.
+  //
+  // GOZLENEN SONUC: 1 MB uzeri PDF'lerde (olasilik ~%95) kullanici
+  // "PDF Gorunumu Acilamadi" yazisini goruyordu; buyuk gorseller de ayni
+  // sekilde bozuluyordu. Kok neden CSP degil, maskeleme katmaniydi.
+  //
+  // COZUM: bu alanlar ikili dosya yuku tasir, gizli anahtar TASIMAZ.
+  // Asagidaki listede hicbir API anahtari bulunmaz, bu yuzden atlanmak
+  // guvenlik acigi degildir.
+  const BINARY_FIELDS = new Set(['dataUrl', 'data_url', 'base64Data', 'base64_data', 'bytes'])
+
   const redactDeep = (value: unknown, depth = 0): unknown => {
     if (depth > 6) return value
     if (typeof value === 'string') return vaultService.redact(value)
@@ -559,6 +577,10 @@ function setupIpcHandlers() {
       // Hata nesnelerinin `message`/`stack` alanlari ozellikle onemli.
       const out: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (BINARY_FIELDS.has(k)) {
+          out[k] = v // ikili yuk: oldugu gibi gecer
+          continue
+        }
         out[k] = k === 'stack' || k === 'message' ? redactDeep(String(v), depth + 1) : redactDeep(v, depth + 1)
       }
       return out
