@@ -150,7 +150,7 @@ export class HttpClient {
 
   constructor(options: HttpClientOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? 30_000
-    this.maxConcurrency = options.maxConcurrency ?? 6
+    this.maxConcurrency = Math.max(1, options.maxConcurrency ?? 6)
     this.maxRetries = options.maxRetries ?? 5
     this.userAgent = options.userAgent ?? 'JustMyClass/1.0 (+https://github.com/MrSpy00/JustMyClass)'
     this.maxBodySnippet = options.maxBodySnippet ?? 300
@@ -167,17 +167,52 @@ export class HttpClient {
     this.active += 1
   }
 
+  /**
+   * Es zamanlilik slotunu serbest birakir.
+   *
+   * HATANIN GELISMESI: eski surumde once `active` azaltiliyor, sonra
+   * kuyruktaki siradaki istegin cozucusu cagriliyordu. cozucu bir
+   * MICROTASK oldugu icin, `active` azaltildiktan sonra ama kuyruktaki
+   * istek `active += 1` yapmadan once yeni bir istek `acquire()`'a
+   * girebiliyor ve bos bulunan slotu aliyordu. Sonuc: kotada birden fazla
+   * istek es zamanli akabiliyor (asiri es zamanlilik Google kotasini patlatir).
+   *
+   * COZUM: slot elden cikarken hemen kuyruktakine devredilir; arada
+   * "bos gorunen" an olusmaz.
+   */
   private release(): void {
-    this.active -= 1
     const next = this.queue.shift()
-    if (next) next()
+    if (next) {
+      // Slot devredildi: sayac DUSURULMEZ, kuyruktaki istek zaten
+      // sahiplenmis sayaci devralir.
+      next()
+    } else {
+      this.active -= 1
+    }
   }
 
+  /**
+   * Retry-After basligindan bekleme suresini hesaplar.
+   *
+   * Baslik iki bicimde gelebilir:
+   *   1. Saniye sayisi: `Retry-After: 30`
+   *   2. HTTP tarihi:  `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`
+   *
+   * Onceki surum yalnizca `Number(...)` deniyordu; HTTP tarihi `NaN`
+   * donup Rastgele backoff'a dustugu icin sunucunun istedigi bekleme
+   * hic uygulanmiyordu. Asagida iki bicim de islenir.
+   */
   private async backoffDelay(attempt: number, retryAfterHeader?: string | null): Promise<number> {
     if (retryAfterHeader) {
-      const seconds = Number(retryAfterHeader)
+      const raw = retryAfterHeader.trim()
+      const seconds = Number(raw)
       if (Number.isFinite(seconds) && seconds > 0) {
         return Math.min(seconds * 1000, 60_000)
+      }
+      const asDate = Date.parse(raw)
+      if (Number.isFinite(asDate)) {
+        const deltaMs = asDate - Date.now()
+        if (deltaMs > 0) return Math.min(deltaMs, 60_000)
       }
     }
     // Tam jitter ustel backoff: 1s, 2s, 4s, 8s ... + rastgele bilesen.
@@ -202,16 +237,36 @@ export class HttpClient {
     let lastError: Error | null = null
     const maxRetries = options.maxRetries ?? this.maxRetries
 
+    // Dis iptal sinyali ISTEK BASLAMADAN once gelmis olabilir. Onceki
+    // surumde `addEventListener('abort', ...)` yalnizca GELECEK olaylari
+    // dinlerdi; `signal.aborted === true` ise bu denetimi tetiklemezdi,
+    // boylece iptal edilmis bir sohbette istek yine gonderiliyordu.
+    if (signal?.aborted) {
+      throw new Error('Istek kullanici tarafindan iptal edildi.')
+    }
+
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       await this.bucket.take()
       await this.acquire()
       this.stats.requests += 1
 
       const controller = new AbortController()
-      const timeout = setTimeout(
-        () => controller.abort(new Error('Istek zaman asimina ugradi.')),
-        options.timeoutMs ?? this.timeoutMs,
-      )
+      // YANIT DOLGUSUNDA beklemek istemeyen akis (streaming) icin
+      // `timeoutMs: 0` "zaman asimi kapali" demektir.
+      //
+      // HATANIN GELISMESI: `setTimeout(..., options.timeoutMs ?? this.timeoutMs)`
+      // yaziliyordu. `??` yalnizca null/undefined icin devreye girer; `0`
+      // gecerli bir deger oldugu icin zaman asimi `0` ms OLARAK
+      // ayarlaniyor ve `setTimeout` bir sonraki tikte tetiklenip istegi
+      // ANINDA iptal ediyordu. Yani "zaman asimi kapali" demek, "hic
+      // cevap alma" demek oluyordu - ve kodun kendi niyetinin tam tersi.
+      const effectiveTimeout = options.timeoutMs ?? this.timeoutMs
+      const timeout =
+        effectiveTimeout > 0
+          ? setTimeout(() => {
+              controller.abort(new Error('Istek zaman asimina ugradi.'))
+            }, effectiveTimeout)
+          : null
       const onOuterAbort = () => controller.abort(signal?.reason)
       signal?.addEventListener('abort', onOuterAbort, { once: true })
 
@@ -266,10 +321,13 @@ export class HttpClient {
 
         if (response.ok) {
           if (raw) {
-            if (options.timeoutMs !== 0 && raw) {
+            // Govde zaman asimini KUR; `clearStreamDeadline` ile kapatilir.
+            // `effectiveTimeout <= 0` ise zaman asimi kapali demektir ve
+            // burada da zamanlayici OLUSTURULMAZ.
+            if (effectiveTimeout > 0) {
               const bodyDeadline = setTimeout(() => {
                 controller.abort(new Error('Yanit akisi zaman asimina ugradi.'))
-              }, Math.max(5_000, options.timeoutMs ?? this.timeoutMs))
+              }, Math.max(5_000, effectiveTimeout))
               ;(response as unknown as { __jmcBodyDeadline?: NodeJS.Timeout }).__jmcBodyDeadline =
                 bodyDeadline
             }
@@ -334,7 +392,7 @@ export class HttpClient {
         }
         throw lastError
       } finally {
-        clearTimeout(timeout)
+        if (timeout) clearTimeout(timeout)
         signal?.removeEventListener('abort', onOuterAbort)
         this.release()
       }
