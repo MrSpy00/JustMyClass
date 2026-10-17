@@ -1,4 +1,4 @@
-import { ThemeColors, ThemeName } from '../../types/jmc'
+import { CustomTheme, CustomThemeDraft, ThemeColors, ThemeName } from '../../types/jmc'
 
 /**
  * Tasarım ilkeleri
@@ -10,10 +10,194 @@ import { ThemeColors, ThemeName } from '../../types/jmc'
  * 2. borderSubtle, border'in yarısından koyu/açık olmalı; yüksek kontrastlı
  *    çizgiler yerine düşük kontrastlı ayrım kullanılır.
  * 3. textDim gerçekten okunabilir bir kontrast sağlar (WCAG AA ≥ 4.5:1).
- * 4. Hiçbir tema saf siyah/saf beyaz kullanmaz; OLED için ayrı bir tema vardır.
+ * 4. Tema ailesi saf siyah/saf beyaz kullanmaz; OLED için ayrı bir tema vardır.
+ *    TEK İSTİSNA "High Contrast"tır: erişilebilirlik gereksinimi (düşük
+ *    görme, parlak güneş) için bilinçli olarak saf siyah/beyaz seçer.
  * 5. Her temada `elevation` gölge rengi bulunur, böylece kartlar çizgisiz
  *    de yükselmiş görünür.
+ * 6. Kod vurgu renkleri (`--jmc-code-*`) sabit değildir: `codeBg`'dan türetilir
+ *    ve kontrastı garanti edilir (bkz. `deriveCodeTokens`). Bu sayede kullanıcı
+ *    renkli bir kod zemini seçse bile kod okunabilir kalır.
  */
+
+/* ------------------------------------------------------------------ */
+/* Renk matematiği (saf fonksiyonlar; test edilebilir)                  */
+/* ------------------------------------------------------------------ */
+
+/** Bir rengi sRGB → lineer RGB'ye çevirir (WCAG 2.x formülü). */
+function channel(c: number): number {
+  const s = c / 255
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+}
+
+/** #rgb / #rrggbb biçimindeki rengi [r,g,b] olarak ayrıştırır. */
+export function parseHex(hex: string): [number, number, number] | null {
+  if (typeof hex !== 'string') return null
+  let h = hex.trim()
+  if (h.startsWith('rgb')) {
+    const m = h.match(/[\d.]+/g)
+    if (!m || m.length < 3) return null
+    return [Number(m[0]), Number(m[1]), Number(m[2])]
+  }
+  h = h.replace('#', '')
+  if (h.length === 3) h = h.split('').map(c => c + c).join('')
+  if (h.length !== 6) return null
+  const n = Number.parseInt(h, 16)
+  if (Number.isNaN(n)) return null
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+/** İki renk arasındaki gerçek WCAG kontrast oranı (1–21). */
+export function contrastRatio(a: string, b: string): number {
+  const ca = parseHex(a)
+  const cb = parseHex(b)
+  if (!ca || !cb) return 1
+  const lum = ([r, g, bl]: [number, number, number]) =>
+    0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(bl)
+  const la = lum(ca)
+  const lb = lum(cb)
+  const lighter = Math.max(la, lb)
+  const darker = Math.min(la, lb)
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+/**
+ * Rengin göreli parlaklığını döndürür (0 = siyah, 1 = beyaz).
+ *
+ * `color-scheme` ve Prism vurgu renkleri bu değere göre karar verir.
+ */
+export function relativeLuminance(hex: string): number {
+  const rgb = parseHex(hex)
+  if (!rgb) return 0
+  const [r, g, b] = rgb
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+}
+
+/**
+ * Bir arka plan rengi "açık" mı?
+ *
+ * `color-scheme`, tarayıcı-native kaydırma çubuğu, `<select>` açılır listesi ve
+ * metin seçimi hep bu değere bakar. Sabit `dark` yazmak, açık temalarda
+ * koyu zeminde beyaz native arayüz bırakıyordu.
+ */
+export function isLightBackground(bg: string): boolean {
+  return relativeLuminance(bg) > 0.4
+}
+
+/** Tema "açık" mı? (bkz. `isLightBackground`) */
+export function isLightTheme(colors: ThemeColors): boolean {
+  return isLightBackground(colors.bg)
+}
+
+/** İki rengi karıştırır; `amount` = ikinci rengin ağırlığı (0–1). */
+export function mixHex(a: string, b: string, amount: number): string {
+  const ca = parseHex(a)
+  const cb = parseHex(b)
+  if (!ca) return b
+  if (!cb) return a
+  const t = Math.min(1, Math.max(0, amount))
+  const ch = (x: number, y: number) => Math.round(x + (y - x) * t)
+  return (
+    '#' +
+    [ch(ca[0], cb[0]), ch(ca[1], cb[1]), ch(ca[2], cb[2])]
+      .map(n => n.toString(16).padStart(2, '0'))
+      .join('')
+  )
+}
+
+/** Hex rengi `rgba(...)` biçimine çevirir (rozet zemini, gölge vb. için). */
+export function hexToRgba(hex: string, alpha: number): string {
+  const c = parseHex(hex)
+  if (!c) return `rgba(0, 0, 0, ${alpha})`
+  return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})`
+}
+
+/**
+ * `color`/`bg` kontrastı `target`'ın altındaysa rengi zeminin KARŞI ucuna doğru
+ * iterek hedefi garanti eder. Kullanıcının seçmediği türetilmiş alanlar
+ * (textMuted, textDim, kod vurguları, durum renkleri) için kullanılır.
+ */
+/**
+ * `color`/`bg` kontrastı `target`'ın altındaysa rengi zeminin KARŞI ucuna doğru
+ * iterek hedefi garanti eder. Kullanıcının seçmediği türetilmiş alanlar
+ * (textMuted, textDim, kod vurguları, durum renkleri) için kullanılır.
+ *
+ * YÖN SEÇİMİ ÖNEMLİ: "daha açık zemin → daha koyu renk" sezgisi tek başına
+ * yetmez. Ornegin #ff00ff zeminde saf beyaz bile yalnizca 3.14:1 verir; bu
+ * yuzden dogal yon yetmezse karsi yon denenir.
+ */
+export function ensureContrast(color: string, bg: string, target: number): string {
+  if (contrastRatio(color, bg) >= target) return color
+  const away = relativeLuminance(color) >= relativeLuminance(bg) ? '#ffffff' : '#000000'
+  const other = away === '#ffffff' ? '#000000' : '#ffffff'
+
+  for (const towards of [away, other]) {
+    // 64 x %5 adim, zeminin karsi ucuna neredeyse tamamen yaklasir.
+    let out = color
+    for (let i = 0; i < 64; i++) {
+      if (contrastRatio(out, bg) >= target) return out
+      out = mixHex(out, towards, 0.05)
+    }
+    // Bu yon uca kadar gittiginde bile yetmiyorsa digerini dene.
+    if (contrastRatio(towards, bg) >= target) return towards
+  }
+  // Guvenlik agi: en yuksek kontrasti veren uc rengi dondur.
+  return contrastRatio('#ffffff', bg) >= contrastRatio('#000000', bg) ? '#ffffff' : '#000000'
+}
+
+/* ------------------------------------------------------------------ */
+/* Kod vurgu renkleri                                                  */
+/* ------------------------------------------------------------------ */
+
+export const CODE_TOKEN_NAMES = [
+  'comment',
+  'punct',
+  'literal',
+  'string',
+  'operator',
+  'keyword',
+  'function',
+  'meta',
+] as const
+
+export type CodeTokenName = (typeof CODE_TOKEN_NAMES)[number]
+
+/**
+ * Her kod jetonunun "tohum" rengi. Koyu tema paletinden seçildi; açık zeminde
+ * `ensureContrast` bunları koyulaştırır, koyu zeminde olduğu gibi kalır.
+ */
+const CODE_TOKEN_SEEDS: Record<CodeTokenName, string> = {
+  comment: '#7c89a0',
+  punct: '#9aa8bd',
+  literal: '#f2857f',
+  string: '#4fd6a4',
+  operator: '#57c7f0',
+  keyword: '#b18cff',
+  function: '#7fb0ff',
+  meta: '#fbbf24',
+}
+
+/** Kod vurgularının codeBg üzerinde garanti edilen minimum kontrastı. */
+export const CODE_TOKEN_MIN_CONTRAST = 3.5
+
+/**
+ * `codeBg`'dan türetilmiş, kontrastı garanti edilmiş 8 kod vurgu rengi.
+ *
+ * ÖNEMLİ: `--jmc-code-*` değişkenleri artık sabit iki paletten seçilmiyor.
+ * Kullanıcı Custom Theme Builder ile istediği renkli bir kod zemini
+ * seçtiğinde bile her vurgu rengi okunabilir kalır.
+ */
+export function deriveCodeTokens(codeBg: string): Record<CodeTokenName, string> {
+  const out = {} as Record<CodeTokenName, string>
+  for (const name of CODE_TOKEN_NAMES) {
+    out[name] = ensureContrast(CODE_TOKEN_SEEDS[name], codeBg, CODE_TOKEN_MIN_CONTRAST)
+  }
+  return out
+}
+
+/* ------------------------------------------------------------------ */
+/* Tema kataloğu                                                      */
+/* ------------------------------------------------------------------ */
 
 const shared = {
   /** Yükseltilmiş yüzeylerin düşüş gölgesi. Tema başına ayarlanır. */
@@ -320,6 +504,108 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
     badgeBg: 'rgba(224, 102, 140, 0.14)',
     elevation: 'rgba(0, 0, 0, 0.4)',
   },
+
+  /* --- Yeni katalog genişletmeleri (4 tema) ------------------------- */
+
+  /**
+   * Derin deniz: petrol yeşili–çivit mutesi. `Ocean`'dan belirgin şekilde
+   * daha koyu, daha az mavi ve daha düşük doygunluklu; aksanı turkuaz-yeşil.
+   */
+  'Deep Sea': {
+    bg: '#061413',
+    bgElevated: '#0b1f1d',
+    bgSurface: '#122b28',
+    border: '#1d3d39',
+    borderSubtle: '#16302d',
+    text: '#dff0ec',
+    textMuted: '#8fb3ac',
+    textDim: '#658a84',
+    primary: '#2fa08c',
+    primaryHover: '#268776',
+    accent: '#5cc4b1',
+    accentHover: '#2fa08c',
+    warning: '#d3a03f',
+    danger: '#e0645f',
+    success: '#37b58d',
+    codeBg: '#04100f',
+    badgeBg: 'rgba(47, 160, 140, 0.14)',
+    elevation: 'rgba(0, 0, 0, 0.4)',
+  },
+
+  /** Koyu bordo / şarap kırmızısı: mürekkep moru değil, doygun şarap tonları. */
+  Bordeaux: {
+    bg: '#140a0e',
+    bgElevated: '#1d0f14',
+    bgSurface: '#28151b',
+    border: '#3d1f27',
+    borderSubtle: '#2f1820',
+    text: '#f6ebee',
+    textMuted: '#c8a3ab',
+    textDim: '#9a757f',
+    primary: '#c8405a',
+    primaryHover: '#a9324a',
+    accent: '#e06a83',
+    accentHover: '#c8405a',
+    warning: '#d9a03e',
+    danger: '#d94a5e',
+    success: '#4aa77a',
+    codeBg: '#0d0508',
+    badgeBg: 'rgba(200, 64, 90, 0.14)',
+    elevation: 'rgba(0, 0, 0, 0.42)',
+  },
+
+  /**
+   * Yüksek kontrastlı monokrom: saf siyah zemin + saf beyaz metin, tek vurgu
+   * rengi (sarı). Düşük görme / parlak ortam için; WCAG AA eşiğini korur,
+   * hatta AAA seviyesine çıkar.
+   */
+  'High Contrast': {
+    bg: '#000000',
+    bgElevated: '#0a0a0a',
+    bgSurface: '#141414',
+    border: '#3d3d3d',
+    borderSubtle: '#1f1f1f',
+    text: '#ffffff',
+    textMuted: '#d4d4d4',
+    textDim: '#a3a3a3',
+    primary: '#ffd400',
+    primaryHover: '#ffe34d',
+    accent: '#ffd400',
+    accentHover: '#ffe34d',
+    warning: '#ffd400',
+    danger: '#ff5c5c',
+    success: '#4ade80',
+    codeBg: '#000000',
+    badgeBg: 'rgba(255, 212, 0, 0.16)',
+    elevation: 'rgba(0, 0, 0, 0.8)',
+  },
+
+  /**
+   * Pastel yumuşak: AÇIK tema. Koyu metin, açık lavanta zemin.
+   * `isLightBackground` bunu "açık" sayar, bu yüzden `color-scheme: light`
+   * ve açık kod vurguları devreye girer.
+   */
+  'Pastel Soft': {
+    bg: '#f7f4fb',
+    bgElevated: '#ffffff',
+    bgSurface: '#efe9f7',
+    border: '#dcd2ec',
+    borderSubtle: '#e7dff3',
+    text: '#2e2a3d',
+    textMuted: '#5a5470',
+    textDim: '#736c8a',
+    primary: '#7c5cd6',
+    primaryHover: '#6a49c4',
+    accent: '#d96a9a',
+    accentHover: '#c15285',
+    warning: '#a9701a',
+    danger: '#c0395a',
+    success: '#1f7a5e',
+    codeBg: '#ece5f6',
+    badgeBg: 'rgba(124, 92, 214, 0.1)',
+    elevation: 'rgba(76, 61, 110, 0.1)',
+  },
+
   Custom: {
     bg: '#0b0f16',
     bgElevated: '#11161f',
@@ -348,18 +634,264 @@ void shared
 export const THEME_LIST: Array<{ id: ThemeName; label: string; group: 'system' | 'neutral' | 'expressive' }> = [
   { id: 'Dark', label: 'Karanlık', group: 'system' },
   { id: 'Light', label: 'Aydınlık', group: 'system' },
+  { id: 'High Contrast', label: 'Yüksek Kontrast', group: 'system' },
+  { id: 'Pastel Soft', label: 'Pastel Yumuşak', group: 'system' },
+  { id: 'Custom', label: 'Özel', group: 'system' },
   { id: 'Graphite', label: 'Grafit', group: 'neutral' },
   { id: 'Abyss', label: 'Derinlik', group: 'neutral' },
   { id: 'Sand', label: 'Kum', group: 'neutral' },
   { id: 'Ocean', label: 'Okyanus', group: 'neutral' },
+  { id: 'Deep Sea', label: 'Derin Deniz', group: 'neutral' },
   { id: 'Forest', label: 'Orman', group: 'neutral' },
   { id: 'Hacker Green', label: 'Terminal Yeşili', group: 'expressive' },
   { id: 'Matrix', label: 'Matrix', group: 'expressive' },
   { id: 'Amber CRT', label: 'Amber CRT', group: 'expressive' },
   { id: 'Cyberpunk', label: 'Siberpunk', group: 'expressive' },
   { id: 'Red Team', label: 'Kızıl Operasyon', group: 'expressive' },
+  { id: 'Bordeaux', label: 'Bordo', group: 'expressive' },
   { id: 'Neon Dreams', label: 'Neon Dreams', group: 'expressive' },
   { id: 'Synthwave', label: 'Synthwave', group: 'expressive' },
   { id: 'Sunset Vibes', label: 'Gün Batımı', group: 'expressive' },
-  { id: 'Custom', label: 'Özel', group: 'system' },
 ]
+
+/* ------------------------------------------------------------------ */
+/* Custom Theme Builder — saf yardımcılar                              */
+/* ------------------------------------------------------------------ */
+
+/** Kayıtlı temaların tutulduğu localStorage anahtarı. */
+export const CUSTOM_THEME_STORAGE_KEY = 'jmc_custom_themes'
+/** Etkin kayıtlı temanın kimliğini tutan localStorage anahtarı. */
+export const CUSTOM_THEME_ACTIVE_KEY = 'jmc_custom_theme_active'
+/** localStorage listesinde izin verilen maksimum tema sayısı. */
+export const MAX_CUSTOM_THEMES = 12
+/** Tema adı uzunluk sınırı. */
+export const CUSTOM_THEME_NAME_MAX = 40
+
+/** Kontrol karakterleri (satır sonu, NUL, ...) adlarda kabul edilmez. */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g
+/** Adlarda izin verilen karakter kümesi: harf, rakam, boşluk, tire, alt çizgi. */
+const UNSAFE_NAME_CHARS = /[^\p{L}\p{N} \-_]/gu
+
+/** Kullanıcı adının normalize edilmiş hâli; geçersizse boş string. */
+export function normalizeCustomThemeName(raw: string): string {
+  return validateCustomThemeName(raw).name
+}
+
+export type CustomThemeNameReason = 'empty' | 'too_long'
+
+export interface CustomThemeNameValidation {
+  ok: boolean
+  name: string
+  reason?: CustomThemeNameReason
+}
+
+/**
+ * Tema adını doğrular ve normalize eder.
+ *
+ * - Boş ad reddedilir.
+ * - 40 karakterden uzun ad reddedilir (sessizce kesilmez).
+ * - Harf/rakam/boşluk/tire/alt çizgi dışındaki karakterler atılır; ad tamamen
+ *   atılırsa "boş" sayılır.
+ */
+export function validateCustomThemeName(raw: string): CustomThemeNameValidation {
+  if (typeof raw !== 'string') return { ok: false, name: '', reason: 'empty' }
+  const stripped = raw
+    .normalize('NFKC')
+    .replace(CONTROL_CHARS, '')
+    .replace(UNSAFE_NAME_CHARS, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!stripped) return { ok: false, name: '', reason: 'empty' }
+  if (stripped.length > CUSTOM_THEME_NAME_MAX) {
+    return { ok: false, name: stripped.slice(0, CUSTOM_THEME_NAME_MAX), reason: 'too_long' }
+  }
+  return { ok: true, name: stripped }
+}
+
+/**
+ * Serbest metni `#rrggbb` biçimine çevirir; geçersizse `null`.
+ *
+ * `<input type="color">` yalnızca 6 haneli döndürdüğü için kullanıcının hex
+ * alanına yazdığı `#abc` gibi kısa biçimler de buradan geçer.
+ */
+export function sanitizeHex(raw: string): string | null {
+  if (typeof raw !== 'string') return null
+  let h = raw.trim().replace(/^#/, '').toLowerCase()
+  if (!/^[0-9a-f]+$/.test(h)) return null
+  if (h.length === 3) h = h.split('').map(c => c + c).join('')
+  if (h.length !== 6) return null
+  return `#${h}`
+}
+
+/** Durum renkleri için şema bazlı tohumlar (her ikisi de kontrast garantilidir). */
+const STATUS_SEEDS = {
+  dark: { warning: '#e0a03a', danger: '#ef5f6b', success: '#3fb98a' },
+  light: { warning: '#a86a08', danger: '#c6283a', success: '#10795a' },
+} as const
+
+/**
+ * Kullanıcının seçtiği 4 renkten tam bir `ThemeColors` üretir.
+ *
+ * Kullanıcının seçtiği alanlar (bg / text / primary / accent) ASLA
+ * değiştirilmez — düşük kontrastlı bir seçim bilinçli tercih olabilir,
+ * arayüz uyarı gösterir. TÜRETİLEN alanlar ise kontrast garantisiyle
+ * hesaplanır, böylece bir "textMuted" seçimi her zaman okunabilir kalır.
+ */
+export function deriveCustomThemeColors(draft: CustomThemeDraft): ThemeColors {
+  const bg = sanitizeHex(draft?.bg) ?? THEMES.Dark.bg
+  const text = sanitizeHex(draft?.text) ?? THEMES.Dark.text
+  const primary = sanitizeHex(draft?.primary) ?? THEMES.Dark.primary
+  const accent = sanitizeHex(draft?.accent) ?? THEMES.Dark.accent
+  const light = isLightBackground(bg)
+  const status = light ? STATUS_SEEDS.light : STATUS_SEEDS.dark
+
+  return {
+    bg,
+    // Yüzey yüksekliği: koyu temada beyaza doğru hafifçe, açık temada
+    // yükseltilmiş yüzey neredeyse saf beyaz, yüzey ise hafifçe koyu.
+    bgElevated: light ? mixHex(bg, '#ffffff', 0.9) : mixHex(bg, '#ffffff', 0.05),
+    bgSurface: light ? mixHex(bg, '#000000', 0.045) : mixHex(bg, '#ffffff', 0.1),
+    border: mixHex(bg, text, light ? 0.16 : 0.14),
+    borderSubtle: mixHex(bg, text, light ? 0.085 : 0.075),
+    text,
+    textMuted: ensureContrast(mixHex(text, bg, 0.28), bg, 4.5),
+    textDim: ensureContrast(mixHex(text, bg, 0.5), bg, 3.5),
+    primary,
+    primaryHover: mixHex(primary, bg, 0.2),
+    accent,
+    accentHover: mixHex(accent, bg, 0.2),
+    warning: ensureContrast(status.warning, bg, 4.5),
+    danger: ensureContrast(status.danger, bg, 4.5),
+    success: ensureContrast(status.success, bg, 4.5),
+    codeBg: light ? mixHex(bg, '#000000', 0.06) : mixHex(bg, '#000000', 0.35),
+    badgeBg: hexToRgba(primary, light ? 0.1 : 0.14),
+    elevation: light ? 'rgba(15, 23, 42, 0.1)' : 'rgba(0, 0, 0, 0.4)',
+  }
+}
+
+/** Ad + zaman damgasından kararlı bir kimlik üretir. */
+export function makeCustomThemeId(name: string, nonce: number): string {
+  const slug =
+    normalizeCustomThemeName(name)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 24) || 'tema'
+  return `custom-${slug}-${Math.abs(Math.trunc(nonce)).toString(36)}`
+}
+
+/**
+ * Taslak + zaman damgasından kalıcı bir `CustomTheme` üretir.
+ * Geçersiz ad veya renk verilirse `ok: false` döner.
+ */
+export function createCustomTheme(
+  draft: CustomThemeDraft,
+  nonce: number,
+):
+  | { ok: true; theme: CustomTheme }
+  | { ok: false; reason: CustomThemeNameReason | 'color' } {
+  const name = validateCustomThemeName(draft?.name)
+  if (!name.ok) return { ok: false, reason: name.reason ?? 'empty' }
+  const hexes = [draft?.bg, draft?.primary, draft?.accent, draft?.text].map(sanitizeHex)
+  if (hexes.some(h => h === null)) return { ok: false, reason: 'color' }
+  return {
+    ok: true,
+    theme: {
+      id: makeCustomThemeId(name.name, nonce),
+      name: name.name,
+      colors: deriveCustomThemeColors(draft),
+      createdAt: nonce,
+    },
+  }
+}
+
+/** Kayıtlı tema listesini localStorage metnine çevirir. */
+export function serializeCustomThemes(list: CustomTheme[]): string {
+  const safe = Array.isArray(list) ? list.filter(t => t && typeof t.id === 'string') : []
+  return JSON.stringify(
+    safe.map(t => ({ id: t.id, name: t.name, colors: t.colors, createdAt: t.createdAt })),
+  )
+}
+
+/** `ThemeColors` içinde yalnızca düz hex beklenen alanlar. */
+const HEX_COLOR_KEYS = [
+  'bg',
+  'bgElevated',
+  'bgSurface',
+  'border',
+  'borderSubtle',
+  'text',
+  'textMuted',
+  'textDim',
+  'primary',
+  'primaryHover',
+  'accent',
+  'accentHover',
+  'warning',
+  'danger',
+  'success',
+  'codeBg',
+] as const satisfies readonly (keyof ThemeColors)[]
+
+/** rgba() metni de kabul edilen alanlar. */
+const ALPHA_COLOR_KEYS = ['badgeBg', 'elevation'] as const satisfies readonly (keyof ThemeColors)[]
+
+/** Bozuk/eksik bir renk kaydını güvenle onarır; çekirdek alanlar yoksa reddeder. */
+export function sanitizeStoredColors(raw: unknown): ThemeColors | null {
+  if (!raw || typeof raw !== 'object') return null
+  const rec = raw as Record<string, unknown>
+  const out: Record<string, string> = { ...THEMES.Custom }
+
+  let valid = 0
+  for (const key of HEX_COLOR_KEYS) {
+    const value = rec[key]
+    if (typeof value !== 'string') continue
+    const hex = sanitizeHex(value)
+    if (hex) {
+      out[key] = hex
+      valid++
+    }
+  }
+  for (const key of ALPHA_COLOR_KEYS) {
+    const value = rec[key]
+    if (typeof value === 'string' && parseHex(value)) out[key] = value
+  }
+
+  // Çekirdek dört alan (zemin, metin, iki vurgu) eksikse tema kullanılamaz.
+  if (valid < 4) return null
+  return out as unknown as ThemeColors
+}
+
+/**
+ * localStorage metninden kayıtlı tema listesini okur.
+ *
+ * HİÇBİR ZAMAN çökmez: bozuk JSON, yanlış tip, eksik alan veya tekrar eden
+ * kimlikler sessizce atlanır; geçerli kayıtlar geri döner.
+ */
+export function parseCustomThemes(raw: string | null | undefined): CustomTheme[] {
+  if (typeof raw !== 'string' || raw.length === 0) return []
+  let data: unknown
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(data)) return []
+
+  const out: CustomTheme[] = []
+  const seen = new Set<string>()
+  for (const item of data) {
+    if (!item || typeof item !== 'object') continue
+    const rec = item as Record<string, unknown>
+    const id = typeof rec.id === 'string' && rec.id.trim() ? rec.id.trim() : null
+    if (!id || seen.has(id)) continue
+    const name = validateCustomThemeName(typeof rec.name === 'string' ? rec.name : '')
+    if (!name.ok) continue
+    const colors = sanitizeStoredColors(rec.colors)
+    if (!colors) continue
+    seen.add(id)
+    const createdAt = typeof rec.createdAt === 'number' && Number.isFinite(rec.createdAt) ? rec.createdAt : 0
+    out.push({ id, name: name.name, colors, createdAt })
+  }
+  return out
+}

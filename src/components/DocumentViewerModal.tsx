@@ -33,47 +33,334 @@ import {
   AlignJustify,
 } from 'lucide-react'
 import Prism from 'prismjs'
+/**
+ * Prism dil bilesenleri.
+ *
+ * KURALLAR
+ * --------
+ * 1) Tek tek `prism-<lang>.js` import edilir. `prismjs/components/index.js`
+ *    CJS'dir; toplu import Vite altinda ya agirlik sorunu yaratir ya da
+ *    `Prism.languages[lang]` anahtarlarini sessizce kaybettirir.
+ * 2) SIRA ONEMLIDIR: bir bilesen baska bir dili `require` ediyorsa once o
+ *    yuklenmis olmalidir (`node_modules/prismjs/components.json` -> `require`).
+ * 3) `filePreviewService`in `LANGUAGE_BY_EXTENSION` haritasindaki HER deger
+ *    burada yuklenir. Aksi halde `Prism.languages[lang]` `undefined` olur ve
+ *    Prism sessizce duz metin doner ("renklendirme hic calismiyor").
+ *
+ * Prism 1.30 `vue` ve `svelte` gramerlerini KALDIRMISTIR; bu iki dil icin
+ * `PRISM_ALIASES` uzerinden `markup` gramerine dusulur.
+ */
 import 'prismjs/components/prism-clike'
+import 'prismjs/components/prism-markup'
+import 'prismjs/components/prism-markup-templating'
 import 'prismjs/components/prism-javascript'
 import 'prismjs/components/prism-typescript'
-import 'prismjs/components/prism-python'
-import 'prismjs/components/prism-java'
-import 'prismjs/components/prism-c'
-import 'prismjs/components/prism-cpp'
-import 'prismjs/components/prism-csharp'
-import 'prismjs/components/prism-sql'
-import 'prismjs/components/prism-bash'
-import 'prismjs/components/prism-json'
-import 'prismjs/components/prism-yaml'
-import 'prismjs/components/prism-markdown'
-import 'prismjs/components/prism-rust'
-import 'prismjs/components/prism-go'
-import 'prismjs/components/prism-markup'
+import 'prismjs/components/prism-jsx'
+import 'prismjs/components/prism-tsx'
 import 'prismjs/components/prism-css'
-import 'prismjs/components/prism-php'
-import 'prismjs/components/prism-ruby'
-import 'prismjs/components/prism-kotlin'
-import 'prismjs/components/prism-swift'
-import 'prismjs/components/prism-dart'
-// Katalogda ilan edilen ama IÇE AKTARILMAMIŞ diller: `Prism.languages[lang]`
-// undefined oldugu icin dosya HIC renklendirilmeden gosteriliyordu
-// ("renkli satırlar düzgün değil" belirtisinin bir parçası).
-import 'prismjs/components/prism-lua'
-import 'prismjs/components/prism-powershell'
-import 'prismjs/components/prism-batch'
-import 'prismjs/components/prism-tcl'
-import 'prismjs/components/prism-r'
-import 'prismjs/components/prism-scala'
+import 'prismjs/components/prism-scss'
+import 'prismjs/components/prism-sass'
+import 'prismjs/components/prism-less'
+import 'prismjs/components/prism-stylus'
+import 'prismjs/components/prism-json'
+import 'prismjs/components/prism-json5'
+import 'prismjs/components/prism-yaml'
 import 'prismjs/components/prism-toml'
 import 'prismjs/components/prism-ini'
+import 'prismjs/components/prism-properties'
+import 'prismjs/components/prism-editorconfig'
+import 'prismjs/components/prism-markdown'
+import 'prismjs/components/prism-csv'
+import 'prismjs/components/prism-python'
+import 'prismjs/components/prism-java'
+import 'prismjs/components/prism-scala'
+import 'prismjs/components/prism-c'
+import 'prismjs/components/prism-cpp'
+import 'prismjs/components/prism-rust'
+import 'prismjs/components/prism-go'
+import 'prismjs/components/prism-go-module'
+import 'prismjs/components/prism-csharp'
+import 'prismjs/components/prism-basic'
+import 'prismjs/components/prism-vbnet'
+import 'prismjs/components/prism-fsharp'
+import 'prismjs/components/prism-cshtml'
+import 'prismjs/components/prism-kotlin'
 import 'prismjs/components/prism-groovy'
-import 'prismjs/components/prism-diff'
-import 'prismjs/components/prism-docker'
+import 'prismjs/components/prism-php'
+import 'prismjs/components/prism-ruby'
+import 'prismjs/components/prism-erb'
+import 'prismjs/components/prism-haml'
+import 'prismjs/components/prism-pug'
+import 'prismjs/components/prism-latex'
+import 'prismjs/components/prism-sql'
 import 'prismjs/components/prism-graphql'
+import 'prismjs/components/prism-protobuf'
+import 'prismjs/components/prism-bash'
+import 'prismjs/components/prism-powershell'
+import 'prismjs/components/prism-batch'
+import 'prismjs/components/prism-lua'
+import 'prismjs/components/prism-r'
+import 'prismjs/components/prism-dart'
+import 'prismjs/components/prism-swift'
+import 'prismjs/components/prism-clojure'
+import 'prismjs/components/prism-lisp'
+import 'prismjs/components/prism-elixir'
+import 'prismjs/components/prism-erlang'
+import 'prismjs/components/prism-haskell'
+import 'prismjs/components/prism-ocaml'
+import 'prismjs/components/prism-fortran'
+import 'prismjs/components/prism-perl'
+import 'prismjs/components/prism-nim'
+import 'prismjs/components/prism-zig'
+import 'prismjs/components/prism-nasm'
+import 'prismjs/components/prism-verilog'
+import 'prismjs/components/prism-smali'
+import 'prismjs/components/prism-solidity'
+import 'prismjs/components/prism-objectivec'
+import 'prismjs/components/prism-arduino'
+import 'prismjs/components/prism-docker'
+import 'prismjs/components/prism-git'
+import 'prismjs/components/prism-ignore'
+import 'prismjs/components/prism-makefile'
+import 'prismjs/components/prism-cmake'
+import 'prismjs/components/prism-hcl'
+import 'prismjs/components/prism-nix'
+import 'prismjs/components/prism-bicep'
+import 'prismjs/components/prism-diff'
+import 'prismjs/components/prism-tcl'
+import 'prismjs/components/prism-awk'
+import 'prismjs/components/prism-jq'
+import 'prismjs/components/prism-vim'
+import 'prismjs/components/prism-uri'
+import 'prismjs/components/prism-http'
+import 'prismjs/components/prism-systemd'
+import 'prismjs/components/prism-nginx'
+import 'prismjs/components/prism-xquery'
+import 'prismjs/components/prism-log'
 
 import type { Attachment, FilePreviewResult } from '../../types/jmc'
 import { MarkdownView } from './MarkdownView'
-import { ClickableText } from './ClickableText'
+import { ClickableText, findUrls, isSafeExternalUrl } from './ClickableText'
+
+/* ------------------------------------------------------------------ *
+ * Yerel tip tanimlari
+ *
+ * `types/jmc.ts` bu dosyanin sahibi disinda baska bir agent tarafindan
+ * duzenleniyor; bu yuzden kopru tasiyan blok tipleri BURADA yerel olarak
+ * tanimlanir ve `undefined` kontrollu okunur (yoksa eski yola dusulur).
+ * ------------------------------------------------------------------ */
+interface DocxParagraphBlock {
+  type: 'paragraph'
+  text: string
+  bullet?: boolean
+  url?: string
+}
+interface DocxTableBlock {
+  type: 'table'
+  rows: string[][]
+  cellUrls?: Array<Array<string | undefined>>
+}
+type DocxBlock = DocxParagraphBlock | DocxTableBlock
+
+interface PptxSlideView {
+  slideNumber: number
+  title?: string
+  titleUrl?: string
+  bullets: string[]
+  bulletUrls?: Array<string | undefined>
+}
+
+type PreviewExtras = { docBlocks?: DocxBlock[] }
+
+function readDocBlocks(preview: FilePreviewResult | null | undefined): DocxBlock[] | undefined {
+  if (!preview || preview.kind !== 'docx') return undefined
+  const blocks = (preview as FilePreviewResult & PreviewExtras).docBlocks
+  return Array.isArray(blocks) ? blocks : undefined
+}
+
+function readSlides(preview: FilePreviewResult | null | undefined): PptxSlideView[] | undefined {
+  const slides = preview?.slides
+  return Array.isArray(slides) ? (slides as PptxSlideView[]) : undefined
+}
+
+/** `Prism.languages[lang]` guvenle okunur (Prism'in `languages` tipi dar). */
+function prismLanguage(lang: string): Prism.Grammar | undefined {
+  return (Prism.languages as unknown as Record<string, Prism.Grammar | undefined>)[lang]
+}
+
+/** Kisa dil adlari ve Prism'de olmayan diller icin cozumleme tablosu. */
+const PRISM_ALIASES: Record<string, string> = {
+  ts: 'typescript',
+  js: 'javascript',
+  py: 'python',
+  rb: 'ruby',
+  sh: 'bash',
+  shell: 'bash',
+  zsh: 'bash',
+  console: 'bash',
+  yml: 'yaml',
+  md: 'markdown',
+  rs: 'rust',
+  kt: 'kotlin',
+  cs: 'csharp',
+  'c#': 'csharp',
+  'c++': 'cpp',
+  htm: 'html',
+  xhtml: 'html',
+  h: 'c',
+  golang: 'go',
+  objc: 'objectivec',
+  dockerfile: 'docker',
+  make: 'makefile',
+  // Prism 1.30'da `vue` / `svelte` grameri YOK -> en yakin Markup tabani
+  vue: 'markup',
+  svelte: 'markup',
+  astro: 'markup',
+  // assembly tasiyicilari Prism'de `nasm`
+  asm: 'nasm',
+  assembly: 'nasm',
+  xml: 'markup',
+  svg: 'markup',
+  html: 'markup',
+  plist: 'markup',
+  xsl: 'markup',
+  xsd: 'markup',
+}
+
+/**
+ * Dil adindan GERCEKTEN yuklenmis bir Prism grameri cozer.
+ * Sirasiyla: dogrudan anahtar -> takma ad. Hicbiri yoksa `null` doner; bu
+ * durumda arayuz duz metne duser VE kullaniciya dil secici sunar.
+ */
+function resolvePrismGrammar(lang: string): { grammar: Prism.Grammar; key: string } | null {
+  const norm = (lang || '').toLowerCase().trim()
+  if (!norm || norm === 'text' || norm === 'plaintext' || norm === 'plain' || norm === 'txt') return null
+  for (const candidate of [norm, PRISM_ALIASES[norm]]) {
+    if (!candidate) continue
+    const grammar = prismLanguage(candidate)
+    if (grammar) return { grammar, key: candidate }
+  }
+  return null
+}
+
+/**
+ * DOCX paragrafi: metni gosterir ve `w:hyperlink` ile gelen hedef varsa
+ * paragrafi TIKLANABILIR yapar.
+ *
+ * `url` yoksa davranis `ClickableText` ile aynidir (metindeki duz adresleri
+ * tiklanabilir yapar); `url` varsa paragrafin tamami dokunun hedefine gider.
+ */
+function DocxParagraphText({ text, url }: { text: string; url?: string }): React.ReactElement {
+  if (!url || !isSafeExternalUrl(url)) {
+    return <ClickableText text={text} preserveWhitespace={false} />
+  }
+  return (
+    <a
+      href={url}
+      onClick={e => {
+        e.preventDefault()
+        e.stopPropagation()
+        void window.jmcAPI?.openExternalUrl(url)
+      }}
+      rel="noreferrer noopener"
+      className="text-[var(--jmc-primary)] underline underline-offset-2 hover:opacity-80 break-words"
+      title={url}
+    >
+      {text || url}
+    </a>
+  )
+}
+
+/** Dil secici listesi. Her id icin Prism grameri yuklenmis olmalidir. */
+const SELECTABLE_LANGUAGES: Array<{ id: string; label: string }> = [
+  { id: 'text', label: 'Duz metin' },
+  { id: 'typescript', label: 'TypeScript' },
+  { id: 'javascript', label: 'JavaScript' },
+  { id: 'tsx', label: 'TSX (React)' },
+  { id: 'jsx', label: 'JSX (React)' },
+  { id: 'python', label: 'Python' },
+  { id: 'java', label: 'Java' },
+  { id: 'kotlin', label: 'Kotlin' },
+  { id: 'scala', label: 'Scala' },
+  { id: 'groovy', label: 'Groovy' },
+  { id: 'c', label: 'C' },
+  { id: 'cpp', label: 'C++' },
+  { id: 'csharp', label: 'C#' },
+  { id: 'fsharp', label: 'F#' },
+  { id: 'vbnet', label: 'VB.NET' },
+  { id: 'cshtml', label: 'Razor / CSHTML' },
+  { id: 'objectivec', label: 'Objective-C' },
+  { id: 'arduino', label: 'Arduino' },
+  { id: 'rust', label: 'Rust' },
+  { id: 'go', label: 'Go' },
+  { id: 'go-module', label: 'go.mod' },
+  { id: 'zig', label: 'Zig' },
+  { id: 'nim', label: 'Nim' },
+  { id: 'nasm', label: 'Assembly (NASM)' },
+  { id: 'verilog', label: 'Verilog' },
+  { id: 'smali', label: 'Smali' },
+  { id: 'fortran', label: 'Fortran' },
+  { id: 'solidity', label: 'Solidity' },
+  { id: 'html', label: 'HTML / XML / SVG' },
+  { id: 'vue', label: 'Vue (.vue)' },
+  { id: 'svelte', label: 'Svelte (.svelte)' },
+  { id: 'css', label: 'CSS' },
+  { id: 'scss', label: 'SCSS' },
+  { id: 'sass', label: 'Sass' },
+  { id: 'less', label: 'Less' },
+  { id: 'stylus', label: 'Stylus' },
+  { id: 'json', label: 'JSON' },
+  { id: 'json5', label: 'JSON5' },
+  { id: 'yaml', label: 'YAML' },
+  { id: 'toml', label: 'TOML' },
+  { id: 'ini', label: 'INI' },
+  { id: 'properties', label: '.properties' },
+  { id: 'editorconfig', label: '.editorconfig' },
+  { id: 'xml', label: 'XML' },
+  { id: 'markdown', label: 'Markdown' },
+  { id: 'sql', label: 'SQL' },
+  { id: 'graphql', label: 'GraphQL' },
+  { id: 'protobuf', label: 'Protocol Buffers' },
+  { id: 'bash', label: 'Bash / Shell' },
+  { id: 'powershell', label: 'PowerShell' },
+  { id: 'batch', label: 'Batch' },
+  { id: 'lua', label: 'Lua' },
+  { id: 'r', label: 'R' },
+  { id: 'perl', label: 'Perl' },
+  { id: 'php', label: 'PHP' },
+  { id: 'ruby', label: 'Ruby' },
+  { id: 'erb', label: 'ERB' },
+  { id: 'haml', label: 'Haml' },
+  { id: 'pug', label: 'Pug' },
+  { id: 'dart', label: 'Dart' },
+  { id: 'swift', label: 'Swift' },
+  { id: 'clojure', label: 'Clojure' },
+  { id: 'lisp', label: 'Lisp' },
+  { id: 'elixir', label: 'Elixir' },
+  { id: 'erlang', label: 'Erlang' },
+  { id: 'haskell', label: 'Haskell' },
+  { id: 'ocaml', label: 'OCaml' },
+  { id: 'tcl', label: 'Tcl' },
+  { id: 'awk', label: 'AWK' },
+  { id: 'jq', label: 'JQ' },
+  { id: 'latex', label: 'LaTeX' },
+  { id: 'docker', label: 'Dockerfile' },
+  { id: 'makefile', label: 'Makefile' },
+  { id: 'cmake', label: 'CMake' },
+  { id: 'hcl', label: 'HCL / Terraform' },
+  { id: 'nix', label: 'Nix' },
+  { id: 'bicep', label: 'Bicep' },
+  { id: 'git', label: 'git config' },
+  { id: 'ignore', label: '.gitignore' },
+  { id: 'diff', label: 'Diff' },
+  { id: 'vim', label: 'Vim script' },
+  { id: 'uri', label: 'URI' },
+  { id: 'http', label: 'HTTP' },
+  { id: 'systemd', label: 'systemd unit' },
+  { id: 'nginx', label: 'nginx' },
+  { id: 'xquery', label: 'XQuery' },
+  { id: 'log', label: 'Log' },
+]
 
 interface DocumentViewerModalProps {
   attachment: Attachment | null
@@ -203,6 +490,12 @@ export function DocumentViewerModal({
   const [linkCopied, setLinkCopied] = useState(false)
   /** PPTX için "tek tek slayt" / "tüm slaytlar (kaydırmalı)" görünümü. */
   const [slideView, setSlideView] = useState<'single' | 'continuous'>('continuous')
+  /**
+   * Kullanıcının dil seciciden zorladigi dil. `null` => otomatik tespit
+   * (`preview.language`). Tahmin edilemedigi durumda kullanici buradan
+   * duz metne dusmeden dogrudan bir dil secabilir.
+   */
+  const [languageOverride, setLanguageOverride] = useState<string | null>(null)
 
   const youtubeVideoId = useMemo(() => {
     return (
@@ -264,23 +557,47 @@ export function DocumentViewerModal({
   )
 
   // Kaydırmalı görünümde görünürlük oranı en yüksek slaytı "aktif" yap.
+  //
+  // DUZELTME (scroll-spy yanlis slaydi isaretliyordu):
+  // IntersectionObserver yalnizca ESIK DEGISTIREN ogeleri bildirir. Onceki
+  // surum `entries` dizisi icinde en yuksek orani aryordu; o dizi tum
+  // kartlari ICERMEZ, sadece o an esigi asanlari icerir. Bu yuzden aktif
+  // slayt, ekranda en cok gorunen kart degil, rastgele bir esik gecis karti
+  // olabiliyordu. Artik oranlar bir `Map` icinde tutuluyor ve secim
+  // TUM kartlar arasindaki global maksimumdan yapiliyor.
   const slideCount = preview?.slides?.length ?? 0
   const slideFileId = preview?.fileId
+
+  // Onceki dosyanin kart referanslari kalmasin (az slaytli yeni dosyada
+  // yanlis karta kaydirma ve gozlemci hedefi tutulmamasi).
+  useEffect(() => {
+    slideRefs.current = []
+  }, [slideFileId])
+
   useEffect(() => {
     if (!isOpen || slideView !== 'continuous' || slideCount === 0) return
     const root = slideScrollRef.current
     if (!root || typeof IntersectionObserver === 'undefined') return
+
+    const ratios = new Map<Element, number>()
     const observer = new IntersectionObserver(
       entries => {
-        let best: IntersectionObserverEntry | null = null
         for (const entry of entries) {
-          if (!best || entry.intersectionRatio > best.intersectionRatio) best = entry
+          ratios.set(entry.target, entry.intersectionRatio)
         }
-        if (!best || best.intersectionRatio < 0.15) return
-        const idx = Number((best.target as HTMLElement).dataset.slideIndex)
+        let bestEl: Element | null = null
+        let bestRatio = 0
+        ratios.forEach((ratio, el) => {
+          if (ratio > bestRatio) {
+            bestRatio = ratio
+            bestEl = el
+          }
+        })
+        if (!bestEl || bestRatio < 0.15) return
+        const idx = Number((bestEl as HTMLElement).dataset.slideIndex)
         if (Number.isFinite(idx)) setActiveSlideIndex(prev => (prev === idx ? prev : idx))
       },
-      { root, threshold: [0.15, 0.4, 0.7, 0.95] },
+      { root, threshold: [0, 0.15, 0.35, 0.6, 0.85, 1] },
     )
     for (const el of slideRefs.current) if (el) observer.observe(el)
     return () => observer.disconnect()
@@ -309,6 +626,8 @@ export function DocumentViewerModal({
       setImageZoom(1)
       setImageRotation(0)
       setSearchQuery('')
+      // Dil secimi dosyaya ozgudur; yeni dosyada otomatik tespit kullanilir.
+      setLanguageOverride(null)
       setDownloadedPath(attachment.downloadedPath || attachment.localPath)
 
       // Disk üzerindeki indirilenler klasöründe dosya var mı kontrol et
@@ -468,36 +787,26 @@ export function DocumentViewerModal({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [isOpen, preview, activeSlideIndex, goToSlide])
 
-  // PrismJS dil grameri eşleştirmesi
-  const prismGrammar = useMemo(() => {
-    const lang = preview?.language?.toLowerCase().trim() || ''
-    if (lang === 'ts' || lang === 'typescript' || lang === 'tsx') {
-      return { grammar: Prism.languages.typescript || Prism.languages.javascript, key: 'typescript' }
-    }
-    if (lang === 'js' || lang === 'javascript' || lang === 'jsx') {
-      return { grammar: Prism.languages.javascript, key: 'javascript' }
-    }
-    if (lang === 'py' || lang === 'python') return { grammar: Prism.languages.python, key: 'python' }
-    if (lang === 'java') return { grammar: Prism.languages.java, key: 'java' }
-    if (lang === 'c') return { grammar: Prism.languages.c, key: 'c' }
-    if (lang === 'cpp' || lang === 'c++') return { grammar: Prism.languages.cpp || Prism.languages.c, key: 'cpp' }
-    if (lang === 'cs' || lang === 'csharp' || lang === 'c#') return { grammar: Prism.languages.csharp, key: 'csharp' }
-    if (lang === 'sql') return { grammar: Prism.languages.sql, key: 'sql' }
-    if (lang === 'sh' || lang === 'bash' || lang === 'shell' || lang === 'zsh') return { grammar: Prism.languages.bash, key: 'bash' }
-    if (lang === 'json') return { grammar: Prism.languages.json, key: 'json' }
-    if (lang === 'yaml' || lang === 'yml') return { grammar: Prism.languages.yaml, key: 'yaml' }
-    if (lang === 'md' || lang === 'markdown') return { grammar: Prism.languages.markdown, key: 'markdown' }
-    if (lang === 'rs' || lang === 'rust') return { grammar: Prism.languages.rust, key: 'rust' }
-    if (lang === 'html' || lang === 'xml' || lang === 'svg') return { grammar: Prism.languages.markup, key: 'markup' }
-    if (lang === 'css' || lang === 'scss' || lang === 'sass') return { grammar: Prism.languages.css, key: 'css' }
-    if (lang === 'php') return { grammar: Prism.languages.php, key: 'php' }
-    if (lang === 'rb' || lang === 'ruby') return { grammar: Prism.languages.ruby, key: 'ruby' }
-    if (lang === 'kt' || lang === 'kotlin') return { grammar: Prism.languages.kotlin, key: 'kotlin' }
-    if (lang === 'swift') return { grammar: Prism.languages.swift, key: 'swift' }
-    if (lang === 'dart') return { grammar: Prism.languages.dart, key: 'dart' }
-    if (Prism.languages[lang]) return { grammar: Prism.languages[lang], key: lang }
-    return null
-  }, [preview?.language])
+  // Etkin dil: kullanici seciciden zorladiysa o, degilse servis tespiti.
+  const activeLanguage = (languageOverride ?? preview?.language ?? 'text').toLowerCase().trim()
+
+  /**
+   * PrismJS dil grameri cozumlemesi.
+   *
+   * ONCEKI SURUMUN HATASI: elle yazilmis `if` zinciri `prism-*.js`
+   * dosyalarindan daha az dili kapsiyordu ve zincirin sonundaki
+   * `Prism.languages[lang]` fallback'i de yuklenmemis diller icin
+   * `undefined` donuyordu -> dosya HIC renklendirilmeden gosteriliyordu.
+   * Artik yuklenen tum diller `resolvePrismGrammar` ile tek noktadan
+   * cozuluyor ve sonuc bulunamazsa `null` (duz metin) doner.
+   */
+  const prismGrammar = useMemo(() => resolvePrismGrammar(activeLanguage), [activeLanguage])
+
+  /**
+   * Gramer bulunamadi mi? Kullaniciya "dil secici" vurgulanarak gosterilir;
+   * sessizce duz metne dusulmez.
+   */
+  const grammarMissing = !prismGrammar
 
   // Kod satırları ve Prism renklendirmesi
   const highlightedCodeLines = useMemo(() => {
@@ -522,11 +831,40 @@ export function DocumentViewerModal({
     }))
   }, [preview?.text, preview?.kind, prismGrammar])
 
+  /**
+   * Kod icindeki adresler.
+   *
+   * GEREKCE / YAKLASIM: Prism ciktiyi `<span>` tokenlarina boluyor ve bu
+   * HTML `dangerouslySetInnerHTML` ile basiliyor. HTML stringi icine
+   * `<a>` eklemek token sinirlarini bozuyor (kapatilan span'larin icinde
+   * kalan etiketler) ve kullanici metnini HTML'e cevirmek XSS yuzeyi
+   * buyutuyor. `ClickableText` de uygun degil: o bileseni kullanmak renk
+   * kodunu tamamen atmayi gerektirirdi. Bu yuzden adresler PRISM SONRASI,
+   * HAM metinden `findUrls` ile cikarilip kod blogunun altinda ayri bir
+   * "bulunan baglantilar" listesi olarak gosterilir; hem tokenlara dokunulmaz
+   * hem de XSS yuzeyi buyutulmez.
+   */
+  const codeLinks = useMemo(() => {
+    if (!preview?.text || (preview.kind !== 'code' && preview.kind !== 'text')) return []
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const hit of findUrls(preview.text)) {
+      if (!isSafeExternalUrl(hit.url) || seen.has(hit.url)) continue
+      seen.add(hit.url)
+      out.push(hit.url)
+      if (out.length >= 60) break
+    }
+    return out
+  }, [preview?.text, preview?.kind])
+
   const filteredCodeRows = useMemo(() => {
     if (!searchQuery.trim()) return highlightedCodeLines
     const q = searchQuery.toLowerCase()
     return highlightedCodeLines.filter(row => row.raw.toLowerCase().includes(q))
   }, [highlightedCodeLines, searchQuery])
+
+  /** Arama kutusunda gercekten bir sorgu var mi? */
+  const isSearching = searchQuery.trim().length > 0
 
   // Tablo verisi ve filtreleme
   const filteredTableData = useMemo(() => {
@@ -537,11 +875,61 @@ export function DocumentViewerModal({
     const rows = preview.tableData.slice(1).filter(row =>
       row.some(cell => cell.toLowerCase().includes(q)),
     )
+    // BOS DURUM DUZELTMESI: Onceki surum basligi daima geri dondurunce
+    // `[header]` (uzunluk 1) kaliyor, `length > 0` testi gectigi icin bos
+    // durum karti HIC gosterilmiyordu; ekranda yalnizca kolon basligi
+    // duruyordu. Artik eslesme yoksa bos dizi doner.
+    if (rows.length === 0) return []
     return [header, ...rows]
   }, [preview, searchQuery])
 
   /** PPTX görüntüleyicisi için daraltılmış (nullable) referans. */
-  const slides = preview?.slides
+  const slides = readSlides(preview)
+
+  /* ------------------------------------------------------------------ *
+   * DOCX: yapilandirilmis bloklar + arama
+   * ------------------------------------------------------------------ */
+  const docBlocks = readDocBlocks(preview)
+
+  /**
+   * Arama kutusuna gore suzulmus bloklar.
+   *
+   * BOS DURUM DUZELTMESI: Onceki surum `preview.paragraphs.filter(...)`
+   * bos dondugunde dogrudan `preview.text` (BELGENIN TAMAMI) gosteriliyordu;
+   * yani kullanici "hicbir eslesme yok" yerine butun dokumani goruyordu.
+   * Artik arama sonucu bos ise acik bir bos durum kartı basilir.
+   */
+  const filteredDocBlocks = useMemo(() => {
+    if (!docBlocks) return null
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return docBlocks
+    const matches = (text: string) => text.toLowerCase().includes(q)
+    return docBlocks.filter(block => {
+      if (block.type === 'paragraph') return matches(block.text)
+      return block.rows.some(row => row.some(cell => matches(cell)))
+    })
+  }, [docBlocks, searchQuery])
+
+  /** Eslesen hucre sayisi (bos durum mesajinda kullanilir). */
+  const docxMatchCount = useMemo(() => {
+    if (!filteredDocBlocks) return 0
+    return filteredDocBlocks.reduce((n, block) => {
+      if (block.type === 'paragraph') return n + 1
+      return n + block.rows.reduce((m, row) => m + row.filter(cell => cell.trim().length > 0).length, 0)
+    }, 0)
+  }, [filteredDocBlocks])
+
+  /** Servis `docBlocks` gondermedigyse kullanilan geriye uyumlu duz paragraf listesi. */
+  const legacyDocxParagraphs = useMemo(() => {
+    if (docBlocks || !preview?.paragraphs || preview.paragraphs.length === 0) return []
+    if (!isDocxSearching) return preview.paragraphs
+    const q = searchQuery.trim().toLowerCase()
+    return preview.paragraphs.filter(p => p.toLowerCase().includes(q))
+    // isDocxSearching searchQuery'den turetilir
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docBlocks, preview?.paragraphs, searchQuery])
+
+  const isDocxSearching = searchQuery.trim().length > 0
 
   if (!isOpen) return null
 
@@ -602,8 +990,24 @@ export function DocumentViewerModal({
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-[var(--jmc-text-dim)]">
-                {preview?.language && (
-                  <span className="rounded bg-indigo-500/15 px-1.5 py-0.2 font-mono font-medium text-indigo-400 uppercase">
+                {(preview?.kind === 'code' || preview?.kind === 'text') && activeLanguage && (
+                  <span
+                    title={
+                      languageOverride
+                        ? `Elle secildi (tespit: ${preview?.language || 'bilinmiyor'})`
+                        : 'Dosya adindan otomatik tespit edildi'
+                    }
+                    className={`rounded px-1.5 py-0.2 font-mono font-medium uppercase ${
+                      grammarMissing
+                        ? 'bg-amber-500/15 text-amber-300'
+                        : 'bg-indigo-500/15 text-indigo-400'
+                    }${languageOverride ? ' ring-1 ring-indigo-400/50' : ''}`}
+                  >
+                    {activeLanguage}
+                    {languageOverride ? ' (elle)' : ''}
+                  </span>
+                )}
+                {preview?.kind !== 'code' && preview?.kind !== 'text' && preview?.language && (                  <span className="rounded bg-indigo-500/15 px-1.5 py-0.2 font-mono font-medium text-indigo-400 uppercase">
                     {preview.language}
                   </span>
                 )}
@@ -843,6 +1247,48 @@ export function DocumentViewerModal({
                       A+
                     </button>
                   </div>
+
+                  {/* DIL SECICI
+                      Servis `language` alanini her zaman doldurur; yine de
+                      Prism'de grameri olmayan ya da yanlis tespit edilen
+                      dosyalarda kullanici dogrudan dil secebilir. Gramer
+                      bulunamadiysa secici vurgulanir ("dil secilemedi"). */}
+                  <div className="flex items-center gap-1 border-l border-[var(--jmc-border)] pl-2">
+                    <label htmlFor="jmc-code-language" className="text-[10px] text-[var(--jmc-text-dim)]">
+                      Dil:
+                    </label>
+                    <select
+                      id="jmc-code-language"
+                      value={languageOverride ?? activeLanguage}
+                      onChange={e => setLanguageOverride(e.target.value)}
+                      title={
+                        grammarMissing
+                          ? 'Bu dil için sözdizimi tanımı yok. Bir dil seçerek renklendirmeyi etkinleştirin.'
+                          : 'Sözdizimi renklendirme dilini değiştir'
+                      }
+                      className={`max-w-[9.5rem] rounded bg-[var(--jmc-bg-surface)] px-1.5 py-0.5 text-[10.5px] outline-none focus:border-[var(--jmc-primary)] ${
+                        grammarMissing
+                          ? 'border border-amber-500/50 text-amber-300'
+                          : 'border border-[var(--jmc-border)] text-[var(--jmc-text-muted)]'
+                      }`}
+                    >
+                      {SELECTABLE_LANGUAGES.map(lang => (
+                        <option key={lang.id} value={lang.id}>
+                          {lang.label}
+                        </option>
+                      ))}
+                      {!SELECTABLE_LANGUAGES.some(l => l.id === activeLanguage) && (
+                        <option value={activeLanguage}>{activeLanguage || 'Duz metin'}</option>
+                      )}
+                    </select>
+                  </div>
+
+                  {/* Arama sonucu sayaci (bos durumda da bilgi verir) */}
+                  <div className="text-[10.5px] text-[var(--jmc-text-dim)] whitespace-nowrap">
+                    {isSearching
+                      ? `${filteredCodeRows.length} / ${highlightedCodeLines.length} satır`
+                      : `${highlightedCodeLines.length} satır`}
+                  </div>
                 </div>
               </>
             )}
@@ -971,9 +1417,22 @@ export function DocumentViewerModal({
                       <span>Word'de Aç</span>
                     </button>
                   )}
-                  <span className="text-[11px] text-[var(--jmc-text-dim)]">
-                    {preview.paragraphs?.length || 0} paragraf
+                  <span className="text-[11px] text-[var(--jmc-text-dim)] whitespace-nowrap">
+                    {isDocxSearching
+                      ? `${docxMatchCount} eşleşme`
+                      : `${preview.paragraphs?.length || 0} paragraf`}
                   </span>
+                  {isDocxSearching && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      title="Aramayı temizle"
+                      className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2 py-0.5 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)]"
+                    >
+                      <X className="h-3 w-3" />
+                      <span>Temizle</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -991,8 +1450,8 @@ export function DocumentViewerModal({
                 </div>
                 <div className="text-[10.5px] text-[var(--jmc-text-dim)] hidden sm:block">
                   {slideView === 'continuous'
-                    ? 'Kaydırın · ← / → ile zıplayın'
-                    : 'Klavye: ← Sol / → Sağ Ok Tuşları'}
+                    ? 'Tüm slaytlar kaydırılabilir · ← / → zıplar'
+                    : 'Tekli görünüm · ← / → gezinir'}
                 </div>
               </div>
             )}
@@ -1010,9 +1469,34 @@ export function DocumentViewerModal({
                     className="w-full rounded bg-[var(--jmc-bg-surface)] py-1 pl-8 pr-3 text-[11.5px] text-[var(--jmc-text)] border border-[var(--jmc-border)] outline-none focus:border-[var(--jmc-primary)]"
                   />
                 </div>
-                <span className="text-[11px] text-[var(--jmc-text-dim)]">
-                  {filteredTableData.length > 0 ? `${filteredTableData.length - 1} satır listeleniyor` : 'Satır yok'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[11px] whitespace-nowrap ${
+                      searchQuery.trim() && filteredTableData.length === 0
+                        ? 'text-amber-400'
+                        : 'text-[var(--jmc-text-dim)]'
+                    }`}
+                  >
+                    {searchQuery.trim()
+                      ? filteredTableData.length > 0
+                        ? `${filteredTableData.length - 1} satır listeleniyor`
+                        : 'Eşleşen satır yok'
+                      : filteredTableData.length > 0
+                        ? `${filteredTableData.length - 1} satır listeleniyor`
+                        : 'Satır yok'}
+                  </span>
+                  {searchQuery.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      title="Filtreyi temizle"
+                      className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2 py-0.5 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)]"
+                    >
+                      <X className="h-3 w-3" />
+                      <span>Temizle</span>
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1221,14 +1705,66 @@ export function DocumentViewerModal({
                             )
                           })}
                           {filteredCodeRows.length === 0 && (
-                            <div className="px-6 py-8 text-center text-[12px] text-[var(--jmc-text-muted)]">
-                              {searchQuery.trim()
-                                ? `"${searchQuery}" için eşleşen satır bulunamadı.`
-                                : 'Dosya boş görünüyor.'}
+                            <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+                              <Search className="h-6 w-6 text-[var(--jmc-text-dim)] opacity-60" />
+                              <p className="text-[12.5px] font-medium text-[var(--jmc-text)]">
+                                {isSearching
+                                  ? `"${searchQuery}" için eşleşen satır yok`
+                                  : 'Dosya boş görünüyor'}
+                              </p>
+                              <p className="max-w-sm text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
+                                {isSearching
+                                  ? `Bu dosyanın ${highlightedCodeLines.length} satırının hiçbiri arama metnini içermiyor. Farklı bir sözcük deneyebilir ya da arama kutusunu temizleyebilirsiniz.`
+                                  : 'Dosya çözülüyor ancak içinde okunabilir metin yok. Dosyayı harici uygulamada açmayı deneyebilirsiniz.'}
+                              </p>
+                              {isSearching && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSearchQuery('')}
+                                  className="mt-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)]"
+                                >
+                                  Aramayı Temizle
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
                       </div>
+
+                      {/* Bulunan baglantilar
+                          Token'lara dokunmadan, Prism SONRASI ham metinden
+                          cikarilan adresler. Renk kodunun HTML'ine gommeden
+                          tiklanabilir olmalari bu yolla saglanir. */}
+                      {codeLinks.length > 0 && (
+                        <div className="border-t border-[var(--jmc-border-subtle)] px-4 py-3 font-sans">
+                          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--jmc-text-muted)]">
+                            <Link className="h-3.5 w-3.5" />
+                            <span>
+                              Bulunan bağlantılar ({codeLinks.length})
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {codeLinks.map(url => (
+                              <a
+                                key={url}
+                                href={url.startsWith('www.') ? `https://${url}` : url}
+                                title={url}
+                                onClick={e => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  void window.jmcAPI?.openExternalUrl(
+                                    url.startsWith('www.') ? `https://${url}` : url,
+                                  )
+                                }}
+                                rel="noreferrer noopener"
+                                className="max-w-[26rem] truncate rounded border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)] px-2 py-0.5 text-[11px] text-[var(--jmc-primary)] underline underline-offset-2 hover:opacity-80"
+                              >
+                                {url}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1348,76 +1884,154 @@ export function DocumentViewerModal({
                         </div>
 
                         <div className="space-y-3.5 pt-2 select-text">
-                          {preview.paragraphs && preview.paragraphs.length > 0 ? (
-                            preview.paragraphs
-                              .filter(p => !searchQuery.trim() || p.toLowerCase().includes(searchQuery.toLowerCase()))
-                              .map((p, idx) => {
-                                const trimmed = p.trim()
-                                const isMatch = searchQuery.trim() && trimmed.toLowerCase().includes(searchQuery.toLowerCase())
-
-                                // Basit Markdown Tablo Tespiti
-                                if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.includes('|')) {
-                                  const cells = trimmed
-                                    .split('|')
-                                    .map(c => c.trim())
-                                    .filter((_, i, arr) => i > 0 && i < arr.length - 1)
+                          {/* BOS DURUM: arama sonucu yok veya dokumanin
+                              metin katmani bos. Onceki surum, arama sonucu
+                              bos oldugunda butun dokumani (`preview.text`)
+                              gosteriyordu; artik acik bir bos durum karti
+                              basiliyor. */}
+                          {filteredDocBlocks ? (
+                            filteredDocBlocks.length === 0 ? (
+                              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--jmc-border)] bg-[var(--jmc-bg)]/40 px-6 py-10 text-center">
+                                <Search className="h-6 w-6 text-[var(--jmc-text-dim)] opacity-60" />
+                                <p className="text-[13px] font-semibold text-[var(--jmc-text)]">
+                                  {isDocxSearching
+                                    ? `"${searchQuery}" için eşleşme bulunamadı`
+                                    : 'Bu dokümanda okunabilir içerik yok'}
+                                </p>
+                                <p className="max-w-sm text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
+                                  {isDocxSearching
+                                    ? 'Arama terimi bu Word belgesinin paragraflarında ve tablolarında geçmiyor. Farklı bir sözcük deneyebilir ya da arama kutusunu temizleyebilirsiniz.'
+                                    : 'DOCX metin katmanı boş görünüyor (yalnızca görsel içerik olabilir). Dosyayı Word ya da LibreOffice ile açmayı deneyebilirsiniz.'}
+                                </p>
+                                {isDocxSearching && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSearchQuery('')}
+                                    className="mt-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)]"
+                                  >
+                                    Aramayı Temizle
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              filteredDocBlocks.map((block, idx) => {
+                                if (block.type === 'table') {
                                   return (
-                                    <div key={idx} className="overflow-x-auto my-3 rounded-lg border border-[var(--jmc-border)]">
-                                      <table className="w-full text-left text-[12px]">
+                                    <div
+                                      key={`tbl-${idx}`}
+                                      className="my-4 overflow-x-auto rounded-lg border border-[var(--jmc-border)]"
+                                    >
+                                      <table className="w-full border-collapse text-left text-[12px]">
                                         <tbody>
-                                          <tr className="bg-[var(--jmc-bg)]/60">
-                                            {cells.map((cell, cIdx) => (
-                                              <td
-                                                key={cIdx}
-                                                className="px-3.5 py-2 border-r border-[var(--jmc-border-subtle)] last:border-0 font-medium text-[var(--jmc-text)]"
-                                              >
-                                                <ClickableText text={cell} preserveWhitespace={false} />
-                                              </td>
-                                            ))}
-                                          </tr>
+                                          {/* HER `<w:tr>` AYRI BIR `<tr>`, HER
+                                              `<w:tc>` AYRI BIR `<td>`. Bos
+                                              hucreler korunur; sutun sayisi
+                                              satirlar arasinda tutarlidir. */}
+                                          {block.rows.map((row, rIdx) => (
+                                            <tr
+                                              key={`r-${rIdx}`}
+                                              className={`border-b border-[var(--jmc-border-subtle)] last:border-0 ${
+                                                rIdx === 0
+                                                  ? 'bg-[var(--jmc-bg)]/60 font-medium'
+                                                  : 'hover:bg-[var(--jmc-bg)]/35'
+                                              }`}
+                                            >
+                                              {row.map((cell, cIdx) => {
+                                                const cellUrl = block.cellUrls?.[rIdx]?.[cIdx]
+                                                return (
+                                                  <td
+                                                    key={`c-${cIdx}`}
+                                                    className="px-3.5 py-2 align-top border-r border-[var(--jmc-border-subtle)] last:border-0 text-[var(--jmc-text)]"
+                                                  >
+                                                    {cellUrl ? (
+                                                      <a
+                                                        href={cellUrl}
+                                                        onClick={e => {
+                                                          e.preventDefault()
+                                                          e.stopPropagation()
+                                                          void window.jmcAPI?.openExternalUrl(cellUrl)
+                                                        }}
+                                                        rel="noreferrer noopener"
+                                                        className="text-[var(--jmc-primary)] underline underline-offset-2 hover:opacity-80 break-all"
+                                                      >
+                                                        <ClickableText
+                                                          text={cell || cellUrl}
+                                                          preserveWhitespace={false}
+                                                        />
+                                                      </a>
+                                                    ) : (
+                                                      <ClickableText text={cell || ' '} preserveWhitespace={false} />
+                                                    )}
+                                                  </td>
+                                                )
+                                              })}
+                                            </tr>
+                                          ))}
                                         </tbody>
                                       </table>
                                     </div>
                                   )
                                 }
 
-                                // Madde İmli Paragraf
-                                if (trimmed.startsWith('•') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                                const isMatch =
+                                  isDocxSearching &&
+                                  block.text.toLowerCase().includes(searchQuery.trim().toLowerCase())
+
+                                if (block.bullet) {
                                   return (
                                     <div
-                                      key={idx}
+                                      key={`p-${idx}`}
                                       className={`flex items-start gap-2.5 pl-3 py-0.5 text-[13px] leading-relaxed ${
-                                        isMatch ? 'bg-amber-500/15 text-amber-200 rounded px-2' : 'text-[var(--jmc-text)]'
+                                        isMatch
+                                          ? 'bg-amber-500/15 text-amber-200 rounded px-2'
+                                          : 'text-[var(--jmc-text)]'
                                       }`}
                                     >
                                       <span className="text-[var(--jmc-primary)] font-bold select-none">•</span>
-                                      <ClickableText
-                                        text={trimmed.replace(/^[•\-\*]\s*/, '')}
-                                        preserveWhitespace={false}
-                                      />
+                                      <DocxParagraphText text={block.text} url={block.url} />
                                     </div>
                                   )
                                 }
 
-                                // Normal Paragraf
                                 return (
                                   <p
-                                    key={idx}
+                                    key={`p-${idx}`}
                                     className={`text-[13px] leading-relaxed transition-colors ${
                                       isMatch
                                         ? 'bg-amber-500/15 text-amber-200 font-medium rounded p-1.5'
                                         : 'text-[var(--jmc-text)]'
                                     }`}
                                   >
-                                    <ClickableText text={trimmed} preserveWhitespace={false} />
+                                    <DocxParagraphText text={block.text} url={block.url} />
                                   </p>
                                 )
                               })
+                            )
+                          ) : legacyDocxParagraphs.length > 0 ? (
+                            /* Servis yapilandirilmis blok gondermediyse eski
+                               duz-paragraf yolu (geriye uyum). */
+                            legacyDocxParagraphs.map((p, idx) => (
+                              <p key={idx} className="text-[13px] leading-relaxed text-[var(--jmc-text)]">
+                                <ClickableText text={p} preserveWhitespace={false} />
+                              </p>
+                            ))
                           ) : (
-                            <ClickableText
-                              text={preview.text || 'İçerik bulunamadı.'}
-                              className="block text-[13px] leading-relaxed text-[var(--jmc-text-muted)]"
-                            />
+                            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--jmc-border)] bg-[var(--jmc-bg)]/40 px-6 py-10 text-center">
+                              <Search className="h-6 w-6 text-[var(--jmc-text-dim)] opacity-60" />
+                              <p className="text-[13px] font-semibold text-[var(--jmc-text)]">
+                                {isDocxSearching
+                                  ? `"${searchQuery}" için eşleşme bulunamadı`
+                                  : 'Bu dokümanda okunabilir içerik yok'}
+                              </p>
+                              <ClickableText
+                                text={
+                                  isDocxSearching
+                                    ? 'Arama terimi bu Word belgesinin paragraflarında geçmiyor.'
+                                    : preview.text || 'DOCX metin katmanı boş görünüyor.'
+                                }
+                                className="block text-[12px] leading-relaxed text-[var(--jmc-text-muted)]"
+                              />
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1435,11 +2049,11 @@ export function DocumentViewerModal({
                    *   'single': eski davranış — yalnızca aktif slayt.
                    */}
                   {preview.kind === 'pptx' && slides && (
-                    <div className="flex h-full flex-col overflow-hidden">
+                    <div className="flex h-full min-h-0 flex-col overflow-hidden">
                       {/* Slayt İçerik Alanı */}
                       <div
                         ref={slideScrollRef}
-                        className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center gap-6"
+                        className="flex-1 min-h-0 overflow-y-auto p-4 md:p-8 flex flex-col items-center gap-6"
                       >
                         {slides.length === 0 ? (
                           <p className="text-[12px] text-[var(--jmc-text-muted)] my-auto">
@@ -1468,13 +2082,13 @@ export function DocumentViewerModal({
                                   <span className="truncate max-w-xs">{preview.title}</span>
                                 </div>
                                 <h2 className="mt-5 text-[20px] md:text-[24px] font-bold text-[var(--jmc-text)] tracking-tight">
-                                  {slide.title || `Slayt ${idx + 1}`}
+                                  {<DocxParagraphText text={slide.title || `Slayt ${idx + 1}`} url={slide.titleUrl} />}
                                 </h2>
                                 {slide.bullets.length > 0 ? (
                                   <ul className="mt-6 space-y-3 text-[13.5px] md:text-[14.5px] text-[var(--jmc-text)] list-disc pl-6 leading-relaxed select-text">
                                     {slide.bullets.map((bullet, bIdx) => (
                                       <li key={bIdx} className="leading-relaxed">
-                                        <ClickableText text={bullet} preserveWhitespace={false} />
+                                        <DocxParagraphText text={bullet} url={slide.bulletUrls?.[bIdx]} />
                                       </li>
                                     ))}
                                   </ul>
@@ -1504,13 +2118,19 @@ export function DocumentViewerModal({
                                 <span className="truncate max-w-xs">{preview.title}</span>
                               </div>
                               <h2 className="mt-5 text-[20px] md:text-[24px] font-bold text-[var(--jmc-text)] tracking-tight">
-                                {slides[activeSlideIndex].title || `Slayt ${activeSlideIndex + 1}`}
+                                {<DocxParagraphText
+                                    text={slides[activeSlideIndex].title || `Slayt ${activeSlideIndex + 1}`}
+                                    url={slides[activeSlideIndex].titleUrl}
+                                  />}
                               </h2>
                               {slides[activeSlideIndex].bullets.length > 0 ? (
                                 <ul className="mt-6 space-y-3 text-[13.5px] md:text-[14.5px] text-[var(--jmc-text)] list-disc pl-6 leading-relaxed select-text">
                                   {slides[activeSlideIndex].bullets.map((bullet, bIdx) => (
                                     <li key={bIdx} className="leading-relaxed">
-                                      <ClickableText text={bullet} preserveWhitespace={false} />
+                                      <DocxParagraphText
+                                        text={bullet}
+                                        url={slides[activeSlideIndex].bulletUrls?.[bIdx]}
+                                      />
                                     </li>
                                   ))}
                                 </ul>
@@ -1522,8 +2142,14 @@ export function DocumentViewerModal({
                               )}
                             </div>
 
-                            <div className="mt-8 pt-4 border-t border-[var(--jmc-border-subtle)] flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)]">
-                              <span>Klavye: ← Sol / → Sağ Ok tuşları ile gezinebilirsiniz</span>
+                            {/* Klavye ipucu BURADAN kaldirildi. Ic kartin
+                                en altinda bulundugu icin kayan alan
+                                tasmasinda pencerenin altinda KIRPILIYORDU.
+                                Artik sabit alt kontrol cubugunda, icerik
+                                alanindan DISARIDA ve `shrink-0` ile
+                                gosteriliyor; hicbir kaydirma konumunda
+                                kesilemez. */}
+                            <div className="mt-8 pt-4 border-t border-[var(--jmc-border-subtle)] flex items-center justify-end text-[11px] text-[var(--jmc-text-dim)]">
                               <span className="font-mono">
                                 {Math.round(((activeSlideIndex + 1) / slides.length) * 100)}%
                               </span>
@@ -1614,6 +2240,19 @@ export function DocumentViewerModal({
                           </span>
                         </div>
                       </div>
+
+                      {/* KLAVYE IPUCU SABIT CUBUKTA
+                          Onceki surumde bu ipucu kaydirma alanindaki slayt
+                          kartinin EN ALTINDA bulunuyordu; kayan alan
+                          tasmadigi icin kartin alti pencerenin disinda
+                          kalip metin KIRPILIYORDU. Simdi bu cubuk
+                          `shrink-0` oldugu icin hicbir kaydirma
+                          konumunda kesilemez. */}
+                      <div className="shrink-0 -mt-1 flex items-center justify-center gap-2 border-t border-[var(--jmc-border-subtle)]/70 px-4 pb-2 pt-1.5 text-[10.5px] text-[var(--jmc-text-dim)]">
+                        <ChevronLeft className="h-3 w-3" />
+                        <span>Sol / Sağ ok tuşları ile slaytlar arasında gezinebilirsiniz</span>
+                        <ChevronRight className="h-3 w-3" />
+                      </div>
                     </div>
                   )}
 
@@ -1649,8 +2288,27 @@ export function DocumentViewerModal({
                           </table>
                         </div>
                       ) : (
-                        <div className="p-8 text-center text-[12px] text-[var(--jmc-text-muted)]">
-                          Veri bulunamadı.
+                        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-10 text-center">
+                          <Search className="h-6 w-6 text-[var(--jmc-text-dim)] opacity-60" />
+                          <p className="text-[13px] font-semibold text-[var(--jmc-text)]">
+                            {searchQuery.trim()
+                              ? `"${searchQuery}" için eşleşen satır yok`
+                              : 'Veri bulunamadı'}
+                          </p>
+                          <p className="max-w-sm text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
+                            {searchQuery.trim()
+                              ? 'Arama terimi bu tablodaki hiçbir hücrede geçmiyor. Farklı bir sözcük deneyin ya da filtreyi temizleyin.'
+                              : 'Bu dosyadan okunabilir tablo satırı çıkarılamadı.'}
+                          </p>
+                          {searchQuery.trim() && (
+                            <button
+                              type="button"
+                              onClick={() => setSearchQuery('')}
+                              className="mt-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)]"
+                            >
+                              Filtreyi Temizle
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

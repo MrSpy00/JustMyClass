@@ -1,42 +1,26 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { ThemeColors, ThemeName } from '../../types/jmc'
-import { THEMES } from './themeConfig'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { CustomTheme, CustomThemeDraft, ThemeColors, ThemeName } from '../../types/jmc'
+import {
+  CUSTOM_THEME_ACTIVE_KEY,
+  CUSTOM_THEME_NAME_MAX,
+  CUSTOM_THEME_STORAGE_KEY,
+  MAX_CUSTOM_THEMES,
+  THEMES,
+  contrastRatio,
+  createCustomTheme,
+  deriveCodeTokens,
+  isLightTheme,
+  parseCustomThemes,
+  serializeCustomThemes,
+  validateCustomThemeName,
+} from './themeConfig'
 
-/** Bir rengi sRGB → lineer RGB'ye çevirir (WCAG 2.x formülü). */
-function channel(c: number): number {
-  const s = c / 255
-  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
-}
-
-/** #rgb / #rrggbb biçimindeki rengi [r,g,b] olarak ayrıştırır. */
-export function parseHex(hex: string): [number, number, number] | null {
-  let h = hex.trim()
-  if (h.startsWith('rgb')) {
-    const m = h.match(/[\d.]+/g)
-    if (!m || m.length < 3) return null
-    return [Number(m[0]), Number(m[1]), Number(m[2])]
-  }
-  h = h.replace('#', '')
-  if (h.length === 3) h = h.split('').map(c => c + c).join('')
-  if (h.length !== 6) return null
-  const n = Number.parseInt(h, 16)
-  if (Number.isNaN(n)) return null
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
-}
-
-/** İki renk arasındaki gerçek WCAG kontrast oranı (1–21). */
-export function contrastRatio(a: string, b: string): number {
-  const ca = parseHex(a)
-  const cb = parseHex(b)
-  if (!ca || !cb) return 1
-  const lum = ([r, g, bl]: [number, number, number]) =>
-    0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(bl)
-  const la = lum(ca)
-  const lb = lum(cb)
-  const lighter = Math.max(la, lb)
-  const darker = Math.min(la, lb)
-  return (lighter + 0.05) / (darker + 0.05)
-}
+/**
+ * Renk yardımcıları `themeConfig`e taşındı (saf fonksiyonlar, test edilebilir).
+ * Eski içe aktarma yolu korunur: `parseHex` / `contrastRatio` /
+ * `relativeLuminance` / `isLightTheme` buradan da dışa açıktır.
+ */
+export { parseHex, contrastRatio, relativeLuminance, isLightTheme } from './themeConfig'
 
 export interface ContrastReport {
   ratio: number
@@ -68,29 +52,57 @@ function auditTheme(c: ThemeColors): ThemeAudit {
   }
 }
 
-/**
- * Rengin göreli parlaklığını döndürür (0 = siyah, 1 = beyaz).
- *
- * `color-scheme` ve Prism vurgu renkleri bu değere göre karar verir.
- */
-export function relativeLuminance(hex: string): number {
-  const rgb = parseHex(hex)
-  if (!rgb) return 0
-  const [r, g, b] = rgb
-  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
-}
+/* ------------------------------------------------------------------ */
+/* localStorage güvenli erişim                                          */
+/* ------------------------------------------------------------------ */
 
 /**
- * Tema "açık" mı?
- *
- * SORUN: `color-scheme` her zaman `dark` yazılıyordu. `Light` ve `Sand`
- * temalarında tarayıcı-native kaydırma çubuğu, `<select>` açılır listesi ve
- * metin seçimi KOYU zeminde beyaz gösteriyordu; ayrıca açık temada gölge
- * ve vurgular okunmuyordu. Karar artık gerçek arka plan parlaklığından
- * türetiliyor.
+ * localStorage erişimi her ortamda güvenli olmayabilir (kota dolu, gizli mod,
+ * kapatılmış depolama). Tüm tema kalıcılığı bu üç yardımcıdan geçer; hiçbiri
+ * çökmez, en kötü ihtimalle varsayılan devreye girer.
  */
-export function isLightTheme(colors: ThemeColors): boolean {
-  return relativeLuminance(colors.bg) > 0.4
+function readStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    /* kota dolu / depolama kapalı: tema yine de oturum içinde çalışır */
+  }
+}
+
+function removeStorage(key: string): void {
+  try {
+    window.localStorage.removeItem(key)
+  } catch {
+    /* yoksay */
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Özel tema API'si                                                    */
+/* ------------------------------------------------------------------ */
+
+export type CustomThemeError = 'name' | 'limit' | 'color' | 'empty' | 'too_long'
+
+export type CustomThemeSaveResult = { ok: true; id: string } | { ok: false; error: CustomThemeError }
+
+function loadCustomColors(): ThemeColors {
+  try {
+    const raw = readStorage('jmc_custom_theme')
+    if (!raw) return THEMES.Custom
+    const parsed = JSON.parse(raw) as Partial<ThemeColors>
+    // Kayıtlı özel tema eski biçimdeyse (elevation yoksa) tamamlanır.
+    return { ...THEMES.Custom, ...parsed, elevation: parsed.elevation ?? THEMES.Custom.elevation }
+  } catch {
+    return THEMES.Custom
+  }
 }
 
 interface ThemeContextValue {
@@ -106,42 +118,67 @@ interface ThemeContextValue {
   setReduceMotion: (v: boolean) => void
   compact: boolean
   setCompact: (v: boolean) => void
+
+  /* --- Custom Theme Builder ------------------------------------- */
+  /** Kalıcı olarak saklanmış, kullanıcıya ait temalar. */
+  customThemes: CustomTheme[]
+  /** Etkin kayıtlı temanın kimliği (yoksa `null`). */
+  activeCustomThemeId: string | null
+  /** Kayıtlı bir temayı etkinleştirir ve hemen uygular. */
+  applyCustomTheme: (id: string) => void
+  /** Taslağı doğrular, listeye ekler ve hemen uygular. */
+  saveCustomTheme: (draft: CustomThemeDraft) => CustomThemeSaveResult
+  /** Kayıtlı temanın adını değiştirir. */
+  renameCustomTheme: (id: string, name: string) => CustomThemeSaveResult
+  /** Kayıtlı temayı siler; etkinse varsayılan temaya döner. */
+  removeCustomTheme: (id: string) => void
+  /** Canlı önizleme. `null` verilirse önizleme bırakılır (önceki tema geri gelir). */
+  previewColors: (colors: ThemeColors | null) => void
+  /** Şu anda bir önizleme mi uygulanıyor? */
+  isPreviewing: boolean
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 const FALLBACK = THEMES['Neon Dreams']
 
-function loadCustomColors(): ThemeColors {
-  try {
-    const raw = localStorage.getItem('jmc_custom_theme')
-    if (!raw) return THEMES.Custom
-    const parsed = JSON.parse(raw) as Partial<ThemeColors>
-    // Kayıtlı özel tema eski biçimdeyse (elevation yoksa) tamamlanır.
-    return { ...THEMES.Custom, ...parsed, elevation: parsed.elevation ?? THEMES.Custom.elevation }
-  } catch {
-    return THEMES.Custom
-  }
-}
-
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeName>(() => {
-    const saved = localStorage.getItem('jmc_theme') as ThemeName | null
+    const saved = readStorage('jmc_theme') as ThemeName | null
     return saved && saved in THEMES ? saved : 'Neon Dreams'
   })
   const [customColors, setCustomColors] = useState<ThemeColors>(loadCustomColors)
+  const [customThemes, setCustomThemes] = useState<CustomTheme[]>(() =>
+    parseCustomThemes(readStorage(CUSTOM_THEME_STORAGE_KEY)),
+  )
+  const [activeCustomThemeId, setActiveCustomThemeId] = useState<string | null>(() => {
+    const id = readStorage(CUSTOM_THEME_ACTIVE_KEY)
+    return id && id.trim() ? id : null
+  })
+  /** Canlı önizleme: kalıcı değildir, vazgeçilince `null` olur. */
+  const [preview, setPreview] = useState<ThemeColors | null>(null)
   const [reduceMotion, setReduceMotion] = useState<boolean>(
-    () => localStorage.getItem('jmc_reduce_motion') === '1',
+    () => readStorage('jmc_reduce_motion') === '1',
   )
-  const [compact, setCompactState] = useState<boolean>(
-    () => localStorage.getItem('jmc_compact') === '1',
-  )
+  const [compact, setCompactState] = useState<boolean>(() => readStorage('jmc_compact') === '1')
 
-  const colors = useMemo(
-    () => (theme === 'Custom' ? customColors : THEMES[theme] ?? FALLBACK),
-    [theme, customColors],
-  )
+  /**
+   * Önizleme uygulanmadığı andaki "gerçek" renkler. `Custom` iki kaynaktan
+   * beslenir: etkin kayıtlı tema varsa o, yoksa eski tek renk özel ayar.
+   */
+  const baseColors = useMemo(() => {
+    if (theme === 'Custom') {
+      if (activeCustomThemeId) {
+        return customThemes.find(t => t.id === activeCustomThemeId)?.colors ?? customColors
+      }
+      return customColors
+    }
+    return THEMES[theme] ?? FALLBACK
+  }, [theme, customThemes, activeCustomThemeId, customColors])
+
+  const colors = preview ?? baseColors
   const audit = useMemo(() => auditTheme(colors), [colors])
+  const isPreviewing = preview !== null
 
   useEffect(() => {
     const root = document.documentElement
@@ -175,49 +212,115 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Tarayıcı-native bilesenler (select acilir listesi, kaydirma cubugu,
     // metin secimi) de temayi izlesin. Sabit `dark` yerine gercek arka plan
-    // parlakligindan karar verilir; aksi halde `Light` ve `Sand` temalarinda
-    // kaydirma cubugu koyu zeminde kalirdi.
+    // parlakligindan karar verilir; aksi halde `Light`, `Sand` ve
+    // `Pastel Soft` temalarinda kaydirma cubugu koyu zeminde kalirdi.
     const scheme: 'light' | 'dark' = isLightTheme(colors) ? 'light' : 'dark'
     set('color-scheme', scheme)
     root.style.colorScheme = scheme
     root.dataset.jmcScheme = scheme
 
-    // Prism vurgulari: acik temada koyu tonlarin yerini acik tonlar alir.
-    set('--jmc-code-comment', scheme === 'dark' ? '#7c89a0' : '#5b6478')
-    set('--jmc-code-punct', scheme === 'dark' ? '#9aa8bd' : '#4b5563')
-    set('--jmc-code-literal', scheme === 'dark' ? '#f2857f' : '#b4322b')
-    set('--jmc-code-string', scheme === 'dark' ? '#4fd6a4' : '#0a7a4f')
-    set('--jmc-code-operator', scheme === 'dark' ? '#57c7f0' : '#0a6f8f')
-    set('--jmc-code-keyword', scheme === 'dark' ? '#b18cff' : '#6b21d6')
-    set('--jmc-code-function', scheme === 'dark' ? '#7fb0ff' : '#1d4ed8')
-    set('--jmc-code-meta', scheme === 'dark' ? '#fbbf24' : '#a16207')
+    // Prism vurgulari artik SABIT iki paletten secilmiyor: her jeton
+    // `codeBg`dan turetilir ve kontrasti garanti edilir. Boylece kullanici
+    // renkli kod zemini secse bile kod okunabilir kalir.
+    const code = deriveCodeTokens(colors.codeBg)
+    set('--jmc-code-comment', code.comment)
+    set('--jmc-code-punct', code.punct)
+    set('--jmc-code-literal', code.literal)
+    set('--jmc-code-string', code.string)
+    set('--jmc-code-operator', code.operator)
+    set('--jmc-code-keyword', code.keyword)
+    set('--jmc-code-function', code.function)
+    set('--jmc-code-meta', code.meta)
 
-    localStorage.setItem('jmc_theme', theme)
+    writeStorage('jmc_theme', theme)
   }, [theme, colors])
 
   useEffect(() => {
     document.documentElement.dataset.reduceMotion = reduceMotion ? '1' : '0'
-    localStorage.setItem('jmc_reduce_motion', reduceMotion ? '1' : '0')
+    writeStorage('jmc_reduce_motion', reduceMotion ? '1' : '0')
   }, [reduceMotion])
 
   useEffect(() => {
     document.documentElement.dataset.density = compact ? 'compact' : 'comfortable'
-    localStorage.setItem('jmc_compact', compact ? '1' : '0')
+    writeStorage('jmc_compact', compact ? '1' : '0')
   }, [compact])
 
-  const setTheme = (name: ThemeName) => setThemeState(name)
+  const previewColors = useCallback((next: ThemeColors | null) => setPreview(next), [])
+
+  // Temayı değiştirirken canlı önizleme düşer; aksi halde önizleme, seçilen
+  // yerleşik temanın renklerini gizlerdi.
+  const setTheme = useCallback((name: ThemeName) => {
+    setPreview(null)
+    setThemeState(name)
+  }, [])
+
+  const applyCustomTheme = useCallback((id: string) => {
+    setActiveCustomThemeId(id)
+    writeStorage(CUSTOM_THEME_ACTIVE_KEY, id)
+    setPreview(null)
+    setThemeState('Custom')
+  }, [])
+
+  const saveCustomTheme = useCallback(
+    (draft: CustomThemeDraft): CustomThemeSaveResult => {
+      if (customThemes.length >= MAX_CUSTOM_THEMES) return { ok: false, error: 'limit' }
+      const built = createCustomTheme(draft, Date.now())
+      if (!built.ok) return { ok: false, error: built.reason }
+      setCustomThemes(prev => {
+        const next = [...prev, built.theme]
+        writeStorage(CUSTOM_THEME_STORAGE_KEY, serializeCustomThemes(next))
+        return next
+      })
+      applyCustomTheme(built.theme.id)
+      return { ok: true, id: built.theme.id }
+    },
+    [customThemes, applyCustomTheme],
+  )
+
+  const renameCustomTheme = useCallback(
+    (id: string, rawName: string): CustomThemeSaveResult => {
+      if (!customThemes.some(t => t.id === id)) return { ok: false, error: 'name' }
+      const checked = validateCustomThemeName(rawName)
+      if (!checked.ok) return { ok: false, error: 'name' }
+      const name = checked.name
+      setCustomThemes(prev => {
+        const list = prev.map(t => (t.id === id ? { ...t, name } : t))
+        writeStorage(CUSTOM_THEME_STORAGE_KEY, serializeCustomThemes(list))
+        return list
+      })
+      return { ok: true, id }
+    },
+    [customThemes],
+  )
+
+  const removeCustomTheme = useCallback(
+    (id: string) => {
+      setCustomThemes(prev => {
+        const list = prev.filter(t => t.id !== id)
+        writeStorage(CUSTOM_THEME_STORAGE_KEY, serializeCustomThemes(list))
+        return list
+      })
+      if (activeCustomThemeId === id) {
+        setActiveCustomThemeId(null)
+        removeStorage(CUSTOM_THEME_ACTIVE_KEY)
+        setPreview(null)
+        setThemeState('Dark')
+      }
+    },
+    [activeCustomThemeId],
+  )
 
   const updateCustomColor = (key: keyof ThemeColors, value: string) => {
     setCustomColors(prev => {
       const next = { ...prev, [key]: value }
-      localStorage.setItem('jmc_custom_theme', JSON.stringify(next))
+      writeStorage('jmc_custom_theme', JSON.stringify(next))
       return next
     })
   }
 
   const resetCustomColors = () => {
     setCustomColors(THEMES.Custom)
-    localStorage.removeItem('jmc_custom_theme')
+    removeStorage('jmc_custom_theme')
   }
 
   const setCompact = (v: boolean) => setCompactState(v)
@@ -236,12 +339,22 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setReduceMotion,
         compact,
         setCompact,
+        customThemes,
+        activeCustomThemeId,
+        applyCustomTheme,
+        saveCustomTheme,
+        renameCustomTheme,
+        removeCustomTheme,
+        previewColors,
+        isPreviewing,
       }}
     >
       {children}
     </ThemeContext.Provider>
   )
 }
+
+export { CUSTOM_THEME_NAME_MAX, MAX_CUSTOM_THEMES }
 
 export function useTheme(): ThemeContextValue {
   const ctx = useContext(ThemeContext)

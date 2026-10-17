@@ -110,6 +110,11 @@ export const translations: Record<Language, Record<string, string>> = {
     'ai.toolPending': 'Kullanıcı Onayı Bekleniyor',
     'ai.toolApproved': 'Onaylandı',
     'ai.toolRejected': 'Reddedildi',
+    // Aracin reddedilmesi ile BASARISIZ olmasi farkli seylerdir.
+    // Eski arayuzde ikisi de "Reddedildi" gorunuyordu; anahtarsiz web
+    // aramasi gibi otomatik araclar kullanici onay vermedigi halde
+    // reddedilmis gibi isaretleniyordu.
+    'ai.toolFailed': 'Başarısız',
     'ai.toolCompleted': 'Tamamlandı',
     'ai.toolError': 'Hata Oluştu',
     'ai.approve': 'Onayla ve Uygula',
@@ -211,6 +216,39 @@ export const translations: Record<Language, Record<string, string>> = {
     // Ayarlar - Görünüm
     'settings.appearance.theme': 'Arayüz Teması',
     'settings.appearance.contrastRatio': 'Ölçülen Kontrast Oranı',
+    'settings.appearance.custom': 'Özel Tema Oluşturucu',
+    'settings.appearance.customHint':
+      'Dört renk seçin, ad verin ve kaydedin. Seçim anında önizlenir; vazgeçerseniz eski temanız geri gelir.',
+    'settings.appearance.customName': 'Tema adı',
+    'settings.appearance.customNamePlaceholder': 'Örn. Gece Çalışması',
+    'settings.appearance.customNameHint': 'En fazla 40 karakter: harf, rakam, boşluk, tire ve alt çizgi.',
+    'settings.appearance.customNameTooLong': 'Tema adı 40 karakterden uzun olamaz.',
+    'settings.appearance.customNameEmpty': 'Tema adı boş olamaz.',
+    'settings.appearance.customBg': 'Arka plan',
+    'settings.appearance.customPrimary': 'Birincil (vurgu)',
+    'settings.appearance.customAccent': 'Vurgu (accent)',
+    'settings.appearance.customText': 'Metin',
+    'settings.appearance.customHexInvalid': 'Geçersiz hex — #rrggbb biçiminde yazın.',
+    'settings.appearance.customContrastWarn':
+      'Uyarı: metin ve arka plan kontrastı düşük. Okunabilirlik için daha koyu bir metin rengi ya da daha açık bir zemin seçin.',
+    'settings.appearance.customSave': 'Temayı Kaydet',
+    'settings.appearance.customSaved': 'Tema kaydedildi ve uygulandı.',
+    'settings.appearance.customSaveFailed': 'Tema kaydedilemedi.',
+    'settings.appearance.customLimit': 'Kayıtlı tema sınırına ulaşıldı. Önce bir temayı silin.',
+    'settings.appearance.customRenamed': 'Tema yeniden adlandırıldı.',
+    'settings.appearance.customCancel': 'Önizlemeyi Bırak',
+    'settings.appearance.customList': 'Kayıtlı Temalarım',
+    'settings.appearance.customEmpty': 'Henüz kayıtlı tema yok.',
+    'settings.appearance.customApply': 'Uygula',
+    'settings.appearance.customApplied': 'Etkin',
+    'settings.appearance.customRename': 'Yeniden adlandır',
+    'settings.appearance.customRenameSave': 'Kaydet',
+    'settings.appearance.customRenameCancel': 'Vazgeç',
+    'settings.appearance.customDelete': 'Sil',
+    'settings.appearance.customDeleteConfirm': 'Emin misiniz?',
+    'settings.appearance.customDeleted': 'Tema silindi.',
+    'settings.appearance.customEditLocked':
+      'Şu anda kayıtlı bir tema etkin. Aşağıdaki tek renkli ayar yalnızca kayıtlı tema seçili değilken kullanılır.',
 
     // Ayarlar - Gizlilik
     // Bu anahtarlar eskiden "Önbelleği Tamamen Sil" diyordu; artık düğme
@@ -436,6 +474,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'ai.toolPending': 'Awaiting User Approval',
     'ai.toolApproved': 'Approved',
     'ai.toolRejected': 'Rejected',
+    'ai.toolFailed': 'Failed',
     'ai.toolCompleted': 'Completed',
     'ai.toolError': 'Execution Error',
     'ai.approve': 'Approve & Apply',
@@ -537,6 +576,39 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings - Appearance
     'settings.appearance.theme': 'Interface Theme',
     'settings.appearance.contrastRatio': 'Measured Contrast Ratio',
+    'settings.appearance.custom': 'Custom Theme Builder',
+    'settings.appearance.customHint':
+      'Pick four colours, give it a name and save it. Changes preview live; if you discard, your previous theme comes back.',
+    'settings.appearance.customName': 'Theme name',
+    'settings.appearance.customNamePlaceholder': 'e.g. Late Night Study',
+    'settings.appearance.customNameHint': 'Up to 40 characters: letters, digits, spaces, hyphen and underscore.',
+    'settings.appearance.customNameTooLong': 'Theme name cannot exceed 40 characters.',
+    'settings.appearance.customNameEmpty': 'Theme name cannot be empty.',
+    'settings.appearance.customBg': 'Background',
+    'settings.appearance.customPrimary': 'Primary (accent)',
+    'settings.appearance.customAccent': 'Accent',
+    'settings.appearance.customText': 'Text',
+    'settings.appearance.customHexInvalid': 'Invalid hex — use the #rrggbb format.',
+    'settings.appearance.customContrastWarn':
+      'Warning: text and background contrast is low. Choose a darker text colour or a lighter background for readability.',
+    'settings.appearance.customSave': 'Save Theme',
+    'settings.appearance.customSaved': 'Theme saved and applied.',
+    'settings.appearance.customSaveFailed': 'Theme could not be saved.',
+    'settings.appearance.customLimit': 'Saved theme limit reached. Delete a theme first.',
+    'settings.appearance.customRenamed': 'Theme renamed.',
+    'settings.appearance.customCancel': 'Discard Preview',
+    'settings.appearance.customList': 'My Saved Themes',
+    'settings.appearance.customEmpty': 'No saved themes yet.',
+    'settings.appearance.customApply': 'Apply',
+    'settings.appearance.customApplied': 'Active',
+    'settings.appearance.customRename': 'Rename',
+    'settings.appearance.customRenameSave': 'Save',
+    'settings.appearance.customRenameCancel': 'Cancel',
+    'settings.appearance.customDelete': 'Delete',
+    'settings.appearance.customDeleteConfirm': 'Are you sure?',
+    'settings.appearance.customDeleted': 'Theme deleted.',
+    'settings.appearance.customEditLocked':
+      'A saved theme is active. The single-colour controls below only apply when no saved theme is selected.',
 
     // Settings - Privacy
     'settings.privacy.wipeTitle': 'Delete local data',

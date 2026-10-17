@@ -36,6 +36,7 @@ import {
 } from '../types/jmc'
 import { useI18n } from '../i18n/i18nContext'
 import { MarkdownView } from './MarkdownView'
+import { ClickableText } from './ClickableText'
 
 const YouTubeIcon: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -583,7 +584,9 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
 
                           {work.description && (
                             <p className="line-clamp-2 text-[12px] leading-relaxed text-[var(--jmc-text-muted)]">
-                              {work.description}
+                              {/* Duz metin olarak basilirsa icindeki adresler
+                                  TIKLANAMAZ kaliyordu. */}
+                              <ClickableText text={work.description} />
                             </p>
                           )}
                         </div>
@@ -914,7 +917,9 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
 
                     {mat.description && (
                       <p className="text-[12.5px] leading-relaxed text-[var(--jmc-text-muted)]">
-                        {mat.description}
+                        {/* Materyal aciklamalari duz metin olarak basilirdi;
+                            iclerindeki baglantilar calismiyordu. */}
+                        <ClickableText text={mat.description} />
                       </p>
                     )}
 

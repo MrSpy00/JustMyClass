@@ -32,7 +32,7 @@ function maxBorderRatio(theme: ThemeColors): number {
 
 describe('Tema sistemi', () => {
   it('her tema tum semantik renk jetonlarini icerir', () => {
-    expect(Object.keys(THEMES)).toHaveLength(16)
+    expect(Object.keys(THEMES)).toHaveLength(20)
     for (const name of Object.keys(THEMES) as ThemeName[]) {
       const colors = THEMES[name]
       for (const token of REQUIRED_TOKENS) {
@@ -43,7 +43,7 @@ describe('Tema sistemi', () => {
   })
 
   it('THEME_LIST katalogu gercek tema adlariyla eslesir', () => {
-    expect(THEME_LIST).toHaveLength(16)
+    expect(THEME_LIST).toHaveLength(20)
     for (const entry of THEME_LIST) {
       expect(Object.keys(THEMES)).toContain(entry.id)
       expect(entry.label).toBeTruthy()

@@ -2243,6 +2243,50 @@ export class AiOrchestrator {
     if (lower.includes('net::err_') || lower.includes('failed to fetch')) {
       return `${providerName} ile bağlantı kurulurken ağ hatası oluştu (${raw.slice(0, 120)}). Lütfen internet erişiminizi kontrol edin.`
     }
+
+    // HTTP 400 / INVALID_ARGUMENT
+    // ----------------------
+    // KULLANICI BILDIRIMI: Gemini'de her istek "HttpError: HTTP 400" veriyordu.
+    // Onceki surum bu durumda dusen varsayilan mesaja gidiyordu ve kullaniciya
+    // HICBIR teşhis gosterilmiyordu.
+    //
+    // 400 "istek hatali" demektir; en sik nedenler sirasiyla:
+    //   1. Govde limiti asilmasi (ek olarak gomulen cok buyuk PDF/gorsel)
+    //   2. Bozuk/kapanmis model kimligi
+    //   3. Arac semasi ile gonderilen istek (bazi modeller semayi kabul etmez)
+    if (
+      lower.includes('http 400') ||
+      lower.includes('invalid_argument') ||
+      lower.includes('invalid argument') ||
+      lower.includes('badrequest') ||
+      lower.includes('status code 400')
+    ) {
+      const reasons: string[] = []
+      if (lower.includes('too large') || lower.includes('payload') || lower.includes('request entity')) {
+        reasons.push('Ek olarak eklenen dosya çok büyük (istek boyutu sınırı aşıldı).')
+      }
+      if (lower.includes('thought_signature') || lower.includes('function call') || lower.includes('functioncall')) {
+        reasons.push('Arac çağrısı biçimi bu model tarafından kabul edilmedi.')
+      }
+      if (lower.includes('safety') || lower.includes('block') || lower.includes('prohibited')) {
+        reasons.push('İçerik güvenlik politikası tarafından engellendi.')
+      }
+      if (
+        lower.includes('model') &&
+        (lower.includes('not found') ||
+          lower.includes('unsupported') ||
+          lower.includes('deprecat') ||
+          lower.includes('not available'))
+      ) {
+        reasons.push('Seçilen model bu istek için desteklenmiyor, kullanımdan kaldırılmış ya da erişiminiz yok.')
+      }
+      const advice =
+        `${providerName} isteği reddedildi (HTTP 400 — istek geçersiz sayıldı). ` +
+        (reasons.length ? reasons.join(' ') : '') +
+        ' Denemek için: ekli dosyaları kaldırıp tekrar gönderin, araç kullanımını kapatın veya başka bir model seçin.'
+      return advice
+    }
+
     return `${providerName} isteği başarısız: ${raw.slice(0, 300)}`
   }
 
@@ -2441,7 +2485,22 @@ export class AiOrchestrator {
             // Araclar her turda gonderilir.
           )
 
-      if (turn.reasoning) reasoningParts.push(turn.reasoning)
+      // ONCEKI HATA — DUSUNME SIZINTISI
+      // -----------------------------------
+      // Her turun gerekcesi birlestiriliyordu. Arac dongusunun ARA
+      // turlari da buna dahildi; o turlarda model "once sunu yapacagim,
+      // simdi web_search cagiracagim" gibi bir PLANLAMA ic konusmasi
+      // uretir. Bu metin kullaniciya "MODELIN DUSUNME SURECI" altinda
+      // gosteriliyordu ve aslinda kullaniciya ait degildi:
+      //
+      //   "The user asks: ... According to rules, we must not ask for
+      //    permission... So we call web_search."
+      //
+      // Kullanici Turkce soruyor, ekranda Ingilizce ic yorum goruyor.
+      //
+      // COZUM: yalnizca YANITI ureten son turun gerekcesi gosterilir.
+      // Ara turlerin gerekcesi arac secimi icindir; gosterilmez.
+      if (turn.reasoning) reasoningParts = [turn.reasoning]
       if (round === 0) {
         answer = turn.content
       } else if (turn.content) {
@@ -3150,10 +3209,40 @@ export class AiOrchestrator {
     const lastUserIdx = userIndices.length > 0 ? userIndices[userIndices.length - 1] : -1
 
     const rawTurns: Array<{ role: 'user' | 'model'; parts: any[] }> = []
+
+    // NATIVE OLAN ARAC CAGIRILARI (yalnizca imzali olanlar)
+    // ---------------------------------------------------
+    // Gemini 3.x icin `functionCall` imzasi (`thoughtSignature`) olmadan
+    // geri oynatilamaz; imzasiz bir `functionCall` ya da ona karsilik gelmeyen
+    // bir `functionResponse` dogrudan HTTP 400 donuyordu.
+    //
+    // NEDEN SORUN? Cogu saglayici native arac cagirmaz; model arac cagrisini
+    // METIN olarak JSON yazar ve biz `extractTextToolCalls` ile cikaririz.
+    // Bu durumda dogal olarak `thoughtSignature` YOKTUR. Onceki surum yine de
+    // bu cagrilari native `functionCall` olarak gonderiyor, ardindan da
+    // `functionResponse` ekliyordu -> iki kosulda da 400.
+    //
+    // COZUM: yalnizca GERCEKTEN imzali (native) cagrilar native protokolle
+    // oynatilir. Digeri duz metne cevrilir; boylece model yine de arac
+    // sonucunu gorur, ama API reddi olmaz.
+    /** Bu model turunde native olarak oynatilacak arac adlari. */
+    let nativeNamesThisTurn = new Set<string>()
+    /** Bu model turunde native OYNATILAMAYAN (imzasiz) cagri aciklamalari. */
+    const textOnlyCallsThisTurn: string[] = []
+
     for (let idx = 0; idx < params.messages.length; idx++) {
       const m = params.messages[idx]
       if (m.role === 'system') continue
       const parts: any[] = []
+
+      // DIKKAT: sifirlama yalnizca ASISTAN turu basinda yapilir.
+      // Arac sonucu (`role: 'tool'`) AYRI bir dongu adiminda gelir; her
+      // adimda sifirlarsak kume sonuc islerken zaten bos olur ve native
+      // arac geri oynatimi tamamen bozulur.
+      if (m.role !== 'tool') {
+        nativeNamesThisTurn = new Set()
+        textOnlyCallsThisTurn.length = 0
+      }
 
       // ARAC SONUCU: Gemini arac cagrisi sonucunu `functionResponse`
       // PART'i olarak ister. Onceki surum sonucu duz `{ text: ... }`
@@ -3162,12 +3251,24 @@ export class AiOrchestrator {
       // text parameter" seklinde HTTP 400 donuyordu ve arac kullanimi
       // TAMAMEN calismiyordu.
       if (m.role === 'tool') {
-        parts.push({
-          functionResponse: {
-            name: m.toolName || 'tool',
-            response: parseToolResultForGemini(m.content),
-          },
-        })
+        const toolName = m.toolName || 'tool'
+        if (nativeNamesThisTurn.has(toolName)) {
+          nativeNamesThisTurn.delete(toolName)
+          parts.push({
+            functionResponse: {
+              name: toolName,
+              response: parseToolResultForGemini(m.content),
+            },
+          })
+        } else {
+          // KARSILIGI OLMAYAN ARAC SONUCU -> sahipsiz `functionResponse`
+          // gondermek de 400 yaratir. Duz metne cevir.
+          parts.push({
+            text:
+              `[Araç sonucu — ${toolName}]\n` +
+              `${String(m.content ?? '').slice(0, 20_000)}`,
+          })
+        }
         const last = rawTurns[rawTurns.length - 1]
         if (last && last.role === 'user') last.parts.push(...parts)
         else rawTurns.push({ role: 'user', parts })
@@ -3180,9 +3281,24 @@ export class AiOrchestrator {
       // oynatilir. Gemini 3.x imzayi zorunlu ister.
       if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
         for (const tc of m.toolCalls) {
-          const fn: Record<string, unknown> = { name: tc.name, args: tc.args ?? {} }
-          if (tc.thoughtSignature) fn.thoughtSignature = tc.thoughtSignature
+          if (!tc.thoughtSignature) {
+            // Imzasiz (metinden cikarilmis) cagri: native olarak gonderme.
+            textOnlyCallsThisTurn.push(
+              `Araç çağrısı: ${tc.name} ${JSON.stringify(tc.args ?? {}).slice(0, 1_000)}`,
+            )
+            continue
+          }
+          const fn: Record<string, unknown> = {
+            name: tc.name,
+            args: tc.args ?? {},
+            thoughtSignature: tc.thoughtSignature,
+          }
           parts.push({ functionCall: fn })
+          nativeNamesThisTurn.add(tc.name)
+        }
+        // Imzasiz cagrilar duz metin olarak da belirtilir (bilgi kaybi yok).
+        if (textOnlyCallsThisTurn.length > 0) {
+          parts.push({ text: textOnlyCallsThisTurn.join('\n') })
         }
       }
 

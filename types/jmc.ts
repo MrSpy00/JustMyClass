@@ -405,6 +405,10 @@ export type ThemeName =
   | 'Sunset Vibes'
   | 'Abyss'
   | 'Synthwave'
+  | 'Deep Sea'
+  | 'Bordeaux'
+  | 'High Contrast'
+  | 'Pastel Soft'
   | 'Custom'
 
 export interface ThemeColors {
@@ -427,6 +431,40 @@ export interface ThemeColors {
   badgeBg: string
   /** Yükseltilmiş yüzeylerin düşüş gölgesi. Çizgi yerine derinlik için kullanılır. */
   elevation: string
+}
+
+/**
+ * Kullanicinin "Custom Theme Builder" ile olusturdugu ve kalici olarak
+ * sakladigi tema.
+ *
+ * Dizinlenmis (built-in) temalardan ayridir: `ThemeName` birlesimine girmez,
+ * `ThemeContext` icinde ayri bir liste olarak tutulur ve `CustomTheme.colors`
+ * tam olarak `ThemeColors` sekline uyar (bu yuzden her iki tip ayni yerde
+ * birlestirilebilir).
+ */
+export interface CustomTheme {
+  /** Depolama ve arama icin kararli kimlik. Kullanici tarafindan degistirilemez. */
+  id: string
+  /** Kullanici tarafindan verilen, 1-40 karakter arasi, guvenli karakterli ad. */
+  name: string
+  colors: ThemeColors
+  createdAt: number
+}
+
+/**
+ * Custom Theme Builder formundan gelen ham girdi: dort renk + bir ad.
+ * Diger 15 `ThemeColors` alani bu dort renkten turetilir.
+ */
+export interface CustomThemeDraft {
+  name: string
+  /** Zemin rengi (tema "acik" mi "koyu" mu bundan belirlenir). */
+  bg: string
+  /** Birincil / vurgu rengi (baglantilar, dugmeler, secim halkasi). */
+  primary: string
+  /** Ikincil vurgu rengi (vurgular, rozetler). */
+  accent: string
+  /** Govde metni rengi. */
+  text: string
 }
 
 export interface SyncStatus {
@@ -536,6 +574,46 @@ export interface AccountCapability {
   detail: string
 }
 
+/**
+ * DOCX icerik blogu.
+ *
+ * DUZ SAYI DIZISI YETMEZDI
+ * ----------------------
+ * Onceden tum paragraflar tek bir `paragraphs: string[]` dizisine
+ * dolduruluyordu. Bu iki bilgiyi kaybediyordu:
+ *   1. Bloklarin SIRASI (paragraf / tablo / paragraf...)
+ *   2. Kopru hedefleri
+ *
+ * Ayrica cok satirli tablolar TEK satira cokuyordu. Artik her `<w:tr>`
+ * ayri bir satirdir ve bos hucreler korunur.
+ */
+export interface DocxParagraphBlock {
+  type: 'paragraph'
+  text: string
+  bullet: boolean
+  /** `w:hyperlink` hedefi (varsa). */
+  url?: string
+}
+
+export interface DocxTableBlock {
+  type: 'table'
+  rows: string[][]
+  /** `rows` ile ayni sekilli hucre adresleri. */
+  cellUrls: Array<Array<string | undefined>>
+}
+
+export type DocxBlock = DocxParagraphBlock | DocxTableBlock
+
+export interface PreviewSlide {
+  slideNumber: number
+  title?: string
+  bullets: string[]
+  /** Basligin `a:hlinkClick` hedefi (varsa). */
+  titleUrl?: string
+  /** `bullets` ile ayni indekslenir. */
+  bulletUrls?: Array<string | undefined>
+}
+
 export interface FilePreviewResult {
   fileId: string
   title: string
@@ -548,7 +626,9 @@ export interface FilePreviewResult {
   language?: string
   lineCount?: number
   paragraphs?: string[]
-  slides?: Array<{ slideNumber: number; title?: string; bullets: string[] }>
+  /** DOCX/ODT: sıralı, köprü korumalı içerik blokları. */
+  docBlocks?: DocxBlock[]
+  slides?: PreviewSlide[]
   tableData?: Array<string[]>
   /** XLSX/ODS calisma kitabi sayfa adlari. */
   sheetNames?: string[]

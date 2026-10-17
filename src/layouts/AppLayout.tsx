@@ -2534,6 +2534,18 @@ const resetSessionUiState = useCallback(() => {
                         {msg.toolCalls.map(tc => {
                           const isPending = tc.status === 'pending'
                           const isApproved = tc.status === 'approved' || tc.status === 'completed'
+                          // ONCEKI HATA
+                          // -------------
+                          // Rozette yalnizca `pending` / `approved` / `rejected`
+                          // vardi. Bu yuzden bir aracin BASARISIZ olmasi (orn.
+                          // anahtarsiz web aramasi hicbir kaynaktan sonuc
+                          // bulamadi) "REDDEDILDI" olarak etiketleniyordu.
+                          // Kullanici aracin reddedildigini saniyordu; oysa
+                          // hicbir onay penceresi hic acilmamisti.
+                          //
+                          // COZUM: `error` ayri bir durum. Gercek hata mesaji
+                          // rozet altinda gosterilir.
+                          const isError = tc.status === 'error'
                           return (
                             <div
                               key={tc.id}
@@ -2550,16 +2562,29 @@ const resetSessionUiState = useCallback(() => {
                                       ? 'bg-[var(--jmc-warning)]/15 text-[var(--jmc-warning)]'
                                       : isApproved
                                       ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success)]'
-                                      : 'bg-[var(--jmc-danger)]/15 text-[var(--jmc-danger)]'
+                                      : isError
+                                      ? 'bg-[var(--jmc-danger)]/15 text-[var(--jmc-danger)]'
+                                      : 'bg-[var(--jmc-text-dim)]/15 text-[var(--jmc-text-dim)]'
                                   }`}
                                 >
                                   {isPending
                                     ? t('ai.toolPending')
                                     : isApproved
                                     ? t('ai.toolApproved')
+                                    : isError
+                                    ? t('ai.toolFailed')
                                     : t('ai.toolRejected')}
                                 </span>
                               </div>
+
+                              {isError && tc.error && (
+                                <p
+                                  role="status"
+                                  className="text-[11px] leading-relaxed text-[var(--jmc-text-muted)] border-t border-[var(--jmc-border-subtle)] pt-2 break-words"
+                                >
+                                  {tc.error}
+                                </p>
+                              )}
 
                               {isPending && (
                                 <div className="flex items-center justify-end gap-2 pt-1 border-t border-[var(--jmc-border-subtle)]">

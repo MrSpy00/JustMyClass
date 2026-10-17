@@ -34,18 +34,25 @@ import {
   Zap,
 } from 'lucide-react'
 import { useI18n } from '../../i18n/i18nContext'
-import { useTheme } from '../../themes/ThemeContext'
-import { THEMES } from '../../themes/themeConfig'
+import { contrastRatio, useTheme } from '../../themes/ThemeContext'
+import {
+  CUSTOM_THEME_NAME_MAX,
+  THEMES,
+  deriveCustomThemeColors,
+  sanitizeHex,
+  validateCustomThemeName,
+} from '../../themes/themeConfig'
 import {
   Account,
   AiProviderConfig,
+  CustomThemeDraft,
   ProviderId,
   SecurityInfo,
   StorageDiagnostics,
   SyncStatus,
-  UpdateStatus,
   ThemeName,
   ToolPermissions,
+  UpdateStatus,
 } from '../../types/jmc'
 import { ProviderIcon } from '../../components/icons/ProviderIcon'
 import { CustomSelect } from '../../components/CustomSelect'
@@ -175,6 +182,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   initialTab,
 }) => {
   const { t, lang, setLang } = useI18n()
+  const themeApi = useTheme()
   const {
     theme,
     setTheme,
@@ -186,7 +194,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setReduceMotion,
     compact,
     setCompact,
-  } = useTheme()
+    customThemes,
+    activeCustomThemeId,
+    applyCustomTheme,
+    saveCustomTheme,
+    renameCustomTheme,
+    removeCustomTheme,
+    previewColors,
+    isPreviewing,
+  } = themeApi
 
   const [tab, setTab] = useState<TabId>(() => sanitizeTab(initialTab))
   const [notice, setNotice] = useState<Notice>(null)
@@ -785,6 +801,7 @@ const handleWipe = async () => {
                   onReduceMotion={setReduceMotion}
                   compact={compact}
                   onCompact={setCompact}
+                  custom={themeApi}
                 />
               )}
 
@@ -1468,7 +1485,30 @@ interface AppearancePanelProps {
   onReduceMotion: (v: boolean) => void
   compact: boolean
   onCompact: (v: boolean) => void
+  /** Custom Theme Builder icin gereken tema API'si (tek paket halinde). */
+  custom: CustomThemeApi
 }
+
+/** `useTheme()`'in yalnizca ozel tema tarafini tutan alt kume. */
+type CustomThemeApi = Pick<
+  ReturnType<typeof useTheme>,
+  | 'customThemes'
+  | 'activeCustomThemeId'
+  | 'applyCustomTheme'
+  | 'saveCustomTheme'
+  | 'renameCustomTheme'
+  | 'removeCustomTheme'
+  | 'previewColors'
+  | 'isPreviewing'
+>
+
+/** Builder formundaki dort renk alani ve etiketleri. */
+const CUSTOM_COLOR_FIELDS = [
+  { key: 'bg', label: 'settings.appearance.customBg' },
+  { key: 'primary', label: 'settings.appearance.customPrimary' },
+  { key: 'accent', label: 'settings.appearance.customAccent' },
+  { key: 'text', label: 'settings.appearance.customText' },
+] as const
 
 const AppearancePanel: React.FC<AppearancePanelProps> = ({
   theme,
@@ -1481,7 +1521,132 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
   onReduceMotion,
   compact,
   onCompact,
+  custom,
 }) => {
+  const { t } = useI18n()
+  const { customThemes, activeCustomThemeId, isPreviewing } = custom
+
+  // --- Custom Theme Builder yerel durumu ----------------------------
+  const [draftName, setDraftName] = useState('')
+  const [draft, setDraft] = useState<CustomThemeDraft>({
+    name: '',
+    bg: '#101828',
+    primary: '#4c8dff',
+    accent: '#7aa7ff',
+    text: '#e8edf5',
+  })
+  const [hexError, setHexError] = useState<string | null>(null)
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [status, setStatus] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  /**
+   * Kullanici ilk kez renk degistirdiginde TRUE olur. False ise onizleme
+   * hic uygulanmaz — aksi halde ayar sekmesi acilir acilmaz secili tema
+   * taslagin renkleriyle degismis gibi gorunurdu.
+   */
+  const [previewing, setPreviewing] = useState(false)
+
+  /** Butun dort renk gecerli mi? */
+  const draftColors = useMemo(() => {
+    const picked = CUSTOM_COLOR_FIELDS.map(f => sanitizeHex(draft[f.key]))
+    if (picked.some(c => c === null)) return null
+    return deriveCustomThemeColors({
+      ...draft,
+      bg: picked[0] as string,
+      primary: picked[1] as string,
+      accent: picked[2] as string,
+      text: picked[3] as string,
+    })
+  }, [draft])
+
+  // Canli onizleme: kullanici renk degistirdikten sonra her gecerli degisiklikte
+  // hemen uygulanir. Vazgecilirse onizleme kaldirilir ve eski tema geri gelir.
+  useEffect(() => {
+    if (!previewing || !draftColors) return
+    custom.previewColors(draftColors)
+  }, [previewing, draftColors, custom.previewColors])
+
+  // Panel kapaninca / sekme degisince onizleme dusmeli; kalici degil.
+  useEffect(() => () => custom.previewColors(null), [custom.previewColors])
+
+  const onPickColor = (key: 'bg' | 'primary' | 'accent' | 'text', raw: string) => {
+    const hex = sanitizeHex(raw)
+    if (!hex) {
+      setHexError(raw.trim() === '' ? null : t('settings.appearance.customHexInvalid'))
+      return
+    }
+    setHexError(null)
+    setDraft(prev => ({ ...prev, [key]: hex }))
+    setPreviewing(true)
+  }
+
+  const handleCancel = () => {
+    setPreviewing(false)
+    custom.previewColors(null)
+    setStatus(null)
+    setHexError(null)
+  }
+
+  const handleSave = () => {
+    if (!draftColors) {
+      setHexError(t('settings.appearance.customHexInvalid'))
+      return
+    }
+    const checked = validateCustomThemeName(draftName)
+    if (!checked.ok) {
+      setNameError(
+        checked.reason === 'too_long'
+          ? t('settings.appearance.customNameTooLong')
+          : t('settings.appearance.customNameEmpty'),
+      )
+      return
+    }
+    setNameError(null)
+    const result = custom.saveCustomTheme({ ...draft, name: draftName })
+    if (!result.ok) {
+      setStatus({
+        tone: 'error',
+        text:
+          result.error === 'limit'
+            ? t('settings.appearance.customLimit')
+            : t('settings.appearance.customSaveFailed'),
+      })
+      return
+    }
+    setStatus({ tone: 'ok', text: t('settings.appearance.customSaved') })
+    setDraftName('')
+    setDraft(prev => ({ ...prev, name: '' }))
+    setPreviewing(false)
+    custom.previewColors(null)
+  }
+
+  const startRename = (id: string, current: string) => {
+    setConfirmDeleteId(null)
+    setEditingId(id)
+    setEditingName(current)
+    setStatus(null)
+  }
+
+  const commitRename = () => {
+    if (!editingId) return
+    const result = custom.renameCustomTheme(editingId, editingName)
+    if (result.ok) {
+      setEditingId(null)
+      setEditingName('')
+      setStatus({ tone: 'ok', text: t('settings.appearance.customRenamed') })
+    } else {
+      setStatus({ tone: 'error', text: t('settings.appearance.customNameTooLong') })
+    }
+  }
+
+  const doDelete = (id: string) => {
+    custom.removeCustomTheme(id)
+    setConfirmDeleteId(null)
+    setStatus({ tone: 'ok', text: t('settings.appearance.customDeleted') })
+  }
+
   // Kontrast rozeti SABIT bir sayi degil; secili temanin olculmus oranidir.
   const summary = [
     { label: 'Gövde', report: audit.body },
@@ -1489,6 +1654,11 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
     { label: 'Soluk', report: audit.dim },
     { label: 'Vurgu', report: audit.primaryOnBg },
   ]
+
+  // Kullanicinin secimi zayif kontrastli mi? Kullanilabilir bir tema secilmediyse
+  // (tumu gecersiz hex) uyari gostermenin anlami yok.
+  const draftContrast = draftColors ? contrastRatio(draftColors.text, draftColors.bg) : null
+  const draftContrastLow = draftContrast !== null && draftContrast < 4.5
 
   return (
     <div className="space-y-5">
@@ -1587,6 +1757,14 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
               Varsayılanlara dön
             </button>
           </div>
+          {/* Kayitli bir tema etkideyse bu ayarlar sessizce etkisiz kalirdi;
+              bu yuzden acikca kilitlenip aciklanir. */}
+          {activeCustomThemeId && (
+            <p className="flex items-start gap-1.5 text-[11px] text-[var(--jmc-warning)]">
+              <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+              {t('settings.appearance.customEditLocked')}
+            </p>
+          )}
           <div className="grid gap-2 sm:grid-cols-4">
             {(
               [
@@ -1615,6 +1793,260 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
           </div>
         </section>
       )}
+
+      {/* ---------------- Custom Theme Builder ---------------- */}
+      <section className="space-y-3 border-t border-[var(--jmc-border-subtle)] pt-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-[12.5px] font-medium">{t('settings.appearance.custom')}</h3>
+          {(previewing || isPreviewing) && (
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="inline-flex items-center gap-1.5 text-[11px] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]"
+            >
+              <RotateCcw className="h-3 w-3" />
+              {t('settings.appearance.customCancel')}
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-[var(--jmc-text-dim)]">
+          {t('settings.appearance.customHint')}
+        </p>
+
+        <div className="grid gap-2.5 sm:grid-cols-2">
+          {CUSTOM_COLOR_FIELDS.map(field => (
+            <div key={field.key}>
+              <label
+                htmlFor={`ct-color-${field.key}`}
+                className="mb-1 block text-[10.5px] text-[var(--jmc-text-dim)]"
+              >
+                {t(field.label)}
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id={`ct-color-${field.key}`}
+                  type="color"
+                  value={draft[field.key]}
+                  onChange={e => onPickColor(field.key, e.target.value)}
+                  className="h-8 w-9 shrink-0 cursor-pointer rounded-[var(--jmc-radius-sm)] bg-transparent"
+                />
+                <input
+                  type="text"
+                  value={draft[field.key]}
+                  spellCheck={false}
+                  autoComplete="off"
+                  aria-label={`${t(field.label)} hex`}
+                  onChange={e => onPickColor(field.key, e.target.value)}
+                  className="w-full rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2 py-1 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none focus:ring-1 focus:ring-[var(--jmc-primary)]"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {hexError && (
+          <p className="flex items-center gap-1.5 text-[11px] text-[var(--jmc-danger)]">
+            <AlertCircle className="h-3 w-3 shrink-0" />
+            {hexError}
+          </p>
+        )}
+
+        {draftContrastLow && (
+          <p className="flex items-start gap-1.5 text-[11px] text-[var(--jmc-danger)]">
+            <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+            {t('settings.appearance.customContrastWarn')} ({draftContrast?.toFixed(2)}:1)
+          </p>
+        )}
+
+        <div>
+          <label
+            htmlFor="ct-name"
+            className="mb-1 block text-[10.5px] text-[var(--jmc-text-dim)]"
+          >
+            {t('settings.appearance.customName')}
+          </label>
+          <input
+            id="ct-name"
+            type="text"
+            value={draftName}
+            placeholder={t('settings.appearance.customNamePlaceholder')}
+            onChange={e => {
+              setDraftName(e.target.value)
+              if (nameError) setNameError(null)
+            }}
+            className="w-full rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1.5 text-[12px] text-[var(--jmc-text)] outline-none focus:ring-1 focus:ring-[var(--jmc-primary)]"
+          />
+          <p
+            className={`mt-1 text-[10.5px] ${
+              draftName.length > CUSTOM_THEME_NAME_MAX
+                ? 'text-[var(--jmc-danger)]'
+                : 'text-[var(--jmc-text-dim)]'
+            }`}
+          >
+            {nameError ??
+              (draftName.length > CUSTOM_THEME_NAME_MAX
+                ? t('settings.appearance.customNameTooLong')
+                : t('settings.appearance.customNameHint'))}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-medium text-white transition-colors hover:bg-[var(--jmc-primary-hover)]"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('settings.appearance.customSave')}
+          </button>
+          {status && (
+            <span
+              className={`text-[11px] ${
+                status.tone === 'ok' ? 'text-[var(--jmc-success)]' : 'text-[var(--jmc-danger)]'
+              }`}
+            >
+              {status.text}
+            </span>
+          )}
+        </div>
+      </section>
+
+      {/* ---------------- Kayitli temalar ---------------- */}
+      <section className="space-y-2.5 border-t border-[var(--jmc-border-subtle)] pt-4">
+        <h3 className="text-[12.5px] font-medium">{t('settings.appearance.customList')}</h3>
+        {customThemes.length === 0 ? (
+          <p className="text-[11px] text-[var(--jmc-text-dim)]">
+            {t('settings.appearance.customEmpty')}
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {customThemes.map(entry => {
+              const active = theme === 'Custom' && activeCustomThemeId === entry.id
+              const editing = editingId === entry.id
+              return (
+                <li
+                  key={entry.id}
+                  className="flex flex-wrap items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-2"
+                >
+                  <span
+                    aria-hidden
+                    className="h-5 w-5 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: entry.colors.bg,
+                      boxShadow: `inset 0 0 0 1px ${entry.colors.border}`,
+                    }}
+                  />
+                  <span className="flex shrink-0 gap-1">
+                    {[entry.colors.primary, entry.colors.accent, entry.colors.text].map((col, i) => (
+                      <span
+                        key={i}
+                        className="h-3 w-3 rounded-full"
+                        style={{
+                          backgroundColor: col,
+                          boxShadow: `inset 0 0 0 1px ${entry.colors.elevation}`,
+                        }}
+                      />
+                    ))}
+                  </span>
+                  {editing ? (
+                    <input
+                      autoFocus
+                      type="text"
+                      value={editingName}
+                      onChange={e => setEditingName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') commitRename()
+                        if (e.key === 'Escape') setEditingId(null)
+                      }}
+                      className="min-w-[120px] flex-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2 py-1 text-[11.5px] text-[var(--jmc-text)] outline-none focus:ring-1 focus:ring-[var(--jmc-primary)]"
+                    />
+                  ) : (
+                    <span className="min-w-[80px] flex-1 truncate text-[12px] text-[var(--jmc-text)]">
+                      {entry.name}
+                    </span>
+                  )}
+                  {active && (
+                    <span className="text-[10.5px] text-[var(--jmc-success)]">
+                      {t('settings.appearance.customApplied')}
+                    </span>
+                  )}
+                  <div className="ml-auto flex items-center gap-1">
+                    {editing ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={commitRename}
+                          className="text-[11px] text-[var(--jmc-primary)] hover:underline"
+                        >
+                          {t('settings.appearance.customRenameSave')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          className="text-[11px] text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)]"
+                        >
+                          {t('settings.appearance.customRenameCancel')}
+                        </button>
+                      </>
+                    ) : confirmDeleteId === entry.id ? (
+                      <>
+                        <span className="text-[11px] text-[var(--jmc-danger)]">
+                          {t('settings.appearance.customDeleteConfirm')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => doDelete(entry.id)}
+                          className="text-[11px] font-medium text-[var(--jmc-danger)] hover:underline"
+                        >
+                          {t('settings.appearance.customDelete')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="text-[11px] text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)]"
+                        >
+                          {t('settings.appearance.customRenameCancel')}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatus(null)
+                            setPreviewing(false)
+                            custom.applyCustomTheme(entry.id)
+                          }}
+                          className="text-[11px] text-[var(--jmc-primary)] hover:underline"
+                        >
+                          {t('settings.appearance.customApply')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => startRename(entry.id, entry.name)}
+                          className="text-[11px] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]"
+                        >
+                          {t('settings.appearance.customRename')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingId(null)
+                            setConfirmDeleteId(entry.id)
+                          }}
+                          className="text-[11px] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-danger)]"
+                        >
+                          {t('settings.appearance.customDelete')}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   )
 }

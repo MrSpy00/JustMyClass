@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
+import { findUrls, toOpenableUrl } from './ClickableText'
 import remarkGfm from 'remark-gfm'
 import { AlertCircle, Check, Copy, ExternalLink } from 'lucide-react'
 import Prism from 'prismjs'
@@ -101,6 +102,61 @@ function getPrismGrammar(lang?: string): { grammar: Prism.Grammar; langKey: stri
   if (l === 'dart') return { grammar: Prism.languages.dart, langKey: 'dart' }
   if (Prism.languages[l]) return { grammar: Prism.languages[l], langKey: l }
   return null
+}
+
+/**
+ * Metin icindeki duz adresleri baglantiya cevirir — bicimlendirme KORUNUR.
+ *
+ * NEDEN GEREKLI?
+ * --------------
+ * `react-markdown` yalnizca `[metin](url)` yaziminda `<a>` uretir. Kullanici
+ * sohbete duz metin olarak "aegissoft.com.tr araştır" yazdiginda adres
+ * TIKLANAMAZ duz metin olarak kaliyordu. GFM otomatik baglantilari bile
+ * yalnizca `https://` ve `www.` ile BASLAYAN adresleri yakalar; yaylisiz
+ * alan adlarini (orn. `aegissoft.com.tr`) yakalamaz.
+ *
+ * YAKLASIM
+ * --------
+ * Bicimlendirici duzensiz oldugu icin metni bastan yeniden yazmiyoruz.
+ * Bunun yerine React cocuk agacini dolasiyoruz: metin yapraklari linklestirilir,
+ * `<strong>` / `<em>` gibi ogeler oldugu gibi korunur. Boylece
+ * "**kalin** aegissoft.com.tr" gibi bir yazi hem bicimlendirmesini hem de
+ * baglantisini korur.
+ */
+function linkifyChildren(children: React.ReactNode, keyPrefix: string): React.ReactNode {
+  if (typeof children === 'string') {
+    const urls = findUrls(children)
+    if (urls.length === 0) return children
+    const out: React.ReactNode[] = []
+    let cursor = 0
+    urls.forEach((u, i) => {
+      if (u.start > cursor) out.push(children.slice(cursor, u.start))
+      out.push(
+        <a
+          key={`${keyPrefix}-a${i}`}
+          href={toOpenableUrl(u.url)}
+          onClick={(e: React.MouseEvent) => {
+            e.preventDefault()
+            e.stopPropagation()
+            void window.jmcAPI?.openExternalUrl(toOpenableUrl(u.url))
+          }}
+          rel="noreferrer noopener"
+          className="underline underline-offset-2 decoration-current/40 hover:decoration-current"
+        >
+          {u.url}
+        </a>,
+      )
+      cursor = u.end
+    })
+    if (cursor < children.length) out.push(children.slice(cursor))
+    return <React.Fragment key={keyPrefix}>{out}</React.Fragment>
+  }
+
+  if (Array.isArray(children)) {
+    return children.map((child, i) => linkifyChildren(child, `${keyPrefix}-${i}`))
+  }
+
+  return children
 }
 
 /** Kod bloklarını kopyalanabilir ve renklendirilmiş hâle getiren bileşen. */
@@ -245,13 +301,15 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({
           em: ({ children }) => <em className="italic">{children}</em>,
           del: ({ children }) => <del className="opacity-70">{children}</del>,
 
-          p: ({ children }) => <p>{children}</p>,
+          p: ({ children }) => <p>{linkifyChildren(children, 'p')}</p>,
 
           ul: ({ children }) => <ul>{children}</ul>,
           ol: ({ children }) => <ol>{children}</ol>,
-          li: ({ children }) => <li>{children}</li>,
+          li: ({ children }) => <li>{linkifyChildren(children, 'li')}</li>,
 
-          blockquote: ({ children }) => <blockquote>{children}</blockquote>,
+          blockquote: ({ children }) => (
+            <blockquote>{linkifyChildren(children, 'bq')}</blockquote>
+          ),
           hr: () => <hr />,
 
           a: ({ href, children }) => (
