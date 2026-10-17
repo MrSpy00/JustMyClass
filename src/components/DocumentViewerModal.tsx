@@ -141,6 +141,7 @@ import 'prismjs/components/prism-log'
 import type { Attachment, FilePreviewResult } from '../../types/jmc'
 import { MarkdownView } from './MarkdownView'
 import { ClickableText, findUrls, isSafeExternalUrl } from './ClickableText'
+import { YouTubeInlineCard } from './YouTubeInlineCard'
 
 /* ------------------------------------------------------------------ *
  * Yerel tip tanimlari
@@ -243,7 +244,7 @@ function resolvePrismGrammar(lang: string): { grammar: Prism.Grammar; key: strin
   return null
 }
 
-import { getYouTubeEmbedUrl, getYouTubeThumbnailUrl, parseYouTubeUrl } from '../lib/youtube'
+import { parseYouTubeUrl } from '../lib/youtube'
 
 /**
  * DOCX paragrafi: metni gosterir ve `w:hyperlink` ile gelen hedef varsa
@@ -253,7 +254,6 @@ import { getYouTubeEmbedUrl, getYouTubeThumbnailUrl, parseYouTubeUrl } from '../
  * tiklanabilir yapar); `url` varsa paragrafin tamami dokunun hedefine gider.
  */
 function DocxParagraphText({ text, url }: { text: string; url?: string }): React.ReactElement {
-  const [showYtPlayer, setShowYtPlayer] = useState(false)
   if (!url || !isSafeExternalUrl(url)) {
     return <ClickableText text={text} preserveWhitespace={false} />
   }
@@ -265,89 +265,17 @@ function DocxParagraphText({ text, url }: { text: string; url?: string }): React
         onClick={e => {
           e.preventDefault()
           e.stopPropagation()
-          if (yt) {
-            setShowYtPlayer(v => !v)
-          } else {
-            void window.jmcAPI?.openExternalUrl(url)
-          }
+          void window.jmcAPI?.openExternalUrl(url)
         }}
         rel="noreferrer noopener"
         className="text-[var(--jmc-link)] hover:text-[var(--jmc-link-hover)] font-semibold underline decoration-[1.5px] underline-offset-3 bg-[var(--jmc-link)]/10 hover:bg-[var(--jmc-link)]/20 px-1 py-0.5 rounded transition-colors break-words"
-        title={yt ? 'Uygulama içinde izlemek için tıklayın' : url}
+        title={url}
       >
         {text || url}
       </a>
       {yt && (
-        <span className="mt-2 block not-italic font-normal" onClick={e => e.stopPropagation()}>
-          {showYtPlayer ? (
-            <span className="block overflow-hidden rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-elevated)] shadow-[var(--jmc-shadow-sm)]">
-              <span className="relative block w-full pt-[56.25%] bg-black">
-                <iframe
-                  src={getYouTubeEmbedUrl(yt.videoId, { autoplay: true, startSeconds: yt.startSeconds })}
-                  title={text || `YouTube video ${yt.videoId}`}
-                  className="absolute inset-0 h-full w-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
-              </span>
-              <span className="flex items-center justify-between px-3 py-1.5 text-[11px] bg-[var(--jmc-bg-surface)] border-t border-[var(--jmc-border-subtle)]">
-                <span className="font-medium text-[var(--jmc-text-muted)]">YouTube Uygulama İçi Oynatıcı</span>
-                <span className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void window.jmcAPI?.openExternalUrl(url)}
-                    className="text-[var(--jmc-link)] hover:text-[var(--jmc-link-hover)] font-semibold underline"
-                  >
-                    Tarayıcıda Aç
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowYtPlayer(false)}
-                    className="rounded px-2 py-0.5 bg-[var(--jmc-bg)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]"
-                  >
-                    Kapat
-                  </button>
-                </span>
-              </span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-2.5 rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-elevated)] p-2 shadow-[var(--jmc-shadow-sm)]">
-              <button
-                type="button"
-                onClick={() => setShowYtPlayer(true)}
-                className="group relative h-12 w-20 shrink-0 overflow-hidden rounded-lg bg-black focus:outline-none"
-              >
-                <img
-                  src={getYouTubeThumbnailUrl(yt.videoId)}
-                  alt="YouTube önizleme"
-                  loading="lazy"
-                  className="h-full w-full object-cover opacity-85 group-hover:scale-105 group-hover:opacity-100 transition-all"
-                />
-                <span className="absolute inset-0 flex items-center justify-center bg-black/35">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ff0033] text-white text-[10px]">
-                    ▶
-                  </span>
-                </span>
-              </button>
-              <span className="flex flex-wrap items-center gap-2 pr-1">
-                <button
-                  type="button"
-                  onClick={() => setShowYtPlayer(true)}
-                  className="inline-flex items-center gap-1 rounded-lg bg-[var(--jmc-primary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--jmc-on-primary)] hover:bg-[var(--jmc-primary-hover)] transition-colors"
-                >
-                  <span>▶</span>
-                  <span>Uygulama İçinde İzle</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void window.jmcAPI?.openExternalUrl(url)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
-                >
-                  <span>Tarayıcıda Aç</span>
-                </button>
-              </span>
-            </span>
-          )}
+        <span className="mt-2 block not-italic font-normal max-w-xl" onClick={e => e.stopPropagation()}>
+          <YouTubeInlineCard videoId={yt.videoId} url={yt.url} startSeconds={yt.startSeconds} />
         </span>
       )}
     </span>

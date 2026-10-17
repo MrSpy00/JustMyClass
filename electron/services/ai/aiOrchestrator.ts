@@ -10,6 +10,7 @@ import {
 import { VaultService } from '../vaultService'
 import { StorageService } from '../storageService'
 import { ToolDispatcher, extractTextFromPdf, extractTextFromDocx } from '../toolDispatcher'
+import { extractUniversalAttachmentText } from '../filePreviewService'
 import { providerHttp, HttpError, HttpClient } from '../httpClient'
 import { JustMyClassMemoryService } from './memoryService'
 import {
@@ -1062,21 +1063,15 @@ function formatUserMessageWithAttachments(
 
   for (const doc of nonImages) {
     const sizeKb = doc.size ? Math.round(doc.size / 1024) : 0
-    const isPdf = doc.mimeType === 'application/pdf' || doc.name.toLowerCase().endsWith('.pdf')
-    const isDocx =
-      doc.mimeType.includes('wordprocessingml') || doc.name.toLowerCase().endsWith('.docx')
-
     let extractedText = doc.textContent || ''
+    let label = 'Ekli Belge'
+
     if (!extractedText && doc.base64Data) {
       try {
         const buf = Buffer.from(doc.base64Data, 'base64')
-        if (isPdf) {
-          extractedText = extractTextFromPdf(buf)
-        } else if (isDocx) {
-          extractedText = extractTextFromDocx(buf)
-        } else {
-          extractedText = buf.toString('utf-8')
-        }
+        const result = extractUniversalAttachmentText(buf, doc.name, doc.mimeType)
+        extractedText = result.text
+        label = result.fileTypeLabel || 'Ekli Belge'
       } catch {
         extractedText = ''
       }
@@ -1084,15 +1079,13 @@ function formatUserMessageWithAttachments(
 
     if (extractedText && extractedText.trim().length > 0) {
       doc.textContent = extractedText
-      const docLabel = isPdf ? 'Ekli PDF Metni' : isDocx ? 'Ekli Word/DOCX Metni' : 'Ekli Belge'
-      textContent += `\n\n[${docLabel}: ${doc.name}${sizeKb ? ` (${sizeKb} KB)` : ''}]\n\`\`\`\n${extractedText.slice(0, 30_000)}\n\`\`\`\n`
-    } else if (isPdf) {
+      textContent += `\n\n[${label}: ${doc.name}${sizeKb ? ` (${sizeKb} KB)` : ''}]\n\`\`\`\n${extractedText.slice(0, 35_000)}\n\`\`\`\n`
+    } else if (doc.isPdf || doc.name.toLowerCase().endsWith('.pdf')) {
       if (fitsInline(doc)) {
         textContent +=
           `\n\n[Ekli PDF Dosyası: ${doc.name}${sizeKb ? ` (${sizeKb} KB)` : ''}]` +
           `\n(Bu PDF taranmış resim veya metin katmanı içermeyen bir yapıya sahip olabilir. Gerekirse ilgili ders veya ödev açıkken workspace_read_open_file aracıyla inceleyebilirsin.)`
       } else {
-        // BUYUK + METIN KATMANI YOK: gommek 400 hatasi uretirdi.
         textContent +=
           `\n\n[Ekli PDF Dosyası: ${doc.name}${sizeKb ? ` (${sizeKb} KB)` : ''}]` +
           `\n(Bu dosya çok büyük olduğu için doğrudan gönderilemiyor. ` +

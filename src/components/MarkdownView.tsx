@@ -2,11 +2,9 @@ import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import { findUrls, toOpenableUrl } from './ClickableText'
 import {
-  extractYouTubeVideosFromText,
-  getYouTubeEmbedUrl,
-  getYouTubeThumbnailUrl,
   parseYouTubeUrl,
 } from '../lib/youtube'
+import { YouTubeInlineCard } from './YouTubeInlineCard'
 import remarkGfm from 'remark-gfm'
 import { AlertCircle, Check, Copy, ExternalLink } from 'lucide-react'
 import Prism from 'prismjs'
@@ -32,6 +30,7 @@ import 'prismjs/components/prism-ruby'
 import 'prismjs/components/prism-kotlin'
 import 'prismjs/components/prism-swift'
 import 'prismjs/components/prism-dart'
+import 'prismjs/components/prism-nasm'
 
 interface MarkdownViewProps {
   content: string
@@ -106,33 +105,22 @@ function getPrismGrammar(lang?: string): { grammar: Prism.Grammar; langKey: stri
   if (l === 'kt' || l === 'kotlin') return { grammar: Prism.languages.kotlin, langKey: 'kotlin' }
   if (l === 'swift') return { grammar: Prism.languages.swift, langKey: 'swift' }
   if (l === 'dart') return { grammar: Prism.languages.dart, langKey: 'dart' }
+  if (l === 'vue' || l === 'svelte' || l === 'astro') {
+    return { grammar: Prism.languages.markup, langKey: 'markup' }
+  }
+  if (l === 'asm' || l === 'nasm' || l === 'assembly' || l === 's') {
+    return { grammar: Prism.languages.nasm || Prism.languages.clike, langKey: 'nasm' }
+  }
   if (Prism.languages[l]) return { grammar: Prism.languages[l], langKey: l }
   return null
 }
 
 /**
  * Metin icindeki duz adresleri baglantiya cevirir — bicimlendirme KORUNUR.
- *
- * NEDEN GEREKLI?
- * --------------
- * `react-markdown` yalnizca `[metin](url)` yaziminda `<a>` uretir. Kullanici
- * sohbete duz metin olarak "aegissoft.com.tr araştır" yazdiginda adres
- * TIKLANAMAZ duz metin olarak kaliyordu. GFM otomatik baglantilari bile
- * yalnizca `https://` ve `www.` ile BASLAYAN adresleri yakalar; yaylisiz
- * alan adlarini (orn. `aegissoft.com.tr`) yakalamaz.
- *
- * YAKLASIM
- * --------
- * Bicimlendirici duzensiz oldugu icin metni bastan yeniden yazmiyoruz.
- * Bunun yerine React cocuk agacini dolasiyoruz: metin yapraklari linklestirilir,
- * `<strong>` / `<em>` gibi ogeler oldugu gibi korunur. Boylece
- * "**kalin** aegissoft.com.tr" gibi bir yazi hem bicimlendirmesini hem de
- * baglantisini korur.
  */
 function linkifyChildren(
   children: React.ReactNode,
   keyPrefix: string,
-  onToggleYouTube?: (videoId: string) => void,
 ): React.ReactNode {
   if (typeof children === 'string') {
     const urls = findUrls(children)
@@ -143,24 +131,27 @@ function linkifyChildren(
       if (u.start > cursor) out.push(children.slice(cursor, u.start))
       const yt = parseYouTubeUrl(u.url)
       out.push(
-        <a
-          key={`${keyPrefix}-a${i}`}
-          href={toOpenableUrl(u.url)}
-          onClick={(e: React.MouseEvent) => {
-            e.preventDefault()
-            e.stopPropagation()
-            if (yt && onToggleYouTube) {
-              onToggleYouTube(yt.videoId)
-            } else {
+        <React.Fragment key={`${keyPrefix}-a${i}`}>
+          <a
+            href={toOpenableUrl(u.url)}
+            onClick={(e: React.MouseEvent) => {
+              e.preventDefault()
+              e.stopPropagation()
               void window.jmcAPI?.openExternalUrl(toOpenableUrl(u.url))
-            }
-          }}
-          rel="noreferrer noopener"
-          className="underline underline-offset-2 decoration-current/40 hover:decoration-current"
-          title={yt ? 'Uygulama içinde izlemek için tıklayın' : toOpenableUrl(u.url)}
-        >
-          {u.url}
-        </a>,
+            }}
+            rel="noreferrer noopener"
+            className="underline underline-offset-2 decoration-current/40 hover:decoration-current"
+            title={toOpenableUrl(u.url)}
+          >
+            <span>{u.url}</span>
+            <ExternalLink className="ml-0.5 inline-block h-2.5 w-2.5 opacity-60" aria-hidden />
+          </a>
+          {yt && (
+            <span className="block my-2 not-prose w-full max-w-xl">
+              <YouTubeInlineCard videoId={yt.videoId} url={yt.url} startSeconds={yt.startSeconds} />
+            </span>
+          )}
+        </React.Fragment>,
       )
       cursor = u.end
     })
@@ -169,7 +160,7 @@ function linkifyChildren(
   }
 
   if (Array.isArray(children)) {
-    return children.map((child, i) => linkifyChildren(child, `${keyPrefix}-${i}`, onToggleYouTube))
+    return children.map((child, i) => linkifyChildren(child, `${keyPrefix}-${i}`))
   }
 
   return children
@@ -257,16 +248,6 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({
 }) => {
   const [copiedKey, setCopiedKey] = React.useState<string | null>(null)
   const [copyFailedKey, setCopyFailedKey] = React.useState<string | null>(null)
-  const [activeVideoId, setActiveVideoId] = React.useState<string | null>(null)
-
-  const youtubeVideos = React.useMemo(
-    () => extractYouTubeVideosFromText(content ?? ''),
-    [content],
-  )
-
-  const toggleYouTube = React.useCallback((videoId: string) => {
-    setActiveVideoId(prev => (prev === videoId ? null : videoId))
-  }, [])
 
   const copyCode = React.useCallback(async (code: string) => {
     try {
@@ -283,15 +264,9 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({
 
   /**
    * Bağlantılar yalnızca http/https/mailto şemalarıyla açılabilir.
-   * YouTube bağlantıları tıklandığında uygulama içi oynatıcıyı açar/kapatır.
    */
   const handleLinkClick = (href?: string) => {
     if (!href) return
-    const yt = parseYouTubeUrl(href)
-    if (yt) {
-      toggleYouTube(yt.videoId)
-      return
-    }
     let url: URL
     try {
       url = new URL(href)
@@ -325,30 +300,41 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({
           em: ({ children }) => <em className="italic">{children}</em>,
           del: ({ children }) => <del className="opacity-70">{children}</del>,
 
-          p: ({ children }) => <p>{linkifyChildren(children, 'p', toggleYouTube)}</p>,
+          p: ({ children }) => <p>{linkifyChildren(children, 'p')}</p>,
 
           ul: ({ children }) => <ul>{children}</ul>,
           ol: ({ children }) => <ol>{children}</ol>,
-          li: ({ children }) => <li>{linkifyChildren(children, 'li', toggleYouTube)}</li>,
+          li: ({ children }) => <li>{linkifyChildren(children, 'li')}</li>,
 
           blockquote: ({ children }) => (
-            <blockquote>{linkifyChildren(children, 'bq', toggleYouTube)}</blockquote>
+            <blockquote>{linkifyChildren(children, 'bq')}</blockquote>
           ),
           hr: () => <hr />,
 
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              onClick={e => {
-                e.preventDefault()
-                handleLinkClick(href)
-              }}
-              rel="noreferrer noopener"
-            >
-              <span>{children}</span>
-              <ExternalLink className="ml-0.5 inline-block h-2.5 w-2.5 opacity-60" aria-hidden />
-            </a>
-          ),
+          a: ({ href, children }) => {
+            const yt = href ? parseYouTubeUrl(href) : null
+            return (
+              <span className="inline">
+                <a
+                  href={href}
+                  onClick={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (href) handleLinkClick(href)
+                  }}
+                  rel="noreferrer noopener"
+                >
+                  <span>{children}</span>
+                  <ExternalLink className="ml-0.5 inline-block h-2.5 w-2.5 opacity-60" aria-hidden />
+                </a>
+                {yt && (
+                  <span className="block my-2 not-prose w-full max-w-xl">
+                    <YouTubeInlineCard videoId={yt.videoId} url={yt.url} startSeconds={yt.startSeconds} />
+                  </span>
+                )}
+              </span>
+            )
+          },
 
           code: ({ className: codeClassName, children, ...props }) => {
             const text = String(children)
@@ -387,96 +373,6 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({
       >
         {content}
       </ReactMarkdown>
-
-      {youtubeVideos.length > 0 && (
-        <div className="mt-3 flex flex-col gap-2.5 not-prose">
-          {youtubeVideos.map(yt => {
-            const isPlaying = activeVideoId === yt.videoId
-            return (
-              <div
-                key={yt.videoId}
-                onClick={e => e.stopPropagation()}
-                className="overflow-hidden rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-elevated)] text-[var(--jmc-text)] shadow-[var(--jmc-shadow-sm)]"
-              >
-                {isPlaying ? (
-                  <div>
-                    <div className="relative w-full pt-[56.25%] bg-black">
-                      <iframe
-                        src={getYouTubeEmbedUrl(yt.videoId, { autoplay: true, startSeconds: yt.startSeconds })}
-                        title={`YouTube video ${yt.videoId}`}
-                        className="absolute inset-0 h-full w-full border-0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        allowFullScreen
-                      />
-                    </div>
-                    <div className="flex items-center justify-between px-3 py-1.5 text-[11px] bg-[var(--jmc-bg-surface)] border-t border-[var(--jmc-border-subtle)]">
-                      <span className="font-medium text-[var(--jmc-text-muted)]">YouTube Uygulama İçi Oynatıcı</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void window.jmcAPI?.openExternalUrl(yt.url)}
-                          className="text-[var(--jmc-link)] hover:text-[var(--jmc-link-hover)] font-semibold underline"
-                        >
-                          Tarayıcıda Aç
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setActiveVideoId(null)}
-                          className="rounded px-2 py-0.5 bg-[var(--jmc-bg)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]"
-                        >
-                          Kapat
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3 p-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setActiveVideoId(yt.videoId)}
-                      className="group relative h-14 w-24 shrink-0 overflow-hidden rounded-lg bg-black focus:outline-none"
-                    >
-                      <img
-                        src={getYouTubeThumbnailUrl(yt.videoId)}
-                        alt="YouTube önizleme"
-                        loading="lazy"
-                        className="h-full w-full object-cover opacity-85 group-hover:scale-105 group-hover:opacity-100 transition-all"
-                      />
-                      <span className="absolute inset-0 flex items-center justify-center bg-black/35 group-hover:bg-black/20 transition-colors">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#ff0033] text-white text-xs shadow-md">
-                          ▶
-                        </span>
-                      </span>
-                    </button>
-                    <div className="min-w-0 flex-1 flex flex-col gap-1">
-                      <span className="text-[11px] font-semibold text-[var(--jmc-text)] truncate">
-                        YouTube Videosu ({yt.videoId})
-                      </span>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setActiveVideoId(yt.videoId)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-[var(--jmc-primary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--jmc-on-primary)] hover:bg-[var(--jmc-primary-hover)] transition-colors"
-                        >
-                          <span>▶</span>
-                          <span>Uygulama İçinde İzle</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void window.jmcAPI?.openExternalUrl(yt.url)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
-                        >
-                          <span>Tarayıcıda Aç</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }

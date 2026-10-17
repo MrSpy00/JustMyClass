@@ -442,24 +442,26 @@ export function SetupWizard({
                 <button
                   type="button"
                   onClick={() => setCompact(!compact)}
-                  className={`flex-1 rounded-[var(--jmc-radius-sm)] border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                  className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-[var(--jmc-radius-sm)] border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
                     compact
                       ? 'border-[var(--jmc-primary)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary-text)]'
                       : 'border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-elevated)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                   }`}
                 >
-                  {compact ? '✓ Sıkışık Düzen Aktif' : 'Standart Boşluklu Düzen'}
+                  {compact && <Check className="h-3 w-3 shrink-0" />}
+                  <span>{compact ? 'Sıkışık Düzen Aktif' : 'Standart Boşluklu Düzen'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setReduceMotion(!reduceMotion)}
-                  className={`flex-1 rounded-[var(--jmc-radius-sm)] border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                  className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-[var(--jmc-radius-sm)] border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
                     reduceMotion
                       ? 'border-[var(--jmc-primary)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary-text)]'
                       : 'border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-elevated)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                   }`}
                 >
-                  {reduceMotion ? '✓ Azaltılmış Animasyon' : 'Tam Akıcı Animasyonlar'}
+                  {reduceMotion && <Check className="h-3 w-3 shrink-0" />}
+                  <span>{reduceMotion ? 'Azaltılmış Animasyon' : 'Tam Akıcı Animasyonlar'}</span>
                 </button>
               </div>
             </div>

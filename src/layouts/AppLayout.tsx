@@ -1402,7 +1402,7 @@ const resetSessionUiState = useCallback(() => {
 
     const promptText = text || (currentAttachment ? `Lütfen ekteki ${currentAttachment.name} dosyasını analiz et.` : '')
     const displayContent = currentAttachment
-      ? `📎 [${currentAttachment.name}${currentAttachment.size ? ` - ${Math.round(currentAttachment.size / 1024)} KB` : ''}]\n\n${promptText}`
+      ? `[Ekli Belge: ${currentAttachment.name}${currentAttachment.size ? ` - ${Math.round(currentAttachment.size / 1024)} KB` : ''}]\n\n${promptText}`
       : promptText
 
     const userMsg: AiMessage = {
@@ -1636,7 +1636,7 @@ const resetSessionUiState = useCallback(() => {
       : t('settings.sync.notSynced')
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[var(--jmc-bg)] text-[var(--jmc-text)]">
+    <div className="flex h-full w-full overflow-hidden bg-[var(--jmc-bg)] text-[var(--jmc-text)]">
       {/* ---------------- Sol gezinme rayı ---------------- */}
       <nav
         aria-label="Ana gezinme"

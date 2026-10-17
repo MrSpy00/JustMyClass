@@ -8,6 +8,7 @@ import { AboutModal } from './features/about/AboutModal'
 import { AuthOnboardingModal } from './features/auth/AuthOnboardingModal'
 import { SetupWizard } from './features/setup/SetupWizard'
 import { WelcomeOnboardingModal } from './features/setup/WelcomeOnboardingModal'
+import { TitleBar } from './components/TitleBar'
 import { Account, UpdateStatus } from './types/jmc'
 import { ACCOUNT_CHANGED_EVENT } from './lib/events'
 
@@ -208,19 +209,22 @@ export const App: React.FC = () => {
   return (
     <ThemeProvider>
       <I18nProvider>
-        <div className="relative h-screen w-screen overflow-hidden font-sans">
-          {toast && <Toast toast={toast} onDismiss={dismissToast} />}
+        <div className="relative flex h-screen w-screen flex-col overflow-hidden font-sans bg-[var(--jmc-bg)]">
+          <TitleBar />
+          <div className="relative flex-1 min-h-0 w-full overflow-hidden">
+            {toast && <Toast toast={toast} onDismiss={dismissToast} />}
 
-          <AppLayout
-            onOpenSettings={(tab) => {
-              setSettingsTab(resolveSettingsTab(tab))
-              setIsSettingsOpen(true)
-            }}
-            onOpenAbout={() => setIsAboutOpen(true)}
-            onOpenAuth={() => setIsAuthOpen(true)}
-            onExport={handleExport}
-            onNotify={notify}
-          />
+            <AppLayout
+              onOpenSettings={(tab) => {
+                setSettingsTab(resolveSettingsTab(tab))
+                setIsSettingsOpen(true)
+              }}
+              onOpenAbout={() => setIsAboutOpen(true)}
+              onOpenAuth={() => setIsAuthOpen(true)}
+              onExport={handleExport}
+              onNotify={notify}
+            />
+          </div>
 
           <SettingsModal
             isOpen={isSettingsOpen}

@@ -289,7 +289,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'auth.guideStep3': 'OAuth İzin Ekranı yapılandırmasında "Harici" (External) seçip Test Kullanıcılarına e-postanızı ekleyin veya Workspace ise "Dahili" (Internal) seçin.',
     'auth.guideStep4': 'Kimlik Bilgileri > Kimlik Bilgisi Oluştur > OAuth İstemci Kimliği seçin. Uygulama türünü "Masaüstü Uygulaması" (Desktop app) yapın.',
     'auth.guideStep5': 'Oluşturulan İstemci Kimliğini (Client ID) kopyalayıp yukarıdaki kutucuğa yapıştırın ve "Kaydet"e basın.',
-    'auth.guideEduTip': '💡 Üniversite (.edu / .edu.tr) / Google Workspace Kullanıcıları: OAuth onay ekranında Kullanıcı Türü olarak "Dahili" (Internal) seçerseniz, üniversitenizin (@...edu.tr) tüm öğrencileri ve akademisyenleri herhangi bir doğrulama beklemeden doğrudan giriş yapabilir!',
+    'auth.guideEduTip': 'Üniversite (.edu / .edu.tr) / Google Workspace Kullanıcıları: OAuth onay ekranında Kullanıcı Türü olarak "Dahili" (Internal) seçerseniz, üniversitenizin (@...edu.tr) tüm öğrencileri ve akademisyenleri herhangi bir doğrulama beklemeden doğrudan giriş yapabilir!',
     'auth.error401Notice': 'Google "401: invalid_client / OAuth client not found" hatası, Google Cloud üzerinde kayıtlı olmayan bir Client ID kullanıldığında oluşur. Yukarıdaki 5 basit adımı izleyerek kendi ücretsiz Masaüstü Client ID\'nizi ekleyebilirsiniz.',
 
     // Hakkında Modalı
@@ -645,7 +645,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'auth.guideStep3': 'Configure OAuth Consent Screen as "External" (and add test users) or "Internal" if Google Workspace.',
     'auth.guideStep4': 'Go to Credentials > Create Credentials > OAuth client ID. Select Application type as "Desktop app".',
     'auth.guideStep5': 'Copy the generated Client ID, paste it into the field above, and click "Save".',
-    'auth.guideEduTip': '💡 University (.edu / .edu.tr) / Google Workspace Users: Selecting "Internal" User Type on the OAuth Consent Screen allows all students and faculty in your domain to sign in immediately without Google verification!',
+    'auth.guideEduTip': 'University (.edu / .edu.tr) / Google Workspace Users: Selecting "Internal" User Type on the OAuth Consent Screen allows all students and faculty in your domain to sign in immediately without Google verification!',
     'auth.error401Notice': 'Received a Google "401: invalid_client / OAuth client not found" error? That occurs when an unregistered Client ID is sent to Google. Follow the simple steps above to configure your own free Client ID.',
 
     // About Modal

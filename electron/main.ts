@@ -17,7 +17,7 @@ import { ChatSessionService } from './services/ai/chatSessionService'
 import { ActiveContextService } from './services/activeContextService'
 import { ExportService, ExportFormat } from './services/exportService'
 import { UpdateService } from './services/updateService'
-import { FilePreviewService } from './services/filePreviewService'
+import { FilePreviewService, extractUniversalAttachmentText } from './services/filePreviewService'
 import { resolveDownloadsDir } from './services/dataDir'
 import { log, initLoggerFromElectron } from './services/logger'
 
@@ -282,20 +282,22 @@ function applyContentSecurityPolicy(session: Session): void {
     'https://lh6.googleusercontent.com',
     'https://*.ytimg.com',
     'https://*.google.com',
+    'https://*.gstatic.com',
+    'https://*.ggpht.com',
   ]
 
   const policy = [
     "default-src 'none'",
-    `script-src ${scriptSrc.join(' ')} blob: chrome-extension:`,
+    `script-src ${scriptSrc.join(' ')} blob: chrome-extension: https://www.youtube.com https://s.ytimg.com https://*.gstatic.com`,
     // Tailwind v4 gelistirmede satir ici stil enjekte eder.
-    "style-src 'self' 'unsafe-inline' chrome-extension:",
+    "style-src 'self' 'unsafe-inline' chrome-extension: https://fonts.googleapis.com",
     "font-src 'self' data: chrome-extension: https://fonts.gstatic.com",
     `img-src ${imgSrc.join(' ')} chrome-extension:`,
-    `connect-src ${connectSrc.join(' ')} https://*.googlevideo.com https://*.youtube.com https://*.youtube-nocookie.com`,
+    `connect-src ${connectSrc.join(' ')} https://*.googlevideo.com https://*.youtube.com https://*.youtube-nocookie.com https://*.gstatic.com https://*.googleapis.com https://*.ggpht.com`,
     "media-src 'self' data: blob: https://*.googlevideo.com",
     "worker-src 'self' blob: chrome-extension:",
-    "child-src 'self' blob: data: chrome-extension: https://www.youtube.com https://www.youtube-nocookie.com",
-    "frame-src 'self' blob: data: chrome-extension: https://www.youtube.com https://www.youtube-nocookie.com",
+    "child-src 'self' blob: data: chrome-extension: https://www.youtube.com https://www.youtube-nocookie.com https://youtube.com",
+    "frame-src 'self' blob: data: chrome-extension: https://www.youtube.com https://www.youtube-nocookie.com https://youtube.com",
     "object-src 'self' blob: data: chrome-extension:",
     "base-uri 'none'",
     "form-action 'none'",
@@ -325,6 +327,29 @@ function applyContentSecurityPolicy(session: Session): void {
     }
     callback({ responseHeaders: details.responseHeaders })
   })
+
+  // YouTube Embed Hata 153 Çözümü:
+  // Chromium yerel file:// bağlamında iframe çalıştırırken Referer göndermez veya
+  // Origin: file:// gönderir. YouTube embed oyuncusu file:// veya eksik referer
+  // durumunda "Video oynatıcı yapılandırma hatası (153)" fırlatır.
+  session.webRequest.onBeforeSendHeaders(
+    {
+      urls: [
+        '*://*.youtube.com/*',
+        '*://*.youtube-nocookie.com/*',
+        '*://*.googlevideo.com/*',
+        '*://*.ytimg.com/*',
+      ],
+    },
+    (details, callback) => {
+      const requestHeaders = { ...details.requestHeaders }
+      requestHeaders['Referer'] = 'https://www.youtube.com/'
+      if (!requestHeaders['Origin'] || requestHeaders['Origin'] === 'file://' || requestHeaders['Origin'] === 'null') {
+        requestHeaders['Origin'] = 'https://www.youtube.com'
+      }
+      callback({ requestHeaders })
+    },
+  )
 }
 
 function createWindow() {
@@ -340,6 +365,8 @@ function createWindow() {
     // belirteçleriyle BİREBİR aynı.
     backgroundColor: '#0d0817',
     autoHideMenuBar: true,
+    frame: false,
+    titleBarStyle: 'hidden',
     // Cizim hazir olana kadar pencere gosterilmez; `ready-to-show`
     // olayinda gosterilir. Boylece beyaz flaş olusmaz.
     show: false,
@@ -370,6 +397,18 @@ function createWindow() {
   // Cizim hazir olmadan pencereyi gosterme: beyaz flaş olmaz.
   mainWindow.once('ready-to-show', () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show()
+  })
+
+  // Pencere boyut durumunu renderer'a bildir
+  mainWindow.on('maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:maximized-change', true)
+    }
+  })
+  mainWindow.on('unmaximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:maximized-change', false)
+    }
   })
 
   // Ana pencerenin dis adreslere yonlenmesini engelle; ancak gomulu PDF
@@ -478,9 +517,12 @@ function createWindow() {
         reqUrl.startsWith('https://lh6.googleusercontent.com') ||
         reqUrl.includes('youtube.com/') ||
         reqUrl.includes('youtube-nocookie.com/') ||
+        reqUrl.includes('youtu.be/') ||
         reqUrl.includes('ytimg.com/') ||
         reqUrl.includes('googlevideo.com/') ||
-        reqUrl.includes('fonts.gstatic.com/') ||
+        reqUrl.includes('gstatic.com/') ||
+        reqUrl.includes('googleapis.com/') ||
+        reqUrl.includes('ggpht.com/') ||
         reqUrl.includes('doubleclick.net/') ||
         reqUrl.includes('google.com/')
 
@@ -720,13 +762,93 @@ function setupIpcHandlers() {
       return { success: false, error: err instanceof Error ? err.message : 'Dosya okunamadı.' }
     }
   })
+  // ---- Pencere Kontrolleri (Modern Temalı Çerçevesiz Pencere) --------
+  handle('window:minimize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.minimize()
+      return true
+    }
+    return false
+  })
+  handle('window:maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize()
+      } else {
+        mainWindow.maximize()
+      }
+      return mainWindow.isMaximized()
+    }
+    return false
+  })
+  handle('window:close', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.close()
+      return true
+    }
+    return false
+  })
+  handle('window:isMaximized', () => {
+    return mainWindow && !mainWindow.isDestroyed() ? mainWindow.isMaximized() : false
+  })
+
+  // ---- YouTube OEmbed & Video Bilgileri ----------------------------------
+  handle('youtube:getMetadata', async (_e, videoId: unknown) => {
+    if (typeof videoId !== 'string' || !/^[a-zA-Z0-9_-]{11}$/.test(videoId.trim())) {
+      return null
+    }
+    const cleanId = videoId.trim()
+    try {
+      const res = await fetch(
+        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${cleanId}&format=json`,
+        { signal: AbortSignal.timeout(4500) },
+      )
+      if (!res.ok) {
+        return {
+          id: cleanId,
+          thumbnailUrl: `https://img.youtube.com/vi/${cleanId}/hqdefault.jpg`,
+        }
+      }
+      const data = await res.json()
+      return {
+        id: cleanId,
+        title: typeof data.title === 'string' ? data.title : undefined,
+        authorName: typeof data.author_name === 'string' ? data.author_name : undefined,
+        thumbnailUrl: typeof data.thumbnail_url === 'string' ? data.thumbnail_url : `https://img.youtube.com/vi/${cleanId}/hqdefault.jpg`,
+      }
+    } catch {
+      return {
+        id: cleanId,
+        thumbnailUrl: `https://img.youtube.com/vi/${cleanId}/hqdefault.jpg`,
+      }
+    }
+  })
+
+  // ---- Dosya Ekleme (Tüm Formatları Destekleyen Akıllı Ayıklayıcı) --------
   handle('app:pickAttachmentFile', async () => {
     if (!mainWindow) throw new Error('Ana pencere bulunamadı.')
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Sohbete Dosya veya Görsel Ekle',
+      title: 'Sohbete Dosya, Belge veya Kod Ekle',
       filters: [
-        { name: 'Görseller ve Belgeler', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'pdf', 'txt', 'md', 'json', 'csv'] },
-        { name: 'Tüm Dosyalar', extensions: ['*'] },
+        { name: 'Tüm Dosyalar (*.*)', extensions: ['*'] },
+        {
+          name: 'Belgeler ve Ofis Dosyaları (*.pdf, *.docx, *.pptx, *.xlsx, *.odt, *.ods, *.odp, *.rtf)',
+          extensions: ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'odt', 'ods', 'odp', 'rtf'],
+        },
+        {
+          name: 'Kod ve Yapılandırma Dosyaları',
+          extensions: [
+            'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'php', 'rb', 'swift', 'kt', 'dart', 'html', 'css', 'json', 'yaml', 'yml', 'xml', 'sql', 'sh', 'bat', 'ps1', 'md', 'txt',
+          ],
+        },
+        {
+          name: 'Tablo ve Veri Dosyaları (*.csv, *.tsv, *.json, *.xlsx)',
+          extensions: ['csv', 'tsv', 'json', 'xlsx', 'ods'],
+        },
+        {
+          name: 'Görseller (*.png, *.jpg, *.webp, *.gif, *.svg)',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'],
+        },
       ],
       properties: ['openFile'],
     })
@@ -734,31 +856,23 @@ function setupIpcHandlers() {
       return null
     }
     const filePath = result.filePaths[0]
-    const ext = path.extname(filePath).toLowerCase()
     const name = path.basename(filePath)
     const stats = fs.statSync(filePath)
-    if (stats.size > 20 * 1024 * 1024) {
-      throw new Error('Dosya boyutu 20 MB sınırını aşıyor.')
+    if (stats.size > 25 * 1024 * 1024) {
+      throw new Error('Dosya boyutu 25 MB sınırını aşıyor.')
     }
-    const mimeTypes: Record<string, string> = {
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.webp': 'image/webp',
-      '.gif': 'image/gif',
-      '.pdf': 'application/pdf',
-      '.txt': 'text/plain',
-      '.md': 'text/markdown',
-      '.json': 'application/json',
-      '.csv': 'text/csv',
-    }
-    const mimeType = mimeTypes[ext] || 'application/octet-stream'
     const buffer = fs.readFileSync(filePath)
+    const extracted = extractUniversalAttachmentText(buffer, name)
+    const base64Data = buffer.toString('base64')
     return {
       name,
-      mimeType,
+      mimeType: extracted.mimeType,
       size: stats.size,
-      base64Data: buffer.toString('base64'),
+      base64Data,
+      textContent: extracted.text,
+      isImage: extracted.isImage,
+      isPdf: extracted.isPdf,
+      dataUrl: extracted.isImage || extracted.isPdf ? `data:${extracted.mimeType};base64,${base64Data}` : undefined,
     }
   })
   handle('auth:completeAuthWithCode', (_e, rawCodeOrUrl: unknown, redirectUri?: unknown, codeVerifier?: unknown) => {

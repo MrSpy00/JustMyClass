@@ -430,8 +430,17 @@ export class UpdateService {
     return true
   }
 
+  private checkInFlight: Promise<UpdateStatus> | null = null
+
   private wire(): void {
     try {
+      const isCustom = this.isCustomGenericFeed(this.configuredUrl)
+      // Varsayilan GitHub akisinda surum denetimi dogrudan GitHub API ile yapilir;
+      // paketlenmemis gelistirme ortaminda electron-updater baslatmaya gerek yoktur.
+      if (!isCustom && !app?.isPackaged) {
+        return
+      }
+
       const u = autoUpdater as unknown as {
         autoDownload: boolean
         autoInstallOnAppQuit: boolean
@@ -445,7 +454,6 @@ export class UpdateService {
       u.autoInstallOnAppQuit = true
       u.allowPrerelease = false
 
-      const isCustom = this.isCustomGenericFeed(this.configuredUrl)
       if (isCustom && this.configuredUrl) {
         u.setFeedURL({ provider: 'generic', url: this.configuredUrl })
       } else {
@@ -467,6 +475,7 @@ export class UpdateService {
         })
 
         u.on('update-available', (info: UpdateInfo) => {
+          if (!this.isCustomGenericFeed(this.configuredUrl)) return
           this.patch({
             stage: 'available',
             availableVersion: info.version,
@@ -477,6 +486,7 @@ export class UpdateService {
         })
 
         u.on('update-not-available', () => {
+          if (!this.isCustomGenericFeed(this.configuredUrl)) return
           this.patch({ stage: 'not-available', availableVersion: undefined, error: undefined })
         })
 
@@ -502,10 +512,12 @@ export class UpdateService {
         this.wired = true
       }
     } catch (err) {
-      this.patch({
-        stage: 'error',
-        error: `Güncelleme yapılandırılamadı: ${err instanceof Error ? err.message : String(err)}`,
-      })
+      if (this.isCustomGenericFeed(this.configuredUrl)) {
+        this.patch({
+          stage: 'error',
+          error: `Güncelleme yapılandırılamadı: ${err instanceof Error ? err.message : String(err)}`,
+        })
+      }
     }
   }
 
@@ -521,19 +533,15 @@ export class UpdateService {
     if (raw.includes('econnrefused')) {
       return 'Sunucu yanıt vermiyor. Güncelleme sunucusuna ulaşılamadı.'
     }
+    if (raw.includes('zaman asimi') || raw.includes('timeout') || raw.includes('aborted')) {
+      return 'Güncelleme sunucusu zamanında yanıt vermedi. İnternet bağlantınızı kontrol edip tekrar deneyin.'
+    }
     if (raw.includes('certificate') || raw.includes('ssl') || raw.includes('self signed')) {
       return 'Güvenlik sertifikası geçersiz. HTTPS sertifikasını kontrol edin.'
     }
     if (raw.includes('not packed') || raw.includes('dev app')) {
       return 'Güncelleme denetimi yalnızca kurulmuş sürümde çalışır. Bu bir hata değildir.'
     }
-    // Paket/sürüm tanımlayıcı eksikliği.
-    //
-    // KULLANICI ŞİKÂYETİ: burada kullanıcıya "…latest.yml dosyası yer
-    // almalıdır" diye İÇ dosya adı gösteriliyordu. O dosya sürümde
-    // gerçekten var; sorun `electron-updater`'ın okuyamamasıydı. Bu yüzden
-    // artık hiçbir *.yml adı kullanıcıya iletilmiyor ve GitHub akışındaki
-    // kontrol `autoUpdater`'a bırakılmıyor (bkz. `checkViaGitHubApi`).
     if (raw.includes('.yml') || raw.includes('no published versions') || raw.includes('404')) {
       if (!this.isCustomGenericFeed(this.configuredUrl)) {
         return 'Sunucudan yeni bir sürüm okunamadı. Uygulama en güncel sürümde olabilir veya yayın deposu geçici olarak erişilemiyor olabilir.'
@@ -546,7 +554,6 @@ export class UpdateService {
         'indirmesini durduruyor olabilir.'
       )
     }
-    // Son çare: ham mesaj, ancak iç dosya adları temizlenmiş.
     const rawMessage = err instanceof Error ? err.message : String(err)
     return 'Güncelleme kontrolü: ' + rawMessage.replace(/[a-z0-9_-]+\.yml/gi, 'sürüm tanımı')
   }
@@ -558,6 +565,10 @@ export class UpdateService {
   /**
    * Calisan ikili dosyanin SHA-256 parmak izini ve derleme zamanini
    * tek sefer hesaplayip bellege alir.
+   *
+   * Performans notu: NSIS kurulumunda `JustMyClass.exe` ~160 MB Chromium ikilisidir;
+   * asil uygulama kodu `resources/app.asar` (~2 MB) icindedir. NSIS modunda `app.asar`
+   * uzerinden SHA-256 almak ana sureci hic bloke etmeden (<5 ms) kesin derleme kimligi verir.
    */
   private resolveLocalFingerprint(): {
     portableSha256: string | null
@@ -567,6 +578,7 @@ export class UpdateService {
     if (this.cachedLocalFingerprint) return this.cachedLocalFingerprint
 
     const portablePath = process.env.PORTABLE_EXECUTABLE_FILE || null
+    const asarPath = process.resourcesPath ? path.join(process.resourcesPath, 'app.asar') : null
     let exePath: string | null = null
     try {
       exePath = app?.getPath ? app.getPath('exe') : null
@@ -575,14 +587,11 @@ export class UpdateService {
     }
 
     const portableSha256 = portablePath ? computeFileSha256(portablePath) : null
-    const binarySha256 = portableSha256 ?? (exePath ? computeFileSha256(exePath) : null)
+    const asarSha256 = !portableSha256 && asarPath && fs.existsSync(asarPath) ? computeFileSha256(asarPath) : null
+    const binarySha256 = portableSha256 ?? asarSha256 ?? (exePath && !asarPath ? computeFileSha256(exePath) : null)
 
     let buildMtimeMs: number | null = null
-    const candidates = [
-      portablePath,
-      process.resourcesPath ? path.join(process.resourcesPath, 'app.asar') : null,
-      exePath,
-    ].filter((p): p is string => Boolean(p))
+    const candidates = [portablePath, asarPath, exePath].filter((p): p is string => Boolean(p))
 
     for (const candidate of candidates) {
       try {
@@ -603,12 +612,51 @@ export class UpdateService {
   }
 
   /**
+   * AI model senkronizasyon kuyruguna (`providerHttp`) takilmadan dogrudan ve
+   * kesin zaman asimli (6 sn) GitHub API sorgusu yapar.
+   */
+  private async fetchGitHubReleaseJson<T>(url: string, timeoutMs = 6000): Promise<T> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      controller.abort(new Error('Istek zaman asimina ugradi.'))
+    }, timeoutMs)
+
+    try {
+      const headers: Record<string, string> = {
+        'User-Agent': `JustMyClass/${this.status.currentVersion}`,
+        Accept: 'application/vnd.github.v3+json',
+      }
+      if (typeof globalThis.fetch === 'function') {
+        const res = await globalThis.fetch(url, {
+          method: 'GET',
+          headers,
+          signal: controller.signal,
+          redirect: 'follow',
+        })
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} ${res.statusText}`.trim())
+        }
+        return (await res.json()) as T
+      }
+      return await providerHttp.request<T>(url, {
+        method: 'GET',
+        headers,
+        timeoutMs,
+        maxRetries: 0,
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  /**
    * GitHub Releases API'den en son surumu ve kriptografik SHA-256
    * asset ozetini okur (autoUpdater kullanmadan).
    */
   private async checkViaGitHubApi(): Promise<UpdateStatus> {
     try {
-      const response = await providerHttp.request<{
+      const response = await this.fetchGitHubReleaseJson<{
         tag_name: string
         name?: string
         published_at?: string
@@ -621,14 +669,7 @@ export class UpdateService {
           updated_at?: string
           size?: number
         }>
-      }>(`https://api.github.com/repos/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases/latest`, {
-        method: 'GET',
-        headers: {
-          'User-Agent': `JustMyClass/${this.status.currentVersion}`,
-          Accept: 'application/vnd.github.v3+json',
-        },
-        timeoutMs: 8000,
-      })
+      }>(`https://api.github.com/repos/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases/latest`, 6000)
 
       if (!response || !response.tag_name) {
         this.patch({ stage: 'not-available', availableVersion: undefined, error: undefined })
@@ -668,10 +709,6 @@ export class UpdateService {
         localBuildMtimeMs: fingerprint.buildMtimeMs,
       })
 
-      // Kurulu surum ilk kez kontrol edildiginde (ve uzaktaki derleme daha yeni
-      // degilse) mevcut release SHA-256 ozetini referans (baseline) olarak kaydet.
-      // Boylece daha sonra ayni etikete (orn. v0.0.1) farkli SHA-256'li yeni bir
-      // build yuklendiginde aninda tespit edilir.
       if (!evaluation.updateAvailable && evaluation.remoteSha256 && !storedBaseline) {
         try {
           this.storageService.setSetting(baselineKey, evaluation.remoteSha256)
@@ -710,7 +747,6 @@ export class UpdateService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes('404')) {
-        // Henuz yayinlanmis release yok: bu bir hata degil, guncel durumdur.
         this.patch({ stage: 'not-available', availableVersion: undefined, error: undefined })
       } else {
         this.patch({
@@ -722,30 +758,60 @@ export class UpdateService {
     return this.getStatus()
   }
 
-  /** Surumu kontrol eder. Hata ASLA atmaz; durumu `error` yazar. */
+  /** Surumu kontrol eder. Hata ASLA atmaz; asla 'checking' durumunda asili kalmaz. */
   public async check(): Promise<UpdateStatus> {
-    this.wire()
-    this.lastCheckedAt = new Date().toISOString()
-    this.patch({ stage: 'checking', error: undefined })
-
-    // 1. Kullanici kendi sunucusunu tanimladiysa yalnizca oraya gider.
-    if (this.isCustomGenericFeed(this.configuredUrl) && this.configuredUrl) {
-      try {
-        const u = autoUpdater as unknown as { checkForUpdates: () => Promise<unknown> }
-        await u.checkForUpdates()
-      } catch (err) {
-        this.patch({
-          stage: 'error',
-          error: this.explainUpdateError(err instanceof Error ? err : new Error(String(err))),
-        })
-      }
-      return this.getStatus()
+    if (this.checkInFlight) {
+      return this.checkInFlight
     }
 
-    // 2. Varsayilan GitHub deposu: kontrol DAIMA Releases API uzerinden.
-    //    `autoUpdater` burada hicbir zaman kontrol yapmaz; boylece surum
-    //    tanim dosyasini ayristirma hatalari kullaniciya ulasmaz.
-    return this.checkViaGitHubApi()
+    const runCheck = async (): Promise<UpdateStatus> => {
+      this.wire()
+      this.lastCheckedAt = new Date().toISOString()
+      this.patch({ stage: 'checking', error: undefined })
+
+      let hardTimer: NodeJS.Timeout | undefined
+      const hardTimeout = new Promise<UpdateStatus>(resolve => {
+        hardTimer = setTimeout(() => {
+          if (this.status.stage === 'checking') {
+            this.patch({
+              stage: 'error',
+              error: 'Güncelleme sunucusu zamanında yanıt vermedi. Lütfen tekrar deneyin.',
+            })
+          }
+          resolve(this.getStatus())
+        }, 7500)
+      })
+
+      try {
+        const work = (async (): Promise<UpdateStatus> => {
+          if (this.isCustomGenericFeed(this.configuredUrl) && this.configuredUrl) {
+            try {
+              const u = autoUpdater as unknown as { checkForUpdates: () => Promise<unknown> }
+              await u.checkForUpdates()
+            } catch (err) {
+              this.patch({
+                stage: 'error',
+                error: this.explainUpdateError(err instanceof Error ? err : new Error(String(err))),
+              })
+            }
+            return this.getStatus()
+          }
+          return await this.checkViaGitHubApi()
+        })()
+
+        return await Promise.race([work, hardTimeout])
+      } finally {
+        if (hardTimer) clearTimeout(hardTimer)
+        if (this.status.stage === 'checking') {
+          this.patch({ stage: 'not-available', availableVersion: undefined, error: undefined })
+        }
+      }
+    }
+
+    this.checkInFlight = runCheck().finally(() => {
+      this.checkInFlight = null
+    })
+    return this.checkInFlight
   }
 
   /**

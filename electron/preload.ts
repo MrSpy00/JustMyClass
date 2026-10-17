@@ -198,7 +198,22 @@ const api: JmcApi = {
     getStorageDiagnostics: () => ipcRenderer.invoke('system:diagnostics'),
   wipeLocalCache: () => ipcRenderer.invoke('system:wipeLocalCache'),
   wipeEverything: () => ipcRenderer.invoke('system:wipeEverything'),
-  copyText: (text) => ipcRenderer.invoke('app:copyText', text),
+  copyText: (text: string) => ipcRenderer.invoke('app:copyText', text),
+  // Pencere Kontrolleri (Modern Temalı Çerçevesiz Başlık Çubuğu)
+  windowMinimize: () => ipcRenderer.invoke('window:minimize'),
+  windowMaximize: () => ipcRenderer.invoke('window:maximize'),
+  windowClose: () => ipcRenderer.invoke('window:close'),
+  windowIsMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  onWindowMaximizedChange: (callback: (isMaximized: boolean) => void) => {
+    const listener = (_e: unknown, isMaximized: boolean) => callback(Boolean(isMaximized))
+    ipcRenderer.on('window:maximized-change', listener)
+    return () => {
+      ipcRenderer.removeListener('window:maximized-change', listener)
+    }
+  },
+
+  // YouTube
+  getYouTubeMetadata: (videoId: string) => ipcRenderer.invoke('youtube:getMetadata', videoId),
 }
 
 contextBridge.exposeInMainWorld('jmcAPI', api)

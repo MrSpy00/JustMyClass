@@ -432,10 +432,37 @@ export function extractDocxParagraphs(buf: Buffer): string[] {
     .filter(line => line.trim().length > 0)
 }
 
-/** XLSX çalışma kitaplarını okur (sharedStrings + sayfa hücreleri). */
+/** XLSX ve ODS çalışma kitaplarını okur (sharedStrings + sayfa hücreleri). */
 export function extractXlsxSheets(buf: Buffer): Array<{ name: string; rows: string[][] }> {
   const entries = extractZipEntries(buf)
   if (entries.size === 0) return []
+
+  // OpenDocument Spreadsheet (ODS): content.xml icinde table:table bloklari
+  const odsXml = entries.get('content.xml')
+  if (odsXml && !entries.has('xl/workbook.xml')) {
+    const contentStr = odsXml.toString('utf8')
+    const odsSheets: Array<{ name: string; rows: string[][] }> = []
+    let idx = 1
+    for (const tbl of extractOoxmlBlocks(contentStr, ['table:table'])) {
+      const sheetName =
+        /\btable:name="([^"]+)"/.exec(tbl.attrs)?.[1] ?? `Sayfa ${idx++}`
+      const rows: string[][] = []
+      for (const row of extractOoxmlBlocks(tbl.inner, ['table:table-row'])) {
+        const cells: string[] = []
+        for (const cell of extractOoxmlBlocks(row.inner, ['table:table-cell'])) {
+          const cellText = extractOoxmlBlocks(cell.inner, ['text:p'])
+            .map(p => decodeXmlEntities(p.inner.replace(/<[^>]+>/g, '')).trim())
+            .filter(Boolean)
+            .join(' ')
+          cells.push(cellText)
+        }
+        if (cells.some(c => c.length > 0)) rows.push(cells)
+        if (rows.length >= 2000) break
+      }
+      if (rows.length > 0) odsSheets.push({ name: decodeXmlEntities(sheetName), rows })
+    }
+    if (odsSheets.length > 0) return odsSheets
+  }
 
   // Ortak metinler
   const shared: string[] = []
@@ -1399,3 +1426,237 @@ export class FilePreviewService {
     }
   }
 }
+
+/**
+ * RTF belgelerinden duz metin ayiklar.
+ */
+function extractTextFromRtf(rtf: string): string {
+  try {
+    return rtf
+      .replace(/\\par[d]?/g, '\n')
+      .replace(/\\tab/g, '\t')
+      .replace(/\\'[0-9a-fA-F]{2}/g, match => {
+        try {
+          return String.fromCharCode(parseInt(match.slice(2), 16))
+        } catch {
+          return ''
+        }
+      })
+      .replace(/\{\\*?\\[^{}]+;?\}|\\\w+/g, '')
+      .replace(/[{}]/g, '')
+      .replace(/[ \t]+/g, ' ')
+      .trim()
+  } catch {
+    return ''
+  }
+}
+
+export interface UniversalExtractedAttachment {
+  text: string
+  mimeType: string
+  isImage: boolean
+  isPdf: boolean
+  fileTypeLabel: string
+}
+
+/**
+ * Tum dosya turlerinden (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS, RTF, Kod, CSV, JSON, TXT, ZIP)
+ * guvenle ve eksiksiz metin cikarir. AI sohbetine eklenen dosyalar boylece model tarafindan
+ * dogrudan okunabilir.
+ */
+export function extractUniversalAttachmentText(
+  buf: Buffer,
+  fileName: string,
+  hintMime = '',
+): UniversalExtractedAttachment {
+  const ext = path.extname(fileName || '').toLowerCase()
+  const mime = hintMime.toLowerCase()
+
+  // 1) Gorseller
+  if (IMAGE_EXTENSIONS[ext] || mime.startsWith('image/')) {
+    const finalMime = IMAGE_EXTENSIONS[ext] || mime || 'image/png'
+    return {
+      text: '',
+      mimeType: finalMime,
+      isImage: true,
+      isPdf: false,
+      fileTypeLabel: 'Görsel',
+    }
+  }
+
+  // 2) PDF
+  if (ext === '.pdf' || mime === 'application/pdf') {
+    const pdfText = extractTextFromPdf(buf)
+    return {
+      text: pdfText,
+      mimeType: 'application/pdf',
+      isImage: false,
+      isPdf: true,
+      fileTypeLabel: 'PDF Belgesi',
+    }
+  }
+
+  // 3) Word / DOCX / ODT
+  if (
+    ext === '.docx' ||
+    ext === '.odt' ||
+    ext === '.doc' ||
+    mime.includes('wordprocessingml') ||
+    mime.includes('opendocument.text')
+  ) {
+    const paragraphs = extractDocxParagraphs(buf)
+    const text = paragraphs.length > 0 ? paragraphs.join('\n\n') : extractTextFromDocx(buf)
+    return {
+      text: text.trim(),
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      isImage: false,
+      isPdf: false,
+      fileTypeLabel: ext === '.odt' ? 'OpenDocument Metni' : 'Word Belgesi',
+    }
+  }
+
+  // 4) Excel / XLSX / ODS
+  if (
+    ext === '.xlsx' ||
+    ext === '.xlsm' ||
+    ext === '.ods' ||
+    mime.includes('spreadsheetml') ||
+    mime.includes('opendocument.spreadsheet') ||
+    mime.includes('ms-excel')
+  ) {
+    const sheets = extractXlsxSheets(buf)
+    const text = sheets
+      .map(s => `[Sayfa: ${s.name}]\n` + s.rows.map(r => r.join(' | ')).join('\n'))
+      .join('\n\n')
+    return {
+      text: text.trim(),
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      isImage: false,
+      isPdf: false,
+      fileTypeLabel: ext === '.ods' ? 'OpenDocument Hesap Tablosu' : 'Excel Çalışma Kitabı',
+    }
+  }
+
+  // 5) PowerPoint / PPTX / ODP
+  if (
+    ext === '.pptx' ||
+    ext === '.ppsx' ||
+    ext === '.odp' ||
+    mime.includes('presentationml') ||
+    mime.includes('opendocument.presentation')
+  ) {
+    let slides = extractPptxSlides(buf)
+    if (slides.length === 0) {
+      const fallback = extractTextFromPptx(buf)
+      if (fallback.trim()) {
+        return {
+          text: fallback.trim(),
+          mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          isImage: false,
+          isPdf: false,
+          fileTypeLabel: 'Sunum Dosyası',
+        }
+      }
+    }
+    const text = slides
+      .map(s => `[Slayt ${s.slideNumber}: ${s.title || 'Başlıksız'}]\n${s.bullets.map(b => `• ${b}`).join('\n')}`)
+      .join('\n\n')
+    return {
+      text: text.trim(),
+      mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      isImage: false,
+      isPdf: false,
+      fileTypeLabel: ext === '.odp' ? 'OpenDocument Sunumu' : 'PowerPoint Sunumu',
+    }
+  }
+
+  // 6) RTF
+  if (ext === '.rtf' || mime === 'application/rtf' || mime === 'text/rtf') {
+    const rtfRaw = buf.toString('utf8')
+    const rtfText = extractTextFromRtf(rtfRaw)
+    return {
+      text: rtfText || rtfRaw,
+      mimeType: 'text/rtf',
+      isImage: false,
+      isPdf: false,
+      fileTypeLabel: 'Zengin Metin Belgesi (RTF)',
+    }
+  }
+
+  // 7) CSV / TSV
+  if (ext === '.csv' || ext === '.tsv' || mime === 'text/csv' || mime === 'text/tab-separated-values') {
+    const raw = buf.toString('utf8')
+    return {
+      text: raw,
+      mimeType: ext === '.tsv' ? 'text/tab-separated-values' : 'text/csv',
+      isImage: false,
+      isPdf: false,
+      fileTypeLabel: ext === '.tsv' ? 'TSV Veri Dosyası' : 'CSV Veri Dosyası',
+    }
+  }
+
+  // 8) ZIP / Arşiv (İçerik dosya ağacı ve küçük kod/metin dosyaları)
+  if (ext === '.zip' || ext === '.jar' || ext === '.epub') {
+    try {
+      const entries = extractZipEntries(buf)
+      const fileNames = Array.from(entries.keys())
+      let zipSummary = `[Arşiv İçeriği: ${fileName} (${fileNames.length} dosya)]\n`
+      zipSummary += fileNames.slice(0, 50).map(f => ` - ${f}`).join('\n')
+      if (fileNames.length > 50) zipSummary += `\n... ve ${fileNames.length - 50} dosya daha`
+
+      // Küçük kod veya metin dosyaları varsa ilk 3 tanesinin içeriğini de ekle
+      let added = 0
+      for (const [entryName, entryBuf] of entries) {
+        if (added >= 3) break
+        const entryExt = path.extname(entryName).toLowerCase()
+        if (
+          entryBuf.length <= 25_000 &&
+          (CODE_EXTENSIONS[entryExt] || entryExt === '.txt' || entryExt === '.md' || entryExt === '.json')
+        ) {
+          zipSummary += `\n\n--- [${entryName}] ---\n${entryBuf.toString('utf8').slice(0, 5000)}`
+          added++
+        }
+      }
+      return {
+        text: zipSummary,
+        mimeType: 'application/zip',
+        isImage: false,
+        isPdf: false,
+        fileTypeLabel: 'Arşiv Dosyası',
+      }
+    } catch {
+      /* devam */
+    }
+  }
+
+  // 9) Kod, Yapılandırma veya Genel Metin
+  const detectedLang = detectLanguage(fileName, buf.toString('utf8', 0, Math.min(buf.length, 2048)))
+  const sampleSize = Math.min(buf.length, 1024)
+  let isBinary = false
+  for (let i = 0; i < sampleSize; i++) {
+    if (buf[i] === 0) {
+      isBinary = true
+      break
+    }
+  }
+
+  if (isBinary) {
+    return {
+      text: `[İkili (Binary) Dosya: ${fileName} (${Math.round(buf.length / 1024)} KB)]`,
+      mimeType: mime || 'application/octet-stream',
+      isImage: false,
+      isPdf: false,
+      fileTypeLabel: 'İkili Dosya',
+    }
+  }
+
+  const rawText = buf.toString('utf8')
+  return {
+    text: rawText,
+    mimeType: mime || 'text/plain',
+    isImage: false,
+    isPdf: false,
+    fileTypeLabel: detectedLang !== 'text' ? `Kaynak Kod (${detectedLang})` : 'Metin Dosyası',
+  }
+}
+

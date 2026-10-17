@@ -277,6 +277,8 @@ export interface UpdateStatus {
   localSha256?: string
   /** İndirilen paketin SHA-256 bütünlük doğrulaması geçti mi? */
   verifiedIntegrity?: boolean
+  /** SHA-256 doğrulandı bayrağı */
+  sha256Verified?: boolean
 }
 
 export interface AiProviderConfig {
@@ -931,6 +933,23 @@ export interface JmcApi {
   saveChatSession: (session: ChatSession) => Promise<boolean>
   deleteChatSession: (id: string) => Promise<boolean>
   renameChatSession: (id: string, newTitle: string) => Promise<boolean>
+
+  // Window controls (Frameless custom titlebar)
+  windowMinimize: () => Promise<boolean>
+  windowMaximize: () => Promise<boolean>
+  windowClose: () => Promise<boolean>
+  windowIsMaximized: () => Promise<boolean>
+  onWindowMaximizedChange?: (callback: (isMaximized: boolean) => void) => () => void
+
+  // YouTube
+  getYouTubeMetadata?: (videoId: string) => Promise<YouTubeMetadata | null>
+}
+
+export interface YouTubeMetadata {
+  id: string
+  title?: string
+  authorName?: string
+  thumbnailUrl: string
 }
 
 declare global {
@@ -938,3 +957,4 @@ declare global {
     jmcAPI: JmcApi
   }
 }
+

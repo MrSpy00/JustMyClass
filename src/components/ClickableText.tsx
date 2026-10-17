@@ -20,6 +20,8 @@
  */
 import React from 'react'
 import { isRealTld } from '../lib/tldList'
+import { parseYouTubeUrl } from '../lib/youtube'
+import { YouTubeInlineCard } from './YouTubeInlineCard'
 
 /**
  * Dosya UZANTILARI — bunlar alan adi SANILAMAZ.
@@ -188,13 +190,6 @@ export function toOpenableUrl(raw: string): string {
   return `https://${raw}`
 }
 
-import {
-  extractYouTubeVideosFromText,
-  getYouTubeEmbedUrl,
-  getYouTubeThumbnailUrl,
-  parseYouTubeUrl,
-} from '../lib/youtube'
-
 interface ClickableTextProps {
   text: string
   className?: string
@@ -214,11 +209,6 @@ export function ClickableText({
   enableYouTubeEmbed = true,
 }: ClickableTextProps): React.ReactElement {
   const urls = React.useMemo(() => findUrls(text ?? ''), [text])
-  const youtubeVideos = React.useMemo(
-    () => (enableYouTubeEmbed ? extractYouTubeVideosFromText(text ?? '') : []),
-    [text, enableYouTubeEmbed],
-  )
-  const [activeVideoId, setActiveVideoId] = React.useState<string | null>(null)
 
   const open = React.useCallback((url: string) => {
     if (!isSafeExternalUrl(url)) return
@@ -250,31 +240,22 @@ export function ClickableText({
           onClick={e => {
             e.preventDefault()
             e.stopPropagation()
-            if (yt) {
-              setActiveVideoId(prev => (prev === yt.videoId ? null : yt.videoId))
-            } else {
-              open(item.url)
-            }
+            open(item.url)
           }}
           rel="noreferrer noopener"
           className={linkClassName}
-          title={yt ? 'Uygulama içinde izlemek için tıklayın' : toOpenableUrl(item.url)}
+          title={toOpenableUrl(item.url)}
         >
           {item.url}
         </a>
         {yt && (
-          <button
-            type="button"
-            onClick={e => {
-              e.preventDefault()
-              e.stopPropagation()
-              setActiveVideoId(prev => (prev === yt.videoId ? null : yt.videoId))
-            }}
-            className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-[#ff0033]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#ff4d6d] hover:bg-[#ff0033]/25 transition-colors align-baseline"
-          >
-            <span>▶</span>
-            <span>{activeVideoId === yt.videoId ? 'Oynatıcıyı Kapat' : 'Uygulama İçi İzle'}</span>
-          </button>
+          <span className="block my-1.5 w-full max-w-xl">
+            <YouTubeInlineCard
+              videoId={yt.videoId}
+              url={yt.url}
+              startSeconds={yt.startSeconds}
+            />
+          </span>
         )}
       </React.Fragment>,
     )
@@ -285,96 +266,8 @@ export function ClickableText({
   return (
     <span className={`${preserveWhitespace ? 'whitespace-pre-wrap break-words' : ''} ${className ?? ''}`}>
       {nodes}
-      {youtubeVideos.length > 0 && (
-        <span className="mt-2.5 flex flex-col gap-2 not-italic font-normal">
-          {youtubeVideos.map(yt => {
-            const isPlaying = activeVideoId === yt.videoId
-            return (
-              <span
-                key={yt.videoId}
-                onClick={e => e.stopPropagation()}
-                className="block overflow-hidden rounded-xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-elevated)] shadow-[var(--jmc-shadow-sm)]"
-              >
-                {isPlaying ? (
-                  <span className="block">
-                    <span className="relative block w-full pt-[56.25%] bg-black">
-                      <iframe
-                        src={getYouTubeEmbedUrl(yt.videoId, { autoplay: true, startSeconds: yt.startSeconds })}
-                        title={`YouTube video ${yt.videoId}`}
-                        className="absolute inset-0 h-full w-full border-0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        allowFullScreen
-                      />
-                    </span>
-                    <span className="flex items-center justify-between px-3 py-1.5 text-[11px] bg-[var(--jmc-bg-surface)] border-t border-[var(--jmc-border-subtle)]">
-                      <span className="font-medium text-[var(--jmc-text-muted)]">YouTube Uygulama İçi Oynatıcı</span>
-                      <span className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => open(yt.url)}
-                          className="text-[var(--jmc-link)] hover:text-[var(--jmc-link-hover)] font-semibold underline"
-                        >
-                          Tarayıcıda Aç
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setActiveVideoId(null)}
-                          className="rounded px-2 py-0.5 bg-[var(--jmc-bg)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]"
-                        >
-                          Kapat
-                        </button>
-                      </span>
-                    </span>
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-3 p-2">
-                    <button
-                      type="button"
-                      onClick={() => setActiveVideoId(yt.videoId)}
-                      className="group relative h-14 w-24 shrink-0 overflow-hidden rounded-lg bg-black focus:outline-none"
-                    >
-                      <img
-                        src={getYouTubeThumbnailUrl(yt.videoId)}
-                        alt="YouTube önizleme"
-                        loading="lazy"
-                        className="h-full w-full object-cover opacity-85 group-hover:scale-105 group-hover:opacity-100 transition-all"
-                      />
-                      <span className="absolute inset-0 flex items-center justify-center bg-black/35 group-hover:bg-black/20 transition-colors">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#ff0033] text-white text-xs shadow-md">
-                          ▶
-                        </span>
-                      </span>
-                    </button>
-                    <span className="min-w-0 flex-1 flex flex-col gap-1">
-                      <span className="text-[11px] font-semibold text-[var(--jmc-text)] truncate">
-                        YouTube Videosu ({yt.videoId})
-                      </span>
-                      <span className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setActiveVideoId(yt.videoId)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-[var(--jmc-primary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--jmc-on-primary)] hover:bg-[var(--jmc-primary-hover)] transition-colors"
-                        >
-                          <span>▶</span>
-                          <span>Uygulama İçinde İzle</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => open(yt.url)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] transition-colors"
-                        >
-                          <span>Tarayıcıda Aç</span>
-                        </button>
-                      </span>
-                    </span>
-                  </span>
-                )}
-              </span>
-            )
-          })}
-        </span>
-      )}
     </span>
   )
 }
+
 

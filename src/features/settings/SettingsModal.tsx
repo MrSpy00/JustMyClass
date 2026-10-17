@@ -318,6 +318,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (cancelled) return
         setUpdateStatus(s)
         setFeedDraft(s.feedUrl ?? '')
+        if (s.stage === 'idle' || s.stage === 'checking') {
+          void api
+            .checkForUpdates()
+            .then(next => {
+              if (!cancelled) setUpdateStatus(next)
+            })
+            .catch(() => undefined)
+        }
       })
       .catch(() => undefined)
     const off = api.onUpdateStatus?.(s => {
@@ -340,7 +348,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           tone: 'ok',
           text: feedDraft.trim()
             ? 'Yayın adresi kaydedildi.'
-            : 'Otomatik güncelleme kapatıldı.',
+            : 'Varsayılan GitHub yayın deposu etkinleştirildi.',
         })
       } else {
         flash({ tone: 'error', text: res.error ?? 'Adres kaydedilemedi.' })
@@ -358,12 +366,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleCheckUpdate = useCallback(async () => {
     if (!api) return
     setUpdateBusy(true)
+    setUpdateStatus(prev => (prev ? { ...prev, stage: 'checking', error: undefined } : prev))
     try {
-      setUpdateStatus(await api.checkForUpdates())
+      const next = await api.checkForUpdates()
+      setUpdateStatus(next)
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Kontrol başarısız.'
+      setUpdateStatus(prev => (prev ? { ...prev, stage: 'error', error: msg } : prev))
       flash({
         tone: 'error',
-        text: err instanceof Error ? err.message : 'Kontrol başarısız.',
+        text: msg,
       })
     } finally {
       setUpdateBusy(false)
@@ -930,16 +942,20 @@ const UpdatePanel: React.FC<{
       case 'available':
         return {
           tone: 'ok',
-          text: tr
-            ? `Sürüm ${status.availableVersion} hazır.`
-            : `Version ${status.availableVersion} is ready.`,
+          text: status.isHotfixRebuild
+            ? tr
+              ? `Aynı sürüm numarası (${status.availableVersion}) altında güncellenmiş yeni bir derleme (SHA-256 doğrulamalı) bulundu.`
+              : `A newer hotfix build for v${status.availableVersion} (SHA-256 verified) is available.`
+            : tr
+              ? `Sürüm ${status.availableVersion} hazır.`
+              : `Version ${status.availableVersion} is ready.`,
         }
       case 'not-available':
         return {
           tone: 'ok',
           text: tr
-            ? `Uygulama güncel (${status.currentVersion}).`
-            : `Up to date (${status.currentVersion}).`,
+            ? `Uygulama güncel (${status.currentVersion})${status.sha256Verified ? ' · SHA-256 bütünlük doğrulaması başarılı.' : '.'}`
+            : `Up to date (${status.currentVersion})${status.sha256Verified ? ' · SHA-256 integrity verified.' : '.'}`,
         }
       case 'downloading':
         return {
@@ -980,11 +996,20 @@ const UpdatePanel: React.FC<{
       <article className="rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-surface)] p-4 shadow-[var(--jmc-shadow-sm)] border border-[var(--jmc-border-subtle)]">
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="text-[13.5px] font-semibold">
-              {tr ? 'Uygulama sürümü' : 'Application version'}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-[13.5px] font-semibold">
+                {tr ? 'Uygulama sürümü' : 'Application version'}
+              </h3>
+              {status?.sha256Verified && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--jmc-success)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--jmc-success-text)] border border-[var(--jmc-success)]/30">
+                  <Shield className="h-3 w-3" />
+                  <span>SHA-256</span>
+                </span>
+              )}
+            </div>
             <p className="mt-0.5 font-mono text-[11px] text-[var(--jmc-text-dim)]">
               v{status?.currentVersion ?? '—'}
+              {status?.remoteSha256 ? ` · ${status.remoteSha256.slice(0, 12)}…` : ''}
             </p>
           </div>
           {stage === 'available' ? (
@@ -2818,16 +2843,18 @@ const ToolsPanel: React.FC<{
               <div className="ml-7 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] p-3 border border-[var(--jmc-border-subtle)] space-y-3 animate-fade-in">
                 {/* 3 Kademeli Arama Bilgilendirmesi */}
                 <div className="rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] p-2.5 border border-[var(--jmc-border-subtle)] text-[11px] leading-relaxed text-[var(--jmc-text-dim)] space-y-1">
-                  <p className="font-semibold text-[var(--jmc-text)]">
-                    🌐 3 Kademeli Akıllı Web Arama Mimarisi:
+                  <p className="flex items-center gap-1.5 font-semibold text-[var(--jmc-text)]">
+                    <Globe className="h-3.5 w-3.5 text-[var(--jmc-primary-text)] shrink-0" />
+                    <span>3 Kademeli Akıllı Web Arama Mimarisi:</span>
                   </p>
                   <p>
                     1. <strong>Tavily API</strong> (Varsa, akademik ve ödev odaklı arama)<br />
                     2. <strong>Brave Search API</strong> (Varsa, bağımsız web dizini)<br />
                     3. <strong>DuckDuckGo HTML Arama</strong> (100% Anahtarsız, yerel ve sınırsız)
                   </p>
-                  <p className="text-[var(--jmc-primary-text)] font-medium">
-                    ✓ Herhangi bir API anahtarı girmeseniz dahi DuckDuckGo ile asistan web aramaları otomatik olarak sorunsuz çalışır.
+                  <p className="flex items-start gap-1.5 text-[var(--jmc-primary-text)] font-medium">
+                    <Check className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span>Herhangi bir API anahtarı girmeseniz dahi DuckDuckGo ile asistan web aramaları otomatik olarak sorunsuz çalışır.</span>
                   </p>
                 </div>
 
@@ -2880,13 +2907,20 @@ const ToolsPanel: React.FC<{
                       type="button"
                       onClick={saveTavily}
                       disabled={savingTavily || !tavilyDraft.trim()}
-                      className={`rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      className={`inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                         permissions.tavilyKeySet && !tavilyDraft.trim()
                           ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success-text)] border border-[var(--jmc-success)]/30'
                           : 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50'
                       }`}
                     >
-                      {permissions.tavilyKeySet && !tavilyDraft.trim() ? 'Kayıtlı ✓' : t('settings.tools.saveKey')}
+                      {permissions.tavilyKeySet && !tavilyDraft.trim() ? (
+                        <>
+                          <span>Kayıtlı</span>
+                          <Check className="h-3 w-3" />
+                        </>
+                      ) : (
+                        t('settings.tools.saveKey')
+                      )}
                     </button>
                     {permissions.tavilyKeySet && (
                       <button
@@ -2957,13 +2991,20 @@ const ToolsPanel: React.FC<{
                       type="button"
                       onClick={saveBrave}
                       disabled={savingBrave || !braveDraft.trim()}
-                      className={`rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      className={`inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                         permissions.braveKeySet && !braveDraft.trim()
                           ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success-text)] border border-[var(--jmc-success)]/30'
                           : 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50'
                       }`}
                     >
-                      {permissions.braveKeySet && !braveDraft.trim() ? 'Kayıtlı ✓' : t('settings.tools.saveKey')}
+                      {permissions.braveKeySet && !braveDraft.trim() ? (
+                        <>
+                          <span>Kayıtlı</span>
+                          <Check className="h-3 w-3" />
+                        </>
+                      ) : (
+                        t('settings.tools.saveKey')
+                      )}
                     </button>
                     {permissions.braveKeySet && (
                       <button
