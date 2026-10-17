@@ -245,6 +245,7 @@ function resolvePrismGrammar(lang: string): { grammar: Prism.Grammar; key: strin
 }
 
 import { parseYouTubeUrl, getYouTubeEmbedUrl } from '../lib/youtube'
+import { repairPdfSpacedText } from '../lib/pdfTextRepair'
 
 /**
  * DOCX paragrafi: metni gosterir ve `w:hyperlink` ile gelen hedef varsa
@@ -1913,7 +1914,7 @@ export function DocumentViewerModal({
                                   .map(block => block.trim())
                                   .filter(Boolean)
                                   .map((block, bIdx) => {
-                                    const lines = block.split('\n').map(l => l.trim()).filter(Boolean)
+                                    const lines = block.split('\n').map(l => repairPdfSpacedText(l.trim())).filter(Boolean)
                                     return (
                                       <div key={bIdx} className="space-y-2">
                                         {lines.map((line, lIdx) => {

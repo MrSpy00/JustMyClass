@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import zlib from 'node:zlib'
-import { extractTextFromPdf } from '../electron/services/toolDispatcher'
+import { extractTextFromPdf, repairPdfSpacedText } from '../electron/services/toolDispatcher'
 
 /**
  * KULLANICI BILDIRIMI
@@ -263,6 +263,31 @@ describe('extractTextFromPdf - yapışık kelimeler ve MacRoman madde imi onarı
     expect(out).toContain('5. Hafta Uygulama Projesi: Sicaklik Kontrollu')
     expect(out).toContain('•')
     expect(out).not.toContain('¥')
+  })
+
+  it('repairPdfSpacedText: tekil harf ayrışmalarını ve etiketleri doğal kelimelere onarır', () => {
+    expect(repairPdfSpacedText('< h t m l >')).toBe('<html>')
+    expect(repairPdfSpacedText('< h e a d >')).toBe('<head>')
+    expect(repairPdfSpacedText('< / h t m l >')).toBe('</html>')
+    expect(repairPdfSpacedText('H T M L v e H T M L 5 E t i k e t R e h b e r i')).toBe(
+      'HTML ve HTML5 Etiket Rehberi',
+    )
+    expect(
+      repairPdfSpacedText(
+        'T ü m E t i k e t l e r · E k s i k s i z Ö r n e k K u l l a n ı m · F o r m — V e r i t a b a n ı — T a b l o B ö l ü m l e r i A y r ı',
+      ),
+    ).toBe(
+      'Tüm Etiketler · Eksiksiz Örnek Kullanım · Form — Veritabanı — Tablo Bölümleri Ayrı',
+    )
+    expect(
+      repairPdfSpacedText('D e r s : B S T 2 0 5 — W e b T a s a r ı m ı v e P r o g r a m l a m a'),
+    ).toBe('Ders: BST205 — Web Tasarımı ve Programlama')
+    expect(
+      repairPdfSpacedText('M u ş A l p a r s l a n Ü n i v e r s i t e s i — Y ö n e t i m B i l i ş i m S i s t e m l e r i B ö l ü m ü'),
+    ).toBe('Muş Alparslan Üniversitesi — Yönetim Bilişim Sistemleri Bölümü')
+    expect(repairPdfSpacedText('B a ğ l a n t ı l a r ( L i n k l e r )')).toBe(
+      'Bağlantılar (Linkler)',
+    )
   })
 })
 

@@ -1874,7 +1874,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
                   autoComplete="off"
                   aria-label={`${t(field.label)} hex`}
                   onChange={e => onPickColor(field.key, e.target.value)}
-                  className="w-full rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2 py-1 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none focus:ring-1 focus:ring-[var(--jmc-primary)]"
+                  className="w-full rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2 py-1 font-mono text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-primary)]"
                 />
               </div>
             </div>
@@ -1911,7 +1911,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
               setDraftName(e.target.value)
               if (nameError) setNameError(null)
             }}
-            className="w-full rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1.5 text-[12px] text-[var(--jmc-text)] outline-none focus:ring-1 focus:ring-[var(--jmc-primary)]"
+            className="w-full rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1.5 text-[12px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-primary)]"
           />
           <p
             className={`mt-1 text-[10.5px] ${
@@ -1995,7 +1995,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
                         if (e.key === 'Enter') commitRename()
                         if (e.key === 'Escape') setEditingId(null)
                       }}
-                      className="min-w-[120px] flex-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2 py-1 text-[11.5px] text-[var(--jmc-text)] outline-none focus:ring-1 focus:ring-[var(--jmc-primary)]"
+                      className="min-w-[120px] flex-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2 py-1 text-[11.5px] text-[var(--jmc-text)] outline-none border border-[var(--jmc-border)] focus:border-[var(--jmc-primary)]"
                     />
                   ) : (
                     <span className="min-w-[80px] flex-1 truncate text-[12px] text-[var(--jmc-text)]">

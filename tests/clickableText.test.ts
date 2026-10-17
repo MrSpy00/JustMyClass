@@ -204,7 +204,7 @@ describe('YouTube hafif uygulama içi oynatıcı ayrıştırıcısı (src/lib/yo
     expect(videos).toHaveLength(1)
     expect(videos[0].videoId).toBe('dQw4w9WgXcQ')
     expect(getYouTubeEmbedUrl('dQw4w9WgXcQ', { autoplay: true, startSeconds: 45 })).toBe(
-      'https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fwww.youtube.com&widget_referrer=https%3A%2F%2Fwww.youtube.com&autoplay=1&start=45',
+      'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1&playsinline=1&autoplay=1&start=45',
     )
     expect(getYouTubeThumbnailUrl('dQw4w9WgXcQ')).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg')
   })

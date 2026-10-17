@@ -101,7 +101,7 @@ export const YouTubeInlineCard: React.FC<YouTubeInlineCardProps> = ({
           <button
             type="button"
             onClick={() => setIsPlaying(true)}
-            className="group relative h-20 sm:h-16 w-full sm:w-28 shrink-0 overflow-hidden rounded-lg bg-black focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--jmc-primary)]"
+            className="group relative h-20 sm:h-16 w-full sm:w-28 shrink-0 overflow-hidden rounded-lg bg-black focus:outline-none focus:ring-0"
           >
             <img
               src={thumbnail}

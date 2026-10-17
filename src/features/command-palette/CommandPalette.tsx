@@ -182,7 +182,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             placeholder={t('palette.placeholder')}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--jmc-text)] outline-none placeholder:text-[var(--jmc-text-dim)]"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--jmc-text)] outline-none border-none ring-0 focus:outline-none focus:ring-0 placeholder:text-[var(--jmc-text-dim)]"
           />
           <kbd className="shrink-0 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg-surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--jmc-text-dim)]">
             Esc

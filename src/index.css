@@ -141,14 +141,34 @@ textarea,
   user-select: text;
 }
 
-/* Erişilebilir odak halkası — her yerde tutarlı. */
-:focus-visible {
-  outline: 2px solid var(--jmc-primary);
-  outline-offset: 2px;
-  border-radius: var(--jmc-radius-sm);
+/* ==========================================================================
+   Odak ve Dış Çizgi Temizliği (Sıfır İstenmeyen Dış Halka)
+   Yazı alanları, arama çubukları ve form girdilerinde kaba mor dış halka
+   (outline/ring) tamamen kaldırılmıştır; sade ve zarif bir arayüz sağlanır.
+   ========================================================================== */
+input,
+textarea,
+select,
+[contenteditable],
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible,
+[contenteditable]:focus,
+[contenteditable]:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
 }
+
+:focus-visible {
+  outline: none !important;
+}
+
 :focus:not(:focus-visible) {
-  outline: none;
+  outline: none !important;
 }
 
 /* ==========================================================================

@@ -343,11 +343,13 @@ function applyContentSecurityPolicy(session: Session): void {
     callback({ responseHeaders: details.responseHeaders })
   })
 
-  // YouTube Embed Hata 153 Çözümü:
+  // YouTube Embed Hata 152 ve 153 Çözümü:
   // 1) file:// bağlamında Chromium Referer göndermez; YouTube embed oynatıcısı
-  //    bunu görünce 'Hata 153: Video oynatıcı yapılandırma hatası' fırlatır.
-  // 2) User-Agent içinde 'Electron/' ibaresi varsa YouTube embedleri şüpheli bularak reddeder.
-  //    Bu nedenle hedef domaine uygun Referer/Origin eklenir ve User-Agent standartlaştırılır.
+  //    bunu görünce 'Hata 153' fırlatır. Standart 'https://www.google.com/' referer'ı sağlanır.
+  // 2) Sahte 'Origin: https://www.youtube.com' başlığı GET isteklerine basıldığında
+  //    YouTube iframe oynatıcısı 'Hata kodu: 152 - 4' (Origin uyuşmazlığı) verir; bu başlık silinir.
+  // 3) User-Agent içinde 'Electron/' veya 'JustMyClass/' ibareleri YouTube bot korumasına
+  //    takılır; bu tokenlar temizlenerek saf Chrome tarayıcı başlığı iletilir.
   session.webRequest.onBeforeSendHeaders(
     {
       urls: [
@@ -359,10 +361,8 @@ function applyContentSecurityPolicy(session: Session): void {
     },
     (details, callback) => {
       const requestHeaders = { ...details.requestHeaders }
-      const isNoCookie = details.url.includes('youtube-nocookie.com')
-      const targetOrigin = isNoCookie ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com'
-      requestHeaders['Referer'] = `${targetOrigin}/`
-      requestHeaders['Origin'] = targetOrigin
+      requestHeaders['Referer'] = 'https://www.google.com/'
+      delete requestHeaders['Origin']
 
       if (typeof requestHeaders['User-Agent'] === 'string') {
         requestHeaders['User-Agent'] = requestHeaders['User-Agent']
