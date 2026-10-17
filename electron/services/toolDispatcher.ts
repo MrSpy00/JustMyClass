@@ -1132,11 +1132,23 @@ export function extractTextFromPdf(buf: Buffer): string {
   const MAX_PDF_STREAM_BYTES = 32 * 1024 * 1024
 
   {
-    // `stream` kelimesi `endstream`in icinde de gecer, ama `\bstream\b`
-    // `endstream`e UYMAZ: `endstream`de `stream`in onunde `d` vardir, yani
-    // kelime siniri yoktur. Bu yuzden ayri bir lookbehind alternatifi
-    // gerekmez (onceki taslakta vardi ve hicbir sey katmiyordu).
-    const tokenRe = /(\d+)\s+(\d+)\s+obj\b|endobj\b|endstream\b|\bstream\b/g
+    /*
+      BELIRTEC DIZISI
+      ----------------
+      1) `endstream`in icindeki `stream`e `\bstream\b` UYMAZ: `endstream`de
+         `stream`in onunde `d` vardir, yani kelime siniri yoktur.
+
+      2) `stream` anahtar kelimesinden SONRA satir sonu ZORUNLUDUR.
+         PDF spec'i bunu soyler ve bu kural bir sahte eslesmeyi daha
+         ortadan kaldirir: sozlugun icindeki bir metinde gecebilen
+         kelime `stream` (orn. `/Title (my stream notes)`) giris
+         olarak sayilirsa, akisin geri kalani "endstream" aranarak
+         yutulur ve o nesnenin govdesi yanlis cikarilir.
+
+         Onceki surumun `/stream[\r\n]+...` deseni de satir sonu ariyordu;
+         yani bu kisitlama bir gerileme degil, eski davranisin aynisi.
+    */
+    const tokenRe = /(\d+)\s+(\d+)\s+obj\b|endobj\b|endstream\b|stream\b[ \t]*(?=\r?\n)/g
 
     let tm: RegExpExecArray | null
     let currentObjNum: number | null = null

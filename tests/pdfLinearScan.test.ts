@@ -135,6 +135,31 @@ describe('extractTextFromPdf - dogruluk korunuyor', () => {
   })
 })
 
+describe('extractTextFromPdf - sozluk icindeki sahte "stream"', () => {
+  it('sozlukta gecen "stream" kelimesi akis olarak sayilmaz', () => {
+    // /Title (my stream notes) icindeki kelime giris olarak sayilirsa
+    // akis yanlis baslangicta baslar ve sayfanin metni cikmaz.
+    // Anahtar kelime satir sonuyla izlendigi icin bu olmamali.
+    const text = 'Sohbet Akisi Testi'
+    // Metinde parantez/kelime isareti yok, kacislama gerekmiyor.
+    const streamBytes = Buffer.concat([
+      Buffer.from('BT /F1 12 Tf 72 720 Td (', 'latin1'),
+      Buffer.from(text, 'latin1'),
+      Buffer.from(') Tj ET', 'latin1'),
+    ])
+    const compressed = zlib.deflateSync(streamBytes)
+    const pdf = Buffer.concat([
+      Buffer.from('%PDF-1.7\n', 'latin1'),
+      Buffer.from('4 0 obj\n<< /Title (my stream notes) /Length ' + String(compressed.length) + ' /Filter /FlateDecode >>\nstream\n', 'latin1'),
+      compressed,
+      Buffer.from('\nendstream\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n', 'latin1'),
+    ])
+    const out = extractTextFromPdf(pdf)
+    expect(out).toContain('Sohbet Akisi Testi')
+    // Sahte kelime metne sizmamali.
+    expect(out).not.toContain('my stream notes')
+  })
+})
 describe('extractTextFromPdf - maliyet dogrusal', () => {
   it('dosya 4 kat buyudugunde sure 4 kattan CAT katinin altinda kalir', () => {
     const small = makeBigPdf(20, 'Veri')
