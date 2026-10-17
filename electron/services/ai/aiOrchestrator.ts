@@ -2402,6 +2402,20 @@ export class AiOrchestrator {
       const maxRetries = 2
       let attempt = 0
 
+      // Kirpma bildirimi TUR BASINA EN FAZLA BIR kez yazilir.
+      //
+      // NIYET: hem proaktif budeme hem de tasma kurtarmasi ayni cagri
+      // icinde devreye girebilir (proaktif kestirim yetersiz kaldiysa).
+      // Bildirim `onChunk` ile AKISA yazildigi icin, her denemede tekrar
+      // edilirse kullanici ayni cumleyi 4 kez goruyordu. Bayrak hem
+      // proaktif adimi hem kurtarma dongusunu tek noktadan yonetir.
+      let trimNoticeSent = false
+      const notifyTrimmed = (): void => {
+        if (trimNoticeSent) return
+        trimNoticeSent = true
+        onChunk(`\n\n*(${CONTEXT_TRIM_USER_NOTICE})*\n\n`)
+      }
+
       // --- PROAKTIF BUTCE KONTROLU ---------------------------------------
       // Gecmis, ILK cagri yapilmadan ONCE kistirilir. Onceki surumde
       // hicbir kisit yoktu ve tasma durumunda kurtarma yalnizca 413'e
@@ -2418,7 +2432,7 @@ export class AiOrchestrator {
         if (budgeted.trimmed) {
           currentMessages = budgeted.messages as TurnMessage[]
           // Kullaniciya acikca bildir: gecmisinin bir kismi kirpildi.
-          onChunk(`\n\n*(${CONTEXT_TRIM_USER_NOTICE})*\n\n`)
+          notifyTrimmed()
           log.warn(
             `[AiOrchestrator] Baglam budendi: ${before} -> ${currentMessages.length} mesaj ` +
               `(pencere=${limits.contextWindow}, butce=${budgeted.budget}, atilan=${budgeted.droppedCount})`,
@@ -2449,35 +2463,55 @@ export class AiOrchestrator {
           if (overflowed && overflowAttempts < 3 && currentMessages.length > 1) {
             overflowAttempts += 1
             const before = currentMessages.length
-            // Kademeli budeme: her denemede daha agresif kisilir, boylece
+            // Kademeli budeme: her denemede pencere daha da daralir, boylece
             // tek atamada gereksiz mesaj kaybi olmaz.
-            const keep = Math.max(1, Math.floor(currentMessages.length * (overflowAttempts === 1 ? 0.4 : 0.15)))
-            const clipped = currentMessages
-              .slice(-keep)
-              .map(m => ({
-                ...m,
-                content:
-                  m.content.length > 4000 ? m.content.slice(0, 4000) + '\n...[Metin boyutu nedeniyle kısaltıldı]...' : m.content,
-              }))
-            // Arac sonuclari bu asamada TUMDEN dusurulur; yalniz ara cagri
-            // icerikleri degil, cifti bozuk bir blok birakilmasin diye.
-            const orphanTools = clipped.filter(
-              m =>
-                m.role === 'tool' ||
-                (m.role === 'assistant' && Array.isArray(m.toolCalls) && m.toolCalls.length > 0),
-            )
-            const cleaned = orphanTools.length ? clipped.filter(m => m.role !== 'tool') : clipped
-            currentMessages = cleaned.length
-              ? ([
-                  { role: 'system', content: '[Önceki konuşma bağlam penceresine sığmadığı için özetlendi.]' } as TurnMessage,
-                  ...cleaned,
-                ] as TurnMessage[])
-              : currentMessages.slice(-1)
+            const SHRINK = [0.6, 0.35, 0.2]
+            const factor = SHRINK[Math.min(overflowAttempts - 1, SHRINK.length - 1)]
+
+            if (limits.contextWindow > 0) {
+              // Pencere biliniyorsa AYNI kestirim + ayni yalniz-ara temizligi
+              // yeniden kullanilir; iki farkli budeme kurali bakimli durum.
+              const retryBudget = trimToContextWindow(currentMessages, {
+                contextWindow: Math.max(2000, Math.floor(limits.contextWindow * factor)),
+                maxOutputTokens: limits.maxOutputTokens,
+                systemPromptTokens: estimateTokens(systemPrompt),
+              })
+              currentMessages = retryBudget.messages as TurnMessage[]
+            } else {
+              // Pencere bilinmiyor (Ollama/llama.cpp yerel modeller cogu zaman
+              // metadata dondurmez). O durumda mesaj SAYISI ile kisitlanir.
+              const keep = Math.max(2, Math.floor(currentMessages.length * factor))
+              const head = currentMessages.slice(-keep)
+              // Yalniz kalan tool sonuclarini ve onlari isteyen assistant
+              // mesajini BIRLIKTE dusurur.
+              const hasOrphanTool = head.some(
+                m =>
+                  m.role === 'tool' ||
+                  (m.role === 'assistant' && Array.isArray(m.toolCalls) && m.toolCalls.length > 0),
+              )
+              const cleaned = hasOrphanTool
+                ? head.filter(
+                    m =>
+                      m.role !== 'tool' &&
+                      !(m.role === 'assistant' && Array.isArray(m.toolCalls) && m.toolCalls.length > 0),
+                  )
+                : head
+              const body = cleaned.length >= 1 ? cleaned : currentMessages.filter(m => m.role === 'user').slice(-1)
+              currentMessages = (
+                body.length
+                  ? [
+                      { role: 'system', content: '[Önceki konuşma bağlam penceresine sığmadığı için özetlendi.]' } as TurnMessage,
+                      ...body,
+                    ]
+                  : currentMessages.slice(-1)
+              ) as TurnMessage[]
+            }
+
+            notifyTrimmed()
             log.warn(
               `[AiOrchestrator] Baglam tasmasi kurtarmasi #${overflowAttempts}: ` +
                 `${before} -> ${currentMessages.length} mesaj (${p.id}/${model})`,
             )
-            onChunk(`\n\n*(${CONTEXT_TRIM_USER_NOTICE})*\n\n`)
             continue
           }
 
