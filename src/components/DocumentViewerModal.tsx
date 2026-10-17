@@ -989,7 +989,7 @@ export function DocumentViewerModal({
       case 'media':
         return <FileVideo className="h-5 w-5 text-cyan-400" />
       default:
-        return <FileText className="h-5 w-5 text-[var(--jmc-primary)]" />
+        return <FileText className="h-5 w-5 text-[var(--jmc-primary-text)]" />
     }
   }
 
@@ -1155,7 +1155,7 @@ export function DocumentViewerModal({
                   className="inline-flex items-center gap-1 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1.5 text-[11px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] transition-colors disabled:opacity-50"
                 >
                   {downloading ? (
-                    <Loader2 className="h-3 w-3 animate-spin text-[var(--jmc-primary)]" />
+                    <Loader2 className="h-3 w-3 animate-spin text-[var(--jmc-primary-text)]" />
                   ) : (
                     <RotateCw className="h-3 w-3" />
                   )}
@@ -1237,7 +1237,7 @@ export function DocumentViewerModal({
                     type="button"
                     onClick={() => setCodeWrap(prev => !prev)}
                     className={`inline-flex items-center gap-1 rounded px-2 py-1 transition-colors ${
-                      codeWrap ? 'bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)] font-semibold' : 'hover:text-[var(--jmc-text)]'
+                      codeWrap ? 'bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary-text)] font-semibold' : 'hover:text-[var(--jmc-text)]'
                     }`}
                   >
                     <WrapText className="h-3.5 w-3.5" />
@@ -1586,7 +1586,7 @@ export function DocumentViewerModal({
           {loading && (
             <div className="grid h-full place-items-center p-8 text-center">
               <div className="space-y-3">
-                <Loader2 className="mx-auto h-8 w-8 animate-spin text-[var(--jmc-primary)]" />
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-[var(--jmc-primary-text)]" />
                 <h4 className="text-[13px] font-semibold text-[var(--jmc-text)]">
                   Belge Hazırlanıyor…
                 </h4>
@@ -2023,7 +2023,7 @@ export function DocumentViewerModal({
                                           : 'text-[var(--jmc-text)]'
                                       }`}
                                     >
-                                      <span className="text-[var(--jmc-primary)] font-bold select-none">•</span>
+                                      <span className="text-[var(--jmc-primary-text)] font-bold select-none">•</span>
                                       <DocxParagraphText text={block.text} url={block.url} />
                                     </div>
                                   )
@@ -2449,7 +2449,7 @@ export function DocumentViewerModal({
                         />
                       ) : (
                         <div className="rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-8 shadow-xl text-center space-y-4">
-                          <FileVideo className="mx-auto h-12 w-12 text-[var(--jmc-primary)]" />
+                          <FileVideo className="mx-auto h-12 w-12 text-[var(--jmc-primary-text)]" />
                           <h4 className="text-[14px] font-semibold text-[var(--jmc-text)]">
                             {preview.title}
                           </h4>
@@ -2473,7 +2473,7 @@ export function DocumentViewerModal({
                     (preview.kind === 'binary' && Boolean(attachment.alternateLink))) && (
                     <div className="p-8 max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[350px]">
                       <div className="w-full rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-8 shadow-xl text-center space-y-4">
-                        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)]">
+                        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary-text)]">
                           <Link className="h-7 w-7" />
                         </div>
                         <div>
@@ -2505,7 +2505,7 @@ export function DocumentViewerModal({
                             <button
                               type="button"
                               onClick={handleAnalyzeWithAssistant}
-                              className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-primary)]/30 bg-[var(--jmc-primary)]/10 px-3.5 py-2 text-[12px] font-medium text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 active:scale-95 transition-all"
+                              className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-primary)]/30 bg-[var(--jmc-primary)]/10 px-3.5 py-2 text-[12px] font-medium text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-primary)]/20 active:scale-95 transition-all"
                             >
                               <Sparkles className="h-3.5 w-3.5" />
                               <span>Asistan ile İncele</span>

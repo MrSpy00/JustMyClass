@@ -220,7 +220,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
     }
     if (sub.state === 'TURNED_IN') {
       return (
-        <span className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-success)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--jmc-success)] border border-[var(--jmc-success)]/20">
+        <span className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-success)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--jmc-success-text)] border border-[var(--jmc-success)]/20">
           <CheckCircle2 className="h-3 w-3" />
           {t('coursework.status.TURNED_IN')}
         </span>
@@ -228,7 +228,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
     }
     if (sub.state === 'RETURNED' || sub.assignedGrade != null) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--jmc-primary)] border border-[var(--jmc-primary)]/20">
+        <span className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--jmc-primary-text)] border border-[var(--jmc-primary)]/20">
           <Award className="h-3 w-3" />
           {sub.assignedGrade != null ? `${sub.assignedGrade} Puan` : t('coursework.status.RETURNED')}
         </span>
@@ -298,7 +298,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-2xl space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--jmc-primary)]/15 px-2.5 py-0.5 text-[10.5px] font-semibold text-[var(--jmc-primary)]">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--jmc-primary)]/15 px-2.5 py-0.5 text-[10.5px] font-semibold text-[var(--jmc-primary-text)]">
                 <GraduationCap className="h-3 w-3" />
                 {course.section || 'Ders'}
               </span>
@@ -380,7 +380,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
         {/* İstatistikler */}
         <div className="mt-5 flex flex-wrap gap-3">
           <div className="flex items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-1.5 border border-[var(--jmc-border)]">
-            <FileText className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+            <FileText className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />
             <span className="text-[11.5px] font-medium">{courseWorks.length} Ödev / Görev</span>
           </div>
           <div className="flex items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-1.5 border border-[var(--jmc-border)]">
@@ -404,7 +404,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
             onClick={() => setActiveTab('assignments')}
             className={`flex items-center gap-2 border-b-2 px-4 py-2 text-[12.5px] font-medium transition-colors ${
               activeTab === 'assignments'
-                ? 'border-[var(--jmc-primary)] text-[var(--jmc-primary)]'
+                ? 'border-[var(--jmc-primary)] text-[var(--jmc-primary-text)]'
                 : 'border-transparent text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
             }`}
           >
@@ -420,7 +420,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
             onClick={() => setActiveTab('announcements')}
             className={`flex items-center gap-2 border-b-2 px-4 py-2 text-[12.5px] font-medium transition-colors ${
               activeTab === 'announcements'
-                ? 'border-[var(--jmc-primary)] text-[var(--jmc-primary)]'
+                ? 'border-[var(--jmc-primary)] text-[var(--jmc-primary-text)]'
                 : 'border-transparent text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
             }`}
           >
@@ -436,7 +436,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
             onClick={() => setActiveTab('materials')}
             className={`flex items-center gap-2 border-b-2 px-4 py-2 text-[12.5px] font-medium transition-colors ${
               activeTab === 'materials'
-                ? 'border-[var(--jmc-primary)] text-[var(--jmc-primary)]'
+                ? 'border-[var(--jmc-primary)] text-[var(--jmc-primary-text)]'
                 : 'border-transparent text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
             }`}
           >
@@ -452,7 +452,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
             onClick={() => setActiveTab('people')}
             className={`flex items-center gap-2 border-b-2 px-4 py-2 text-[12.5px] font-medium transition-colors ${
               activeTab === 'people'
-                ? 'border-[var(--jmc-primary)] text-[var(--jmc-primary)]'
+                ? 'border-[var(--jmc-primary)] text-[var(--jmc-primary-text)]'
                 : 'border-transparent text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
             }`}
           >
@@ -564,7 +564,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                 {topicName}
                               </span>
                             )}
-                            <span className="text-[10.5px] font-medium text-[var(--jmc-primary)]">
+                            <span className="text-[10.5px] font-medium text-[var(--jmc-primary-text)]">
                               {work.workType === 'ASSIGNMENT'
                                 ? 'Ödev'
                                 : work.workType === 'SHORT_ANSWER_QUESTION'
@@ -578,7 +578,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                             )}
                           </div>
 
-                          <h3 className="text-[15px] font-semibold text-[var(--jmc-text)] group-hover:text-[var(--jmc-primary)] transition-colors">
+                          <h3 className="text-[15px] font-semibold text-[var(--jmc-text)] group-hover:text-[var(--jmc-primary-text)] transition-colors">
                             {work.title}
                           </h3>
 
@@ -599,7 +599,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                             <span
                               className={`inline-flex items-center gap-1 text-[11px] font-medium ${
                                 due.isPast
-                                  ? 'text-[var(--jmc-danger)]'
+                                  ? 'text-[var(--jmc-danger-text)]'
                                   : due.isUrgent
                                     ? 'text-amber-500 font-semibold'
                                     : 'text-[var(--jmc-text-muted)]'
@@ -656,7 +656,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                             className="h-7 w-7 rounded-full object-cover"
                           />
                         ) : (
-                          <div className="grid h-7 w-7 place-items-center rounded-full bg-[var(--jmc-primary)]/15 text-[11px] font-semibold text-[var(--jmc-primary)]">
+                          <div className="grid h-7 w-7 place-items-center rounded-full bg-[var(--jmc-primary)]/15 text-[11px] font-semibold text-[var(--jmc-primary-text)]">
                             {author?.fullName?.[0] || 'E'}
                           </div>
                         )}
@@ -713,7 +713,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                           onPreviewAttachment(mat)
                                         }
                                       }}
-                                      className={`flex items-center gap-2 min-w-0 flex-1 cursor-pointer hover:text-[var(--jmc-primary)] transition-colors`}
+                                      className={`flex items-center gap-2 min-w-0 flex-1 cursor-pointer hover:text-[var(--jmc-primary-text)] transition-colors`}
                                       title={isWebLink ? 'Bağlantıyı tarayıcıda açmak için tıklayın' : 'Görüntülemek için tıklayın'}
                                     >
                                       {isYouTube ? (
@@ -759,7 +759,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                             type="button"
                                             onClick={() => void window.jmcAPI?.openExternalUrl(mat.alternateLink!)}
                                             title="Bağlantıyı Tarayıcıda Aç"
-                                            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
+                                            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
                                           >
                                             <ExternalLink className="h-3.5 w-3.5" />
                                             <span>Aç</span>
@@ -782,7 +782,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                               type="button"
                                               onClick={() => onPreviewAttachment(mat)}
                                               title="Uygulama İçinde Görüntüle"
-                                              className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
+                                              className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
                                             >
                                               <Eye className="h-3.5 w-3.5" />
                                               <span>Görüntüle</span>
@@ -801,7 +801,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                                     type="button"
                                                     onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(targetPath) : window.jmcAPI?.openLocalFile(targetPath))}
                                                     title="İndirilen Dosyayı Aç"
-                                                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+                                                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success-text)] hover:bg-[var(--jmc-success)]/25 transition-colors"
                                                   >
                                                     <FolderOpen className="h-3.5 w-3.5" />
                                                     <span>Aç</span>
@@ -829,7 +829,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                                   className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors disabled:opacity-50"
                                                 >
                                                   {isDownloading ? (
-                                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary)]" />
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary-text)]" />
                                                   ) : (
                                                     <Download className="h-3.5 w-3.5" />
                                                   )}
@@ -857,7 +857,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                           type="button"
                                           onClick={() => onInspectAttachment(mat)}
                                           title="Yapay Zekâ Asistanı ile İncele"
-                                          className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
+                                          className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
                                         >
                                           <Sparkles className="h-3 w-3" />
                                           <span className="hidden sm:inline">İncele</span>
@@ -943,7 +943,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                       onPreviewAttachment(att)
                                     }
                                   }}
-                                  className={`flex items-center gap-2 min-w-0 flex-1 cursor-pointer hover:text-[var(--jmc-primary)] transition-colors`}
+                                  className={`flex items-center gap-2 min-w-0 flex-1 cursor-pointer hover:text-[var(--jmc-primary-text)] transition-colors`}
                                   title={isWebLink ? 'Bağlantıyı tarayıcıda açmak için tıklayın' : 'Görüntülemek için tıklayın'}
                                 >
                                   {isYouTube ? (
@@ -989,7 +989,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                         type="button"
                                         onClick={() => void window.jmcAPI?.openExternalUrl(att.alternateLink!)}
                                         title="Bağlantıyı Tarayıcıda Aç"
-                                        className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2.5 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
+                                        className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2.5 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
                                       >
                                         <ExternalLink className="h-3.5 w-3.5" />
                                         <span>Aç</span>
@@ -1012,7 +1012,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                           type="button"
                                           onClick={() => onPreviewAttachment(att)}
                                           title="Uygulama İçinde Görüntüle"
-                                          className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
+                                          className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
                                         >
                                           <Eye className="h-3.5 w-3.5" />
                                           <span>Görüntüle</span>
@@ -1031,7 +1031,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                                 type="button"
                                                 onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(targetPath) : window.jmcAPI?.openLocalFile(targetPath))}
                                                 title="İndirilen Dosyayı Aç"
-                                                className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+                                                className="inline-flex items-center gap-1 rounded bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success-text)] hover:bg-[var(--jmc-success)]/25 transition-colors"
                                               >
                                                 <FolderOpen className="h-3.5 w-3.5" />
                                                 <span>Aç</span>
@@ -1059,7 +1059,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                               className="inline-flex items-center gap-1 rounded border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors disabled:opacity-50"
                                             >
                                               {isDownloading ? (
-                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary)]" />
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary-text)]" />
                                               ) : (
                                                 <Download className="h-3.5 w-3.5" />
                                               )}
@@ -1087,7 +1087,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                                       type="button"
                                       onClick={() => onInspectAttachment(att)}
                                       title="Yapay Zekâ Asistanı ile İncele"
-                                      className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
+                                      className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
                                     >
                                       <Sparkles className="h-3 w-3" />
                                       <span className="hidden sm:inline">İncele</span>
@@ -1130,7 +1130,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                           className="h-8 w-8 rounded-full object-cover"
                         />
                       ) : (
-                        <div className="grid h-8 w-8 place-items-center rounded-full bg-[var(--jmc-primary)]/15 text-[12px] font-semibold text-[var(--jmc-primary)]">
+                        <div className="grid h-8 w-8 place-items-center rounded-full bg-[var(--jmc-primary)]/15 text-[12px] font-semibold text-[var(--jmc-primary-text)]">
                           {t.fullName?.[0] || 'Ö'}
                         </div>
                       )}
@@ -1145,7 +1145,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                         )}
                       </div>
                     </div>
-                    <span className="rounded-full bg-[var(--jmc-primary)]/10 px-2.5 py-0.5 text-[10.5px] font-medium text-[var(--jmc-primary)]">
+                    <span className="rounded-full bg-[var(--jmc-primary)]/10 px-2.5 py-0.5 text-[10.5px] font-medium text-[var(--jmc-primary-text)]">
                       Eğitmen
                     </span>
                   </div>

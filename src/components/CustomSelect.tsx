@@ -216,7 +216,7 @@ export function CustomSelect<T extends string | number = string>({
                       {opt.icon && (
                         <span
                           className={`mt-0.5 shrink-0 ${
-                            isSelected ? 'text-[var(--jmc-primary)]' : 'text-[var(--jmc-text-dim)]'
+                            isSelected ? 'text-[var(--jmc-primary-text)]' : 'text-[var(--jmc-text-dim)]'
                           }`}
                         >
                           {opt.icon}
@@ -260,7 +260,7 @@ export function CustomSelect<T extends string | number = string>({
                           viewBox="0 0 16 16"
                           fill="none"
                           aria-hidden="true"
-                          className="text-[var(--jmc-primary)]"
+                          className="text-[var(--jmc-primary-text)]"
                         >
                           <path
                             d="M3.5 8.5L6.5 11.5L12.5 4.5"
@@ -302,13 +302,13 @@ export function CustomSelect<T extends string | number = string>({
         >
           <span className="flex min-w-0 items-center gap-2">
             {selectedOption?.icon && (
-              <span className="shrink-0 text-[var(--jmc-primary)]">{selectedOption.icon}</span>
+              <span className="shrink-0 text-[var(--jmc-primary-text)]">{selectedOption.icon}</span>
             )}
             <span className="truncate font-medium">
               {selectedOption ? selectedOption.label : placeholder}
             </span>
             {selectedOption?.badge && (
-              <span className="shrink-0 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)]/14 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--jmc-primary)]">
+              <span className="shrink-0 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)]/14 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--jmc-primary-text)]">
                 {selectedOption.badge}
               </span>
             )}
@@ -322,7 +322,7 @@ export function CustomSelect<T extends string | number = string>({
             fill="none"
             aria-hidden="true"
             className={`shrink-0 text-[var(--jmc-text-muted)] transition-transform duration-200 group-hover:text-[var(--jmc-text)] ${
-              open ? 'rotate-180 text-[var(--jmc-primary)]' : ''
+              open ? 'rotate-180 text-[var(--jmc-primary-text)]' : ''
             }`}
           >
             <path

@@ -1592,7 +1592,7 @@ const resetSessionUiState = useCallback(() => {
             onClick={onOpenAbout}
             title="JustMyClass hakkında"
             aria-label="JustMyClass hakkında"
-            className="grid h-9 w-9 place-items-center rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary)] shadow-[var(--jmc-shadow-sm)] transition-transform hover:scale-[1.04] active:scale-95"
+            className="grid h-9 w-9 place-items-center rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary-text)] shadow-[var(--jmc-shadow-sm)] transition-transform hover:scale-[1.04] active:scale-95"
           >
             <Library className="h-[18px] w-[18px]" />
           </button>
@@ -1603,7 +1603,7 @@ const resetSessionUiState = useCallback(() => {
               onClick={() => setCoursesOpen(prev => !prev)}
             >
               {coursesOpen ? (
-                <PanelLeftClose className="h-[18px] w-[18px] text-[var(--jmc-primary)]" />
+                <PanelLeftClose className="h-[18px] w-[18px] text-[var(--jmc-primary-text)]" />
               ) : (
                 <BookOpen className="h-[18px] w-[18px] text-[var(--jmc-text-muted)]" />
               )}
@@ -1623,7 +1623,7 @@ const resetSessionUiState = useCallback(() => {
               onClick={() => setInspectorOpen(prev => !prev)}
             >
               <div className="relative">
-                <Sparkles className={`h-[18px] w-[18px] transition-colors ${inspectorOpen ? 'text-[var(--jmc-primary)]' : 'text-[var(--jmc-text-muted)]'}`} />
+                <Sparkles className={`h-[18px] w-[18px] transition-colors ${inspectorOpen ? 'text-[var(--jmc-primary-text)]' : 'text-[var(--jmc-text-muted)]'}`} />
                 {aiReady && (
                   <span className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-[var(--jmc-success)] ring-1 ring-[var(--jmc-bg-elevated)]" />
                 )}
@@ -1697,7 +1697,7 @@ const resetSessionUiState = useCallback(() => {
               </button>
             </div>
           {account?.institution && (
-            <div className="flex items-center gap-1.5 truncate text-[10.5px] font-medium text-[var(--jmc-primary)]">
+            <div className="flex items-center gap-1.5 truncate text-[10.5px] font-medium text-[var(--jmc-primary-text)]">
               <GraduationCap className="h-3 w-3 shrink-0" />
               <span className="truncate">{account.institution}</span>
             </div>
@@ -1707,7 +1707,7 @@ const resetSessionUiState = useCallback(() => {
         {(syncError || contentError) && (
           <div
             role="alert"
-            className="mx-3 mb-2 flex items-start gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-badge-bg)] p-2.5 text-[11px] leading-snug text-[var(--jmc-danger)]"
+            className="mx-3 mb-2 flex items-start gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-badge-bg)] p-2.5 text-[11px] leading-snug text-[var(--jmc-danger-text)]"
           >
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span className="line-clamp-3 flex-1 break-words">{syncError ?? contentError}</span>
@@ -1721,7 +1721,7 @@ const resetSessionUiState = useCallback(() => {
               }}
               aria-label="Uyarıyı kapat"
               title="Uyarıyı kapat"
-              className="mt-0.5 shrink-0 rounded p-0.5 text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-danger)]"
+              className="mt-0.5 shrink-0 rounded p-0.5 text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-danger-text)]"
             >
               <X className="h-3 w-3" />
             </button>
@@ -1733,7 +1733,7 @@ const resetSessionUiState = useCallback(() => {
             <EmptyState
               icon={
                 accountCapability?.reason === 'personal-gmail' ? (
-                  <ShieldAlert className="h-5 w-5 text-[var(--jmc-warning)]" />
+                  <ShieldAlert className="h-5 w-5 text-[var(--jmc-warning-text)]" />
                 ) : (
                   <BookOpen className="h-5 w-5" />
                 )
@@ -1849,7 +1849,7 @@ const resetSessionUiState = useCallback(() => {
                               </span>
                               <span className="mt-1 flex items-center justify-between gap-2 text-[10.5px]">
                                 {work.dueDate ? (
-                                  <span className={`tnum ${overdue ? 'text-[var(--jmc-danger)]' : 'text-[var(--jmc-text-dim)]'}`}>
+                                  <span className={`tnum ${overdue ? 'text-[var(--jmc-danger-text)]' : 'text-[var(--jmc-text-dim)]'}`}>
                                     {work.dueDate.day}.{work.dueDate.month}.{work.dueDate.year}
                                   </span>
                                 ) : (
@@ -1874,7 +1874,7 @@ const resetSessionUiState = useCallback(() => {
         <footer className="flex items-center justify-between gap-2 border-t border-[var(--jmc-border-subtle)] px-3.5 py-2.5 text-[10.5px] text-[var(--jmc-text-dim)]">
           <span className="flex min-w-0 items-center gap-1.5 truncate">
             {online ? (
-              <Wifi className="h-3 w-3 shrink-0 text-[var(--jmc-success)]" />
+              <Wifi className="h-3 w-3 shrink-0 text-[var(--jmc-success-text)]" />
             ) : (
               <WifiOff className="h-3 w-3 shrink-0" />
             )}
@@ -1885,9 +1885,9 @@ const resetSessionUiState = useCallback(() => {
               type="button"
               onClick={() => onOpenSettings('sync')}
               title="Otomatik senkronizasyon aralığını değiştir"
-              className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg-surface)] px-1.5 py-0.5 text-[9.5px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-primary)]"
+              className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg-surface)] px-1.5 py-0.5 text-[9.5px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-primary-text)]"
             >
-              <Clock className="h-2.5 w-2.5 text-[var(--jmc-primary)]" />
+              <Clock className="h-2.5 w-2.5 text-[var(--jmc-primary-text)]" />
               <span>{autoSyncMinutes > 0 ? `${autoSyncMinutes}dk oto` : 'Elle'}</span>
             </button>
             <button
@@ -1896,7 +1896,7 @@ const resetSessionUiState = useCallback(() => {
               disabled={courses.length === 0}
               aria-label="CSV dışa aktar"
               title="CSV dışa aktar"
-              className="shrink-0 rounded p-1 transition-colors hover:text-[var(--jmc-primary)] disabled:opacity-35"
+              className="shrink-0 rounded p-1 transition-colors hover:text-[var(--jmc-primary-text)] disabled:opacity-35"
             >
               <Download className="h-3.5 w-3.5" />
             </button>
@@ -1941,7 +1941,7 @@ const resetSessionUiState = useCallback(() => {
                   title="Dersleri göster"
                   className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] active:scale-95"
                 >
-                  <PanelLeftOpen className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+                  <PanelLeftOpen className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />
                   <span>{t('courses.title')}</span>
                   <span className="tnum text-[10px] text-[var(--jmc-text-dim)]">({courses.length})</span>
                 </button>
@@ -1950,7 +1950,7 @@ const resetSessionUiState = useCallback(() => {
                 <div className="flex items-center gap-1.5 min-w-0 text-[11.5px] text-[var(--jmc-text-muted)]">
                   <span
                     onClick={() => selectedWork && setSelectedWork(null)}
-                    className={`truncate font-medium ${selectedWork ? 'cursor-pointer hover:text-[var(--jmc-primary)]' : 'text-[var(--jmc-text)]'}`}
+                    className={`truncate font-medium ${selectedWork ? 'cursor-pointer hover:text-[var(--jmc-primary-text)]' : 'text-[var(--jmc-text)]'}`}
                     title={selectedCourse.name}
                   >
                     {selectedCourse.name}
@@ -1975,7 +1975,7 @@ const resetSessionUiState = useCallback(() => {
                   title={t('ai.expand')}
                   className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2 py-1 text-[11px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] active:scale-95"
                 >
-                  <Sparkles className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+                  <Sparkles className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />
                   <span>{t('ai.assistant')}</span>
                   {aiReady && (
                     <span className="h-1.5 w-1.5 rounded-full bg-[var(--jmc-success)]" />
@@ -2018,7 +2018,7 @@ const resetSessionUiState = useCallback(() => {
         ) : (
           <div className="grid h-full place-items-center p-8">
             <div className="max-w-md text-center">
-              <div className="mx-auto grid h-12 w-12 place-items-center rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-surface)] text-[var(--jmc-primary)] shadow-[var(--jmc-shadow-sm)]">
+              <div className="mx-auto grid h-12 w-12 place-items-center rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-surface)] text-[var(--jmc-primary-text)] shadow-[var(--jmc-shadow-sm)]">
                 <Library className="h-6 w-6" />
               </div>
               <h3 className="mt-4 text-[15px] font-semibold tracking-tight">
@@ -2077,7 +2077,7 @@ const resetSessionUiState = useCallback(() => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 min-w-0">
                 <h2 className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-[0.07em] text-[var(--jmc-text-dim)] shrink-0">
-                  <Sparkles className="h-4 w-4 text-[var(--jmc-primary)]" aria-hidden="true" />
+                  <Sparkles className="h-4 w-4 text-[var(--jmc-primary-text)]" aria-hidden="true" />
                   {t('ai.assistant')}
                 </h2>
                 <button
@@ -2134,7 +2134,7 @@ const resetSessionUiState = useCallback(() => {
                     }}
                     aria-label="Sohbeti temizle"
                     title="Sohbeti temizle"
-                    className="rounded p-1 text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-danger)] active:scale-95"
+                    className="rounded p-1 text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-danger-text)] active:scale-95"
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
@@ -2190,7 +2190,7 @@ const resetSessionUiState = useCallback(() => {
                         onClick={() => handleSwitchSession(s)}
                         className={`group flex items-center justify-between gap-1.5 rounded-[var(--jmc-radius-sm)] px-2 py-1.5 cursor-pointer text-[11.5px] transition-colors ${
                           isCurrent
-                            ? 'bg-[var(--jmc-primary)]/10 text-[var(--jmc-primary)] font-medium border border-[var(--jmc-primary)]/20'
+                            ? 'bg-[var(--jmc-primary)]/10 text-[var(--jmc-primary-text)] font-medium border border-[var(--jmc-primary)]/20'
                             : 'hover:bg-[var(--jmc-bg-surface)] text-[var(--jmc-text)]'
                         }`}
                       >
@@ -2235,7 +2235,7 @@ const resetSessionUiState = useCallback(() => {
                           <button
                             type="button"
                             onClick={e => void handleDeleteSession(s.id, e)}
-                            className="p-1 rounded text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger)] hover:bg-[var(--jmc-bg-surface)]"
+                            className="p-1 rounded text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger-text)] hover:bg-[var(--jmc-bg-surface)]"
                             title={t('ai.chat.deleteSession')}
                           >
                             <Trash2 className="h-3 w-3" />
@@ -2253,13 +2253,13 @@ const resetSessionUiState = useCallback(() => {
               <div className="absolute left-3 right-3 top-[44px] z-30 max-h-[460px] overflow-y-auto rounded-[var(--jmc-radius-lg)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-elevated)] p-3 shadow-xl animate-fade-in space-y-3">
                 <div className="flex items-center justify-between pb-1.5 border-b border-[var(--jmc-border-subtle)]">
                   <div className="flex items-center gap-1.5">
-                    <Brain className="h-4 w-4 text-[var(--jmc-primary)]" />
+                    <Brain className="h-4 w-4 text-[var(--jmc-primary-text)]" />
                     <span className="text-[12px] font-semibold text-[var(--jmc-text)]">{t('ai.chat.memoryTitle')}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => void handleClearMemory('all')}
-                    className="text-[10px] text-[var(--jmc-danger)] hover:underline"
+                    className="text-[10px] text-[var(--jmc-danger-text)] hover:underline"
                   >
                     Tümünü Temizle
                   </button>
@@ -2335,7 +2335,7 @@ const resetSessionUiState = useCallback(() => {
                         <button
                           type="button"
                           onClick={() => handleDeleteMemoryItem(item.id, 'global')}
-                          className="text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger)] p-0.5"
+                          className="text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger-text)] p-0.5"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
@@ -2359,7 +2359,7 @@ const resetSessionUiState = useCallback(() => {
                         <button
                           type="button"
                           onClick={() => handleDeleteMemoryItem(item.id, 'session')}
-                          className="text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger)] p-0.5"
+                          className="text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger-text)] p-0.5"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
@@ -2435,7 +2435,7 @@ const resetSessionUiState = useCallback(() => {
                   </p>
                 ) : (
                   <div className="mx-1 my-6 rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-surface)] p-4 border border-[var(--jmc-border)] text-center space-y-3 shadow-xs animate-fade-in">
-                    <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-[var(--jmc-warning)]/15 text-[var(--jmc-warning)]">
+                    <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-[var(--jmc-warning)]/15 text-[var(--jmc-warning-text)]">
                       <KeyRound className="h-5 w-5" />
                     </div>
                     <div className="space-y-1">
@@ -2503,7 +2503,7 @@ const resetSessionUiState = useCallback(() => {
                     {isError ? (
                       <div
                         role="alert"
-                        className="flex max-w-[94%] items-start gap-2 rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-surface)] px-3 py-2.5 text-[11.5px] leading-relaxed text-[var(--jmc-danger)] border border-[var(--jmc-danger)]/20"
+                        className="flex max-w-[94%] items-start gap-2 rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-surface)] px-3 py-2.5 text-[11.5px] leading-relaxed text-[var(--jmc-danger-text)] border border-[var(--jmc-danger)]/20"
                       >
                         <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                         <span className="whitespace-pre-wrap break-words">{msg.content}</span>
@@ -2554,13 +2554,13 @@ const resetSessionUiState = useCallback(() => {
                             >
                               {copyErrorMsgId === msg.id ? (
                                 <>
-                                  <AlertCircle className="h-3 w-3 text-[var(--jmc-danger)]" />
-                                  <span className="text-[var(--jmc-danger)] font-medium">Kopyalanamadı</span>
+                                  <AlertCircle className="h-3 w-3 text-[var(--jmc-danger-text)]" />
+                                  <span className="text-[var(--jmc-danger-text)] font-medium">Kopyalanamadı</span>
                                 </>
                               ) : copiedMsgId === msg.id ? (
                                 <>
-                                  <Check className="h-3 w-3 text-[var(--jmc-success)]" />
-                                  <span className="text-[var(--jmc-success)] font-medium">Kopyalandı</span>
+                                  <Check className="h-3 w-3 text-[var(--jmc-success-text)]" />
+                                  <span className="text-[var(--jmc-success-text)] font-medium">Kopyalandı</span>
                                 </>
                               ) : (
                                 <>
@@ -2599,17 +2599,17 @@ const resetSessionUiState = useCallback(() => {
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <span className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--jmc-text)]">
-                                  <Wrench className="h-3 w-3 text-[var(--jmc-primary)]" />
+                                  <Wrench className="h-3 w-3 text-[var(--jmc-primary-text)]" />
                                   {t(`ai.toolName.${tc.name}`) || tc.name}
                                 </span>
                                 <span
                                   className={`text-[9.5px] uppercase font-semibold px-1.5 py-0.5 rounded ${
                                     isPending
-                                      ? 'bg-[var(--jmc-warning)]/15 text-[var(--jmc-warning)]'
+                                      ? 'bg-[var(--jmc-warning)]/15 text-[var(--jmc-warning-text)]'
                                       : isApproved
-                                      ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success)]'
+                                      ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success-text)]'
                                       : isError
-                                      ? 'bg-[var(--jmc-danger)]/15 text-[var(--jmc-danger)]'
+                                      ? 'bg-[var(--jmc-danger)]/15 text-[var(--jmc-danger-text)]'
                                       : 'bg-[var(--jmc-text-dim)]/15 text-[var(--jmc-text-dim)]'
                                   }`}
                                 >
@@ -2637,7 +2637,7 @@ const resetSessionUiState = useCallback(() => {
                                   <button
                                     type="button"
                                     onClick={() => void handleRejectTool(tc.id)}
-                                    className="rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger)] transition-colors"
+                                    className="rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger-text)] transition-colors"
                                   >
                                     {t('ai.reject')}
                                   </button>
@@ -2685,7 +2685,7 @@ const resetSessionUiState = useCallback(() => {
                   disabled={isGenerating || !aiReady}
                   className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--jmc-bg-surface)] px-2.5 py-1 text-[10px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:bg-[var(--jmc-badge-bg)] transition-colors border border-[var(--jmc-border-subtle)] disabled:opacity-40"
                 >
-                  <Zap className="h-2.5 w-2.5 text-[var(--jmc-primary)]" />
+                  <Zap className="h-2.5 w-2.5 text-[var(--jmc-primary-text)]" />
                   {t('ai.quick.summarize')}
                 </button>
                 <button
@@ -2694,7 +2694,7 @@ const resetSessionUiState = useCallback(() => {
                   disabled={isGenerating || !aiReady}
                   className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--jmc-bg-surface)] px-2.5 py-1 text-[10px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:bg-[var(--jmc-badge-bg)] transition-colors border border-[var(--jmc-border-subtle)] disabled:opacity-40"
                 >
-                  <Scale className="h-2.5 w-2.5 text-[var(--jmc-primary)]" />
+                  <Scale className="h-2.5 w-2.5 text-[var(--jmc-primary-text)]" />
                   {t('ai.quick.rubric')}
                 </button>
                 <button
@@ -2703,7 +2703,7 @@ const resetSessionUiState = useCallback(() => {
                   disabled={isGenerating || !aiReady}
                   className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--jmc-bg-surface)] px-2.5 py-1 text-[10px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:bg-[var(--jmc-badge-bg)] transition-colors border border-[var(--jmc-border-subtle)] disabled:opacity-40"
                 >
-                  <FileText className="h-2.5 w-2.5 text-[var(--jmc-primary)]" />
+                  <FileText className="h-2.5 w-2.5 text-[var(--jmc-primary-text)]" />
                   {t('ai.quick.skeleton')}
                 </button>
                 <button
@@ -2712,7 +2712,7 @@ const resetSessionUiState = useCallback(() => {
                   disabled={isGenerating || !aiReady}
                   className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--jmc-bg-surface)] px-2.5 py-1 text-[10px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] hover:bg-[var(--jmc-badge-bg)] transition-colors border border-[var(--jmc-border-subtle)] disabled:opacity-40"
                 >
-                  <BookOpen className="h-2.5 w-2.5 text-[var(--jmc-primary)]" />
+                  <BookOpen className="h-2.5 w-2.5 text-[var(--jmc-primary-text)]" />
                   {t('ai.quick.quiz')}
                 </button>
               </div>
@@ -2721,7 +2721,7 @@ const resetSessionUiState = useCallback(() => {
             {chatAttachment && (
               <div className="shrink-0 flex items-center justify-between gap-2 px-3.5 py-1.5 bg-[var(--jmc-bg)] border-t border-[var(--jmc-border-subtle)] text-[11px] animate-fade-in">
                 <div className="flex items-center gap-1.5 truncate text-[var(--jmc-text-muted)]">
-                  <Paperclip className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-primary)]" />
+                  <Paperclip className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-primary-text)]" />
                   <span className="truncate font-medium text-[var(--jmc-text)]">{chatAttachment.name}</span>
                   {chatAttachment.size ? (
                     <span className="text-[10px] text-[var(--jmc-text-dim)]">({Math.round(chatAttachment.size / 1024)} KB)</span>
@@ -2810,7 +2810,7 @@ const resetSessionUiState = useCallback(() => {
                   onClick={() => void handleStopGeneration()}
                   aria-label="Yanıt üretimini durdur"
                   title="Durdur"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] text-[var(--jmc-text)] border border-[var(--jmc-border)] transition-all hover:bg-[var(--jmc-bg)] hover:border-[var(--jmc-danger)] hover:text-[var(--jmc-danger)] active:scale-95"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] text-[var(--jmc-text)] border border-[var(--jmc-border)] transition-all hover:bg-[var(--jmc-bg)] hover:border-[var(--jmc-danger)] hover:text-[var(--jmc-danger-text)] active:scale-95"
                 >
                   <Square className="h-3 w-3 fill-current" />
                 </button>
@@ -2964,7 +2964,7 @@ function getUrgencyBadge(
   if (work.submission?.state === 'TURNED_IN' || work.submission?.state === 'RETURNED') {
     return {
       label: t('badge.turnedIn'),
-      className: 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success)] border border-[var(--jmc-success)]/25',
+      className: 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success-text)] border border-[var(--jmc-success)]/25',
     }
   }
   if (!work.dueDate) return null
@@ -2974,26 +2974,26 @@ function getUrgencyBadge(
   if (diffMs < 0) {
     return {
       label: t('badge.overdue'),
-      className: 'bg-[var(--jmc-danger)]/15 text-[var(--jmc-danger)] border border-[var(--jmc-danger)]/25 font-medium',
+      className: 'bg-[var(--jmc-danger)]/15 text-[var(--jmc-danger-text)] border border-[var(--jmc-danger)]/25 font-medium',
     }
   }
   const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
   if (diffDays <= 0) {
     return {
       label: t('badge.dueToday'),
-      className: 'bg-[var(--jmc-warning)]/20 text-[var(--jmc-warning)] border border-[var(--jmc-warning)]/30 font-semibold',
+      className: 'bg-[var(--jmc-warning)]/20 text-[var(--jmc-warning-text)] border border-[var(--jmc-warning)]/30 font-semibold',
     }
   }
   if (diffDays === 1) {
     return {
       label: t('badge.dueTomorrow'),
-      className: 'bg-[var(--jmc-warning)]/15 text-[var(--jmc-warning)] border border-[var(--jmc-warning)]/25',
+      className: 'bg-[var(--jmc-warning)]/15 text-[var(--jmc-warning-text)] border border-[var(--jmc-warning)]/25',
     }
   }
   if (diffDays <= 7) {
     return {
       label: `${diffDays} ${t('badge.daysLeft')}`,
-      className: 'bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)] border border-[var(--jmc-primary)]/25',
+      className: 'bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary-text)] border border-[var(--jmc-primary)]/25',
     }
   }
   return null

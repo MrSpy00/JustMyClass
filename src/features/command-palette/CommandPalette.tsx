@@ -200,7 +200,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               {matchingCommands.map(cmd => (
                 <Row
                   key={cmd.token}
-                  icon={<Layers className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />}
+                  icon={<Layers className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />}
                   title={cmd.label}
                   hint={cmd.desc}
                   trailing={<code className="font-mono text-[10.5px] text-[var(--jmc-text-dim)]">{cmd.token}</code>}
@@ -240,7 +240,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               {matchingCourses.slice(0, 12).map(c => (
                 <Row
                   key={c.id}
-                  icon={<BookOpen className="h-3.5 w-3.5 text-[var(--jmc-accent)]" />}
+                  icon={<BookOpen className="h-3.5 w-3.5 text-[var(--jmc-accent-text)]" />}
                   title={c.name}
                   hint={[c.section, c.courseState].filter(Boolean).join(' · ')}
                   onSelect={() => {

@@ -379,11 +379,11 @@ export function ModelPicker({
           </span>
         </span>
         {refreshing ? (
-          <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin-slow text-[var(--jmc-primary)]" />
+          <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin-slow text-[var(--jmc-primary-text)]" />
         ) : (
           <ChevronDown
             className={`h-3.5 w-3.5 shrink-0 text-[var(--jmc-text-dim)] transition-transform duration-[var(--jmc-dur)] ease-[var(--jmc-ease)] ${
-              isOpen ? 'rotate-180 text-[var(--jmc-primary)]' : ''
+              isOpen ? 'rotate-180 text-[var(--jmc-primary-text)]' : ''
             }`}
           />
         )}
@@ -438,7 +438,7 @@ export function ModelPicker({
                 aria-label="Modelleri yenile"
                 className="inline-flex shrink-0 items-center gap-1 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:border-[var(--jmc-primary)]/40 hover:text-[var(--jmc-text)] disabled:opacity-40"
               >
-                <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin-slow text-[var(--jmc-primary)]' : ''}`} />
+                <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin-slow text-[var(--jmc-primary-text)]' : ''}`} />
                 <span>{refreshing ? 'Sorgulanıyor…' : 'Yenile'}</span>
               </button>
             )}
@@ -497,7 +497,7 @@ export function ModelPicker({
                       </span>
                       {active && (
                         <Check
-                          className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-primary)]"
+                          className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-primary-text)]"
                           aria-hidden="true"
                         />
                       )}
@@ -512,7 +512,7 @@ export function ModelPicker({
                     setOpen(false)
                     onOpenProviderSettings()
                   }}
-                  className="mt-1.5 flex w-full items-center gap-1.5 rounded-[var(--jmc-radius-sm)] border border-dashed border-[var(--jmc-border)] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:border-[var(--jmc-primary)]/45 hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-primary)]"
+                  className="mt-1.5 flex w-full items-center gap-1.5 rounded-[var(--jmc-radius-sm)] border border-dashed border-[var(--jmc-border)] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:border-[var(--jmc-primary)]/45 hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-primary-text)]"
                 >
                   <KeyRound className="h-3 w-3 shrink-0" aria-hidden="true" />
                   Anahtar ekle / yönet
@@ -523,7 +523,7 @@ export function ModelPicker({
             {/* --- Model sutunu (Tam isim ve ID gosterimi, kesme yok) --- */}
             <div ref={listRef} className="min-w-0 flex-1 overflow-y-auto p-1.5" role="presentation">
               {keyless && (
-                <div className="animate-fade-in mb-2 flex items-center justify-between gap-2 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-warning)]/35 bg-[var(--jmc-warning)]/10 px-2.5 py-2 text-[11px] leading-snug text-[var(--jmc-warning)]">
+                <div className="animate-fade-in mb-2 flex items-center justify-between gap-2 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-warning)]/35 bg-[var(--jmc-warning)]/10 px-2.5 py-2 text-[11px] leading-snug text-[var(--jmc-warning-text)]">
                   <span>
                     <strong className="font-semibold">{provider?.displayName}</strong> için API anahtarı girilmedi. Anahtar eklediğinizde canlı modeller otomatik çekilir.
                   </span>
@@ -534,7 +534,7 @@ export function ModelPicker({
                         setOpen(false)
                         onOpenProviderSettings()
                       }}
-                      className="shrink-0 rounded bg-[var(--jmc-warning)]/20 px-2 py-1 text-[10px] font-semibold text-[var(--jmc-warning)] hover:bg-[var(--jmc-warning)]/30"
+                      className="shrink-0 rounded bg-[var(--jmc-warning)]/20 px-2 py-1 text-[10px] font-semibold text-[var(--jmc-warning-text)] hover:bg-[var(--jmc-warning)]/30"
                     >
                       Anahtar Gir
                     </button>
@@ -578,7 +578,7 @@ export function ModelPicker({
                           <span className="mt-0.5 flex w-3.5 shrink-0 justify-center">
                             {active && (
                               <Check
-                                className="h-3.5 w-3.5 text-[var(--jmc-primary)]"
+                                className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]"
                                 aria-hidden="true"
                               />
                             )}
@@ -591,7 +591,7 @@ export function ModelPicker({
                               {m.isDefault && (
                                 <span
                                   title="Sağlayıcının varsayılan ve önerilen modeli"
-                                  className="inline-flex items-center gap-0.5 rounded bg-[var(--jmc-primary)]/15 px-1.5 py-0.2 text-[9.5px] font-semibold text-[var(--jmc-primary)] border border-[var(--jmc-primary)]/25"
+                                  className="inline-flex items-center gap-0.5 rounded bg-[var(--jmc-primary)]/15 px-1.5 py-0.2 text-[9.5px] font-semibold text-[var(--jmc-primary-text)] border border-[var(--jmc-primary)]/25"
                                 >
                                   <Sparkles className="h-2.5 w-2.5" />
                                   <span>Önerilen</span>
@@ -613,17 +613,17 @@ export function ModelPicker({
                             )}
                             {m.supportsReasoning && (
                               <span title="Akıl yürütme (Reasoning)" aria-label="Akıl yürütme destekler">
-                                <Brain className="h-3.5 w-3.5 text-[var(--jmc-accent)]" aria-hidden="true" />
+                                <Brain className="h-3.5 w-3.5 text-[var(--jmc-accent-text)]" aria-hidden="true" />
                               </span>
                             )}
                             {m.supportsTools && (
                               <span title="Araç çağırma (Tool Calling)" aria-label="Araç çağırma destekler">
-                                <Zap className="h-3.5 w-3.5 text-[var(--jmc-success)]" aria-hidden="true" />
+                                <Zap className="h-3.5 w-3.5 text-[var(--jmc-success-text)]" aria-hidden="true" />
                               </span>
                             )}
                             {m.supportsVision && (
                               <span title="Görsel / PDF girdisi (Vision)" aria-label="Görsel destekler">
-                                <Eye className="h-3.5 w-3.5 text-[var(--jmc-warning)]" aria-hidden="true" />
+                                <Eye className="h-3.5 w-3.5 text-[var(--jmc-warning-text)]" aria-hidden="true" />
                               </span>
                             )}
                           </span>
@@ -638,8 +638,8 @@ export function ModelPicker({
                             title={fav ? 'Favorilerden çıkar' : 'Favorilere ekle'}
                             className={`mt-0.5 shrink-0 rounded p-0.5 transition-[color,background-color,transform] duration-[var(--jmc-dur)] ease-[var(--jmc-ease)] hover:scale-110 active:scale-90 ${
                               fav
-                                ? 'text-[var(--jmc-warning)]'
-                                : 'text-[var(--jmc-text-dim)] hover:text-[var(--jmc-warning)]'
+                                ? 'text-[var(--jmc-warning-text)]'
+                                : 'text-[var(--jmc-text-dim)] hover:text-[var(--jmc-warning-text)]'
                             }`}
                           >
                             <Star className={`h-3.5 w-3.5 ${fav ? 'fill-current' : ''}`} aria-hidden="true" />

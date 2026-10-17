@@ -138,7 +138,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
           {/* Marka */}
           <header className="flex items-center gap-3.5">
             <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-badge-bg)] shadow-[var(--jmc-shadow-sm)]">
-              <svg viewBox="0 0 32 32" className="h-6 w-6 text-[var(--jmc-primary)]" aria-hidden>
+              <svg viewBox="0 0 32 32" className="h-6 w-6 text-[var(--jmc-primary-text)]" aria-hidden>
                 <path
                   d="M5 7.5A2.5 2.5 0 0 1 7.5 5h11A2.5 2.5 0 0 1 21 7.5V11h3.5A2.5 2.5 0 0 1 27 13.5v11a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 7 24.5v-13h2.5v13a.5.5 0 0 0 .5.5h15a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5H21V23h-2V7.5a.5.5 0 0 0-.5-.5h-11a.5.5 0 0 0-.5.5V20H5V7.5Z"
                   fill="currentColor"
@@ -148,7 +148,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-[17px] font-semibold tracking-tight">JustMyClass</h2>
-                <span className="rounded-full bg-[var(--jmc-badge-bg)] px-2 py-0.5 text-[10.5px] font-medium text-[var(--jmc-primary)]">
+                <span className="rounded-full bg-[var(--jmc-badge-bg)] px-2 py-0.5 text-[10.5px] font-medium text-[var(--jmc-primary-text)]">
                   {info?.version ?? '—'}
                 </span>
               </div>
@@ -219,9 +219,9 @@ export const AboutModal: React.FC<AboutModalProps> = ({
                 }`}
               >
                 {encryption.hardwareProtected ? (
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--jmc-success)]" />
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--jmc-success-text)]" />
                 ) : (
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--jmc-warning)]" />
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--jmc-warning-text)]" />
                 )}
                 <div className="min-w-0 text-[11px] leading-relaxed">
                   <p className="font-medium">
@@ -263,7 +263,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
               disabled={!info}
               className="flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-2.5 py-1.5 text-[11px] text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-text)] disabled:opacity-40"
             >
-              {copied ? <Check className="h-3.5 w-3.5 text-[var(--jmc-success)]" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? <Check className="h-3.5 w-3.5 text-[var(--jmc-success-text)]" /> : <Copy className="h-3.5 w-3.5" />}
               {copied ? 'Kopyalandı' : 'Tanılama bilgisini kopyala'}
             </button>
             {/*
@@ -280,7 +280,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
                   onClose()
                   onOpenOnboarding()
                 }}
-                className="flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)]/15 px-2.5 py-1.5 text-[11px] font-semibold text-[var(--jmc-primary)] transition-colors hover:bg-[var(--jmc-primary)]/25"
+                className="flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)]/15 px-2.5 py-1.5 text-[11px] font-semibold text-[var(--jmc-primary-text)] transition-colors hover:bg-[var(--jmc-primary)]/25"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 Karşılama Rehberini Aç
@@ -340,18 +340,18 @@ const LinkCard: React.FC<{
     className="group flex items-center justify-between gap-3 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-2.5 text-left shadow-[var(--jmc-shadow-sm)] transition-colors hover:bg-[var(--jmc-bg)]"
   >
     <span className="flex min-w-0 items-center gap-2.5">
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary)]">
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary-text)]">
         {icon}
       </span>
       <span className="min-w-0">
         <span className="block text-[10px] uppercase tracking-wider text-[var(--jmc-text-dim)]">
           {label}
         </span>
-        <span className="block truncate text-[12.5px] font-medium text-[var(--jmc-text)] group-hover:text-[var(--jmc-primary)]">
+        <span className="block truncate text-[12.5px] font-medium text-[var(--jmc-text)] group-hover:text-[var(--jmc-primary-text)]">
           {name}
         </span>
       </span>
     </span>
-    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-text-dim)] transition-colors group-hover:text-[var(--jmc-primary)]" />
+    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-text-dim)] transition-colors group-hover:text-[var(--jmc-primary-text)]" />
   </button>
 )

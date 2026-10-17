@@ -212,7 +212,7 @@ export function SetupWizard({
         <header className="flex shrink-0 items-center justify-between border-b border-[var(--jmc-border-subtle)] px-6 py-4 bg-[var(--jmc-bg)]/40">
           <div className="flex items-center gap-3">
             <span
-              className="grid h-10 w-10 place-items-center rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary)] shadow-[var(--jmc-shadow-sm)]"
+              className="grid h-10 w-10 place-items-center rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary-text)] shadow-[var(--jmc-shadow-sm)]"
               aria-hidden="true"
             >
               <GraduationCap className="h-5 w-5" />
@@ -222,7 +222,7 @@ export function SetupWizard({
                 <h1 id="jmc-setup-title" className="text-base font-semibold text-[var(--jmc-text)]">
                   JustMyClass Kurulum & Özelleştirme Merkezi
                 </h1>
-                <span className="rounded-full bg-[var(--jmc-badge-bg)] px-2 py-0.5 font-mono text-[10px] font-semibold text-[var(--jmc-primary)]">
+                <span className="rounded-full bg-[var(--jmc-badge-bg)] px-2 py-0.5 font-mono text-[10px] font-semibold text-[var(--jmc-primary-text)]">
                   v{updateStatus?.currentVersion || '0.0.1'}
                 </span>
               </div>
@@ -248,7 +248,7 @@ export function SetupWizard({
             {/* Kart 1: Gizlilik ve Depolama */}
             <div className="flex flex-col justify-between rounded-[var(--jmc-radius)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg)]/60 p-4 transition-colors hover:border-[var(--jmc-border)]">
               <div>
-                <div className="flex items-center gap-2 text-[var(--jmc-primary)] mb-2">
+                <div className="flex items-center gap-2 text-[var(--jmc-primary-text)] mb-2">
                   <Lock className="h-4 w-4 shrink-0" />
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--jmc-text)]">
                     Cihazınızda & Şifreli
@@ -258,12 +258,12 @@ export function SetupWizard({
                   Verileriniz üçüncü taraf bulutlara gitmez; doğrudan bilgisayarınızda AES-256-GCM ve Windows DPAPI kasası ile şifrelenir.
                 </p>
                 <div className="mt-2.5 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-code-bg)] p-2 font-mono text-[10px] text-[var(--jmc-text-dim)] border border-[var(--jmc-border-subtle)] break-all">
-                  <span className="text-[var(--jmc-primary)] font-semibold">Kasa: </span>
+                  <span className="text-[var(--jmc-primary-text)] font-semibold">Kasa: </span>
                   {dataPathLabel || 'AppData/Roaming/JustMyClass'}
                 </div>
               </div>
               <p className="mt-2.5 text-[10.5px] text-[var(--jmc-text-dim)] flex items-center gap-1.5">
-                <Database className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-success)]" />
+                <Database className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-success-text)]" />
                 <span>CSV, JSON ve Anki dışa aktarımı hazır.</span>
               </p>
             </div>
@@ -272,7 +272,7 @@ export function SetupWizard({
             <div className="flex flex-col justify-between rounded-[var(--jmc-radius)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg)]/60 p-4 transition-colors hover:border-[var(--jmc-border)]">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 text-[var(--jmc-primary)]">
+                  <div className="flex items-center gap-2 text-[var(--jmc-primary-text)]">
                     <ShieldCheck className="h-4 w-4 shrink-0" />
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--jmc-text)]">
                       Classroom Eşitleme
@@ -285,7 +285,7 @@ export function SetupWizard({
                   )}
                 </div>
                 <p className="text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
-                  RFC 8252 PKCE geri dönüşü ve <code className="font-mono text-[var(--jmc-primary)]">.env</code> / yerel kasa korumalı OAuth 2.0 istemcisi ile güvenli oturum açın.
+                  RFC 8252 PKCE geri dönüşü ve <code className="font-mono text-[var(--jmc-primary-text)]">.env</code> / yerel kasa korumalı OAuth 2.0 istemcisi ile güvenli oturum açın.
                 </p>
                 {account ? (
                   <div className="mt-2.5 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg-surface)] px-2.5 py-2 text-[11px] border border-[var(--jmc-border-subtle)]">
@@ -295,11 +295,11 @@ export function SetupWizard({
                 ) : (
                   <ul className="mt-2.5 space-y-1 text-[11px] text-[var(--jmc-text-muted)]">
                     <li className="flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-[var(--jmc-success)] shrink-0" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-[var(--jmc-success-text)] shrink-0" />
                       Ödevler, teslimler, rubrikler ve Drive ekleri
                     </li>
                     <li className="flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-[var(--jmc-success)] shrink-0" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-[var(--jmc-success-text)] shrink-0" />
                       5 dakikada bir otomatik arka plan eşitleme
                     </li>
                   </ul>
@@ -311,7 +311,7 @@ export function SetupWizard({
                   onClose()
                   onOpenAuth()
                 }}
-                className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-primary)]/40 bg-[var(--jmc-primary)]/15 px-2.5 py-1.5 text-[11.5px] font-semibold text-[var(--jmc-primary)] transition-colors hover:bg-[var(--jmc-primary)] hover:text-[var(--jmc-on-primary)]"
+                className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-primary)]/40 bg-[var(--jmc-primary)]/15 px-2.5 py-1.5 text-[11.5px] font-semibold text-[var(--jmc-primary-text)] transition-colors hover:bg-[var(--jmc-primary)] hover:text-[var(--jmc-on-primary)]"
               >
                 {account ? 'Hesap Ayarlarını Aç' : 'Google ile Bağlan'}
               </button>
@@ -321,13 +321,13 @@ export function SetupWizard({
             <div className="flex flex-col justify-between rounded-[var(--jmc-radius)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg)]/60 p-4 transition-colors hover:border-[var(--jmc-border)]">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 text-[var(--jmc-primary)]">
+                  <div className="flex items-center gap-2 text-[var(--jmc-primary-text)]">
                     <Sparkles className="h-4 w-4 shrink-0" />
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--jmc-text)]">
                       Hızlı AI Kurulumu
                     </h2>
                   </div>
-                  <span className="rounded-full bg-[var(--jmc-badge-bg)] px-2 py-0.5 text-[9.5px] font-semibold text-[var(--jmc-primary)]">
+                  <span className="rounded-full bg-[var(--jmc-badge-bg)] px-2 py-0.5 text-[9.5px] font-semibold text-[var(--jmc-primary-text)]">
                     {configuredCount} aktif
                   </span>
                 </div>
@@ -367,7 +367,7 @@ export function SetupWizard({
                     </button>
                   </div>
                   {keySavedMsg && (
-                    <p className="text-[10px] text-[var(--jmc-success)] font-medium animate-fade-in">
+                    <p className="text-[10px] text-[var(--jmc-success-text)] font-medium animate-fade-in">
                       {keySavedMsg}
                     </p>
                   )}
@@ -381,7 +381,7 @@ export function SetupWizard({
                 }}
                 className="mt-2.5 inline-flex items-center justify-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--jmc-text)] transition-colors hover:bg-[var(--jmc-bg)]"
               >
-                <KeyRound className="h-3 w-3 text-[var(--jmc-primary)]" />
+                <KeyRound className="h-3 w-3 text-[var(--jmc-primary-text)]" />
                 Tüm Sağlayıcıları & Yerel AI'yı Yönet
               </button>
             </div>
@@ -393,12 +393,12 @@ export function SetupWizard({
             <div className="rounded-[var(--jmc-radius)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg)]/50 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Palette className="h-4 w-4 text-[var(--jmc-primary)]" />
+                  <Palette className="h-4 w-4 text-[var(--jmc-primary-text)]" />
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--jmc-text)]">
                     Tema & Görünüm Tercihi
                   </h3>
                 </div>
-                <span className="text-[10.5px] font-mono text-[var(--jmc-primary)]">{theme}</span>
+                <span className="text-[10.5px] font-mono text-[var(--jmc-primary-text)]">{theme}</span>
               </div>
 
               <div className="grid grid-cols-4 gap-2">
@@ -444,7 +444,7 @@ export function SetupWizard({
                   onClick={() => setCompact(!compact)}
                   className={`flex-1 rounded-[var(--jmc-radius-sm)] border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
                     compact
-                      ? 'border-[var(--jmc-primary)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary)]'
+                      ? 'border-[var(--jmc-primary)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary-text)]'
                       : 'border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-elevated)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                   }`}
                 >
@@ -455,7 +455,7 @@ export function SetupWizard({
                   onClick={() => setReduceMotion(!reduceMotion)}
                   className={`flex-1 rounded-[var(--jmc-radius-sm)] border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
                     reduceMotion
-                      ? 'border-[var(--jmc-primary)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary)]'
+                      ? 'border-[var(--jmc-primary)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary-text)]'
                       : 'border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-elevated)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                   }`}
                 >
@@ -469,12 +469,12 @@ export function SetupWizard({
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
-                    <RefreshCw className="h-4 w-4 text-[var(--jmc-primary)]" />
+                    <RefreshCw className="h-4 w-4 text-[var(--jmc-primary-text)]" />
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--jmc-text)]">
                       Otomatik Eşitleme Aralığı
                     </h3>
                   </div>
-                  <span className="text-[10px] font-medium text-[var(--jmc-success)]">
+                  <span className="text-[10px] font-medium text-[var(--jmc-success-text)]">
                     Varsayılan: 5 dk
                   </span>
                 </div>
@@ -489,7 +489,7 @@ export function SetupWizard({
                       label: 'Her 5 dakikada bir',
                       description: 'Önerilen varsayılan — ödev ve duyuruları anında yakalar',
                       badge: 'Varsayılan',
-                      icon: <Clock className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />,
+                      icon: <Clock className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />,
                     },
                     {
                       value: 15,
@@ -521,7 +521,7 @@ export function SetupWizard({
 
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <Brain className="h-4 w-4 text-[var(--jmc-primary)]" />
+                  <Brain className="h-4 w-4 text-[var(--jmc-primary-text)]" />
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--jmc-text)]">
                     Varsayılan AI Çalışma Kipi
                   </h3>
@@ -543,7 +543,7 @@ export function SetupWizard({
                       >
                         <Icon
                           className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${
-                            active ? 'text-[var(--jmc-primary)]' : 'text-[var(--jmc-text-dim)]'
+                            active ? 'text-[var(--jmc-primary-text)]' : 'text-[var(--jmc-text-dim)]'
                           }`}
                         />
                         <div className="min-w-0">
@@ -566,7 +566,7 @@ export function SetupWizard({
           <div className="rounded-[var(--jmc-radius)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg)]/40 px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <div className="flex items-center gap-2">
-                <Wrench className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+                <Wrench className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />
                 <span className="text-[11.5px] font-semibold text-[var(--jmc-text)]">
                   Yapay Zekâ Araç İzinleri (Kum Havuzu)
                 </span>

@@ -160,7 +160,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
         {/* Üst Bar: Logo, Sayfa Başlığı & Kapat Butonu */}
         <header className="flex shrink-0 items-center justify-between border-b border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)]/70 px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary)] shadow-sm">
+            <div className="grid h-10 w-10 place-items-center rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-badge-bg)] text-[var(--jmc-primary-text)] shadow-sm">
               <GraduationCap className="h-6 w-6" />
             </div>
             <div>
@@ -168,7 +168,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                 <h1 className="text-[16px] font-bold tracking-tight text-[var(--jmc-text)]">
                   JustMyClass Rehberi
                 </h1>
-                <span className="rounded-full bg-[var(--jmc-primary)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--jmc-primary)]">
+                <span className="rounded-full bg-[var(--jmc-primary)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--jmc-primary-text)]">
                   Adım {currentPage + 1} / {totalPages}
                 </span>
               </div>
@@ -215,7 +215,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
           {currentPage === 0 && (
             <div className="space-y-6 animate-fade-in max-w-3xl mx-auto">
               <div className="text-center space-y-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--jmc-primary)]/15 px-3 py-1 text-[11px] font-semibold text-[var(--jmc-primary)]">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--jmc-primary)]/15 px-3 py-1 text-[11px] font-semibold text-[var(--jmc-primary-text)]">
                   <ShieldCheck className="h-3.5 w-3.5" />
                   Maksimum Gizlilik ve Güvenlik
                 </span>
@@ -229,7 +229,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                 <div className="rounded-[var(--jmc-radius-lg)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)] p-4 space-y-2">
-                  <div className="flex items-center gap-2.5 text-[var(--jmc-primary)]">
+                  <div className="flex items-center gap-2.5 text-[var(--jmc-primary-text)]">
                     <ShieldCheck className="h-5 w-5" />
                     <h3 className="text-[13.5px] font-semibold text-[var(--jmc-text)]">
                       %100 Yerel Öncelikli (Local-First)
@@ -297,7 +297,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
 
               <div className="space-y-3 pt-2">
                 <div className="flex items-start gap-3.5 rounded-[var(--jmc-radius-lg)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)] p-4">
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)] font-bold text-[13px]">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary-text)] font-bold text-[13px]">
                     1
                   </div>
                   <div>
@@ -311,7 +311,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                 </div>
 
                 <div className="flex items-start gap-3.5 rounded-[var(--jmc-radius-lg)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)] p-4">
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)] font-bold text-[13px]">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary-text)] font-bold text-[13px]">
                     2
                   </div>
                   <div>
@@ -325,7 +325,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                 </div>
 
                 <div className="flex items-start gap-3.5 rounded-[var(--jmc-radius-lg)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)] p-4">
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)] font-bold text-[13px]">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary-text)] font-bold text-[13px]">
                     3
                   </div>
                   <div>
@@ -377,13 +377,13 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                 <div className="rounded-[var(--jmc-radius-lg)] border border-[var(--jmc-primary)]/40 bg-[var(--jmc-bg-surface)] p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 font-semibold text-[13px] text-[var(--jmc-text)]">
-                      <Sparkles className="h-4 w-4 text-[var(--jmc-primary)]" />
+                      <Sparkles className="h-4 w-4 text-[var(--jmc-primary-text)]" />
                       <span>Google Gemini (Önerilen)</span>
                     </div>
                     <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">Ücretsiz Kota</span>
                   </div>
                   <p className="text-[11.5px] text-[var(--jmc-text-muted)] leading-relaxed">
-                    Hızlı, akıllı ve PDF/resim okuyabilen <code className="text-[var(--jmc-primary)] font-mono">gemini-2.0-flash</code> modeli için tek tıkla anahtar alın.
+                    Hızlı, akıllı ve PDF/resim okuyabilen <code className="text-[var(--jmc-primary-text)] font-mono">gemini-2.0-flash</code> modeli için tek tıkla anahtar alın.
                   </p>
                   <button
                     type="button"
@@ -499,7 +499,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                   </button>
                 </div>
                 {keySaved && (
-                  <p className="text-[11px] text-[var(--jmc-success)] font-medium flex items-center gap-1">
+                  <p className="text-[11px] text-[var(--jmc-success-text)] font-medium flex items-center gap-1">
                     <CheckCircle className="h-3 w-3" /> Anahtar güvenli işletim sistemi kasasına kaydedildi!
                   </p>
                 )}
@@ -526,7 +526,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-2">
                 {/* Asistan Modları */}
                 <div className="rounded-[var(--jmc-radius-lg)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)] p-4 space-y-2">
-                  <div className="flex items-center gap-2 text-[var(--jmc-primary)] font-semibold text-[13px]">
+                  <div className="flex items-center gap-2 text-[var(--jmc-primary-text)] font-semibold text-[13px]">
                     <Sparkles className="h-4 w-4" />
                     <span>5 Asistan Modu</span>
                   </div>
@@ -582,7 +582,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
               {/* Tema Seçici */}
               <div className="space-y-2">
                 <label className="text-[12px] font-semibold text-[var(--jmc-text)] flex items-center gap-2">
-                  <Palette className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+                  <Palette className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />
                   <span>Görünüm Teması Seçin:</span>
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -614,7 +614,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                 <div className="rounded-[var(--jmc-radius-lg)] border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)] p-3.5 space-y-2">
                   <label className="text-[12px] font-semibold text-[var(--jmc-text)] flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+                    <Clock className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />
                     <span>Otomatik Eşitleme Aralığı</span>
                   </label>
                   <p className="text-[11px] text-[var(--jmc-text-muted)]">
@@ -673,7 +673,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                       handleFinish()
                       onOpenAuth()
                     }}
-                    className="inline-flex items-center gap-2 rounded-[var(--jmc-radius)] border border-[var(--jmc-primary)] bg-[var(--jmc-primary)]/10 px-5 py-2.5 text-[12.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-all"
+                    className="inline-flex items-center gap-2 rounded-[var(--jmc-radius)] border border-[var(--jmc-primary)] bg-[var(--jmc-primary)]/10 px-5 py-2.5 text-[12.5px] font-semibold text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-primary)]/20 transition-all"
                   >
                     <Globe className="h-4 w-4" />
                     <span>Google Hesabını Bağla</span>

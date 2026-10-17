@@ -686,7 +686,7 @@ const handleWipe = async () => {
                         aria-current={active ? 'page' : undefined}
                         className={`flex w-full items-center gap-2.5 rounded-[var(--jmc-radius)] px-2.5 py-2 text-left text-[12.5px] transition-colors ${
                           active
-                            ? 'bg-[var(--jmc-bg-surface)] font-medium text-[var(--jmc-primary)] shadow-[var(--jmc-shadow-sm)]'
+                            ? 'bg-[var(--jmc-bg-surface)] font-medium text-[var(--jmc-primary-text)] shadow-[var(--jmc-shadow-sm)]'
                             : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                         }`}
                       >
@@ -737,7 +737,7 @@ const handleWipe = async () => {
                   onClick={() => setTab(item.id)}
                   className={`shrink-0 rounded-[var(--jmc-radius)] px-2.5 py-1 text-[11.5px] ${
                     activeTab === item.id
-                      ? 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-primary)]'
+                      ? 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-primary-text)]'
                       : 'text-[var(--jmc-text-muted)]'
                   }`}
                 >
@@ -751,8 +751,8 @@ const handleWipe = async () => {
                 role="status"
                 className={`mx-6 mb-3 flex items-start gap-2 rounded-[var(--jmc-radius)] px-3 py-2 text-[11.5px] ${
                   notice.tone === 'ok'
-                    ? 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-success)]'
-                    : 'bg-[var(--jmc-badge-bg)] text-[var(--jmc-warning)]'
+                    ? 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-success-text)]'
+                    : 'bg-[var(--jmc-badge-bg)] text-[var(--jmc-warning-text)]'
                 }`}
               >
                 {notice.tone === 'ok' ? (
@@ -970,9 +970,9 @@ const UpdatePanel: React.FC<{
   const line = stateLine()
   const lineClass =
     line.tone === 'ok'
-      ? 'text-[var(--jmc-success)]'
+      ? 'text-[var(--jmc-success-text)]'
       : line.tone === 'error'
-        ? 'text-[var(--jmc-danger)]'
+        ? 'text-[var(--jmc-danger-text)]'
         : 'text-[var(--jmc-text-dim)]'
 
   return (
@@ -1207,7 +1207,7 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                   />
                   <h3 className="text-[13.5px] font-semibold">{p.displayName}</h3>
                   {isLocal && (
-                    <span className="rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-badge-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--jmc-primary)]">
+                    <span className="rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-badge-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--jmc-primary-text)]">
                       {lang === 'tr' ? 'YEREL' : 'LOCAL'}
                     </span>
                   )}
@@ -1279,7 +1279,7 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
             {test && (
               <p
                 className={`mt-2.5 font-mono text-[11px] ${
-                  test.healthy ? 'text-[var(--jmc-success)]' : 'text-[var(--jmc-warning)]'
+                  test.healthy ? 'text-[var(--jmc-success-text)]' : 'text-[var(--jmc-warning-text)]'
                 }`}
               >
                 {test.healthy
@@ -1357,25 +1357,25 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                     <span className="flex items-center gap-1">
                       {m.isDefault && (
                         <Crown
-                          className="h-3 w-3 text-[var(--jmc-warning)]"
+                          className="h-3 w-3 text-[var(--jmc-warning-text)]"
                           aria-label="Varsayılan"
                         />
                       )}
                       {m.supportsReasoning && (
                         <Brain
-                          className="h-3 w-3 text-[var(--jmc-accent)]"
+                          className="h-3 w-3 text-[var(--jmc-accent-text)]"
                           aria-label="Akıl yürütme"
                         />
                       )}
                       {m.supportsTools && (
                         <Zap
-                          className="h-3 w-3 text-[var(--jmc-success)]"
+                          className="h-3 w-3 text-[var(--jmc-success-text)]"
                           aria-label="Araç çağırma"
                         />
                       )}
                       {m.supportsVision && (
                         <Eye
-                          className="h-3 w-3 text-[var(--jmc-warning)]"
+                          className="h-3 w-3 text-[var(--jmc-warning-text)]"
                           aria-label="Görsel ve PDF girdisi"
                         />
                       )}
@@ -1442,7 +1442,7 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
               Bu sunucu bu cihazda yerel çalışıyor
             </label>
             {formError && (
-              <p className="text-[11.5px] text-[var(--jmc-warning)]">{formError}</p>
+              <p className="text-[11.5px] text-[var(--jmc-warning-text)]">{formError}</p>
             )}
             <div className="flex gap-2">
               <button
@@ -1678,10 +1678,10 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
             {summary.map(s => {
               const level = s.report.aaa ? 'AAA' : s.report.aa ? 'AA' : s.report.aaLarge ? 'AA büyük' : 'düşük'
               const tone = s.report.aa
-                ? 'text-[var(--jmc-success)]'
+                ? 'text-[var(--jmc-success-text)]'
                 : s.report.aaLarge
-                  ? 'text-[var(--jmc-warning)]'
-                  : 'text-[var(--jmc-danger)]'
+                  ? 'text-[var(--jmc-warning-text)]'
+                  : 'text-[var(--jmc-danger-text)]'
               return (
                 <div key={s.label} className="bg-[var(--jmc-bg-surface)] px-3 py-2">
                   <div className="text-[10.5px] uppercase tracking-wide text-[var(--jmc-text-dim)]">
@@ -1763,7 +1763,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
           {/* Kayitli bir tema etkideyse bu ayarlar sessizce etkisiz kalirdi;
               bu yuzden acikca kilitlenip aciklanir. */}
           {activeCustomThemeId && (
-            <p className="flex items-start gap-1.5 text-[11px] text-[var(--jmc-warning)]">
+            <p className="flex items-start gap-1.5 text-[11px] text-[var(--jmc-warning-text)]">
               <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
               {t('settings.appearance.customEditLocked')}
             </p>
@@ -1848,14 +1848,14 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
         </div>
 
         {hexError && (
-          <p className="flex items-center gap-1.5 text-[11px] text-[var(--jmc-danger)]">
+          <p className="flex items-center gap-1.5 text-[11px] text-[var(--jmc-danger-text)]">
             <AlertCircle className="h-3 w-3 shrink-0" />
             {hexError}
           </p>
         )}
 
         {draftContrastLow && (
-          <p className="flex items-start gap-1.5 text-[11px] text-[var(--jmc-danger)]">
+          <p className="flex items-start gap-1.5 text-[11px] text-[var(--jmc-danger-text)]">
             <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
             {t('settings.appearance.customContrastWarn')} ({draftContrast?.toFixed(2)}:1)
           </p>
@@ -1882,7 +1882,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
           <p
             className={`mt-1 text-[10.5px] ${
               draftName.length > CUSTOM_THEME_NAME_MAX
-                ? 'text-[var(--jmc-danger)]'
+                ? 'text-[var(--jmc-danger-text)]'
                 : 'text-[var(--jmc-text-dim)]'
             }`}
           >
@@ -1905,7 +1905,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
           {status && (
             <span
               className={`text-[11px] ${
-                status.tone === 'ok' ? 'text-[var(--jmc-success)]' : 'text-[var(--jmc-danger)]'
+                status.tone === 'ok' ? 'text-[var(--jmc-success-text)]' : 'text-[var(--jmc-danger-text)]'
               }`}
             >
               {status.text}
@@ -1969,7 +1969,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
                     </span>
                   )}
                   {active && (
-                    <span className="text-[10.5px] text-[var(--jmc-success)]">
+                    <span className="text-[10.5px] text-[var(--jmc-success-text)]">
                       {t('settings.appearance.customApplied')}
                     </span>
                   )}
@@ -1993,13 +1993,13 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
                       </>
                     ) : confirmDeleteId === entry.id ? (
                       <>
-                        <span className="text-[11px] text-[var(--jmc-danger)]">
+                        <span className="text-[11px] text-[var(--jmc-danger-text)]">
                           {t('settings.appearance.customDeleteConfirm')}
                         </span>
                         <button
                           type="button"
                           onClick={() => doDelete(entry.id)}
-                          className="text-[11px] font-medium text-[var(--jmc-danger)] hover:underline"
+                          className="text-[11px] font-medium text-[var(--jmc-danger-text)] hover:underline"
                         >
                           {t('settings.appearance.customDelete')}
                         </button>
@@ -2037,7 +2037,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
                             setEditingId(null)
                             setConfirmDeleteId(entry.id)
                           }}
-                          className="text-[11px] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-danger)]"
+                          className="text-[11px] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-danger-text)]"
                         >
                           {t('settings.appearance.customDelete')}
                         </button>
@@ -2177,7 +2177,7 @@ const AccountPanel: React.FC<{
                 className="h-11 w-11 rounded-full object-cover"
               />
             ) : (
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-[var(--jmc-badge-bg)] text-[12px] font-medium text-[var(--jmc-primary)]">
+              <span className="grid h-11 w-11 place-items-center rounded-full bg-[var(--jmc-badge-bg)] text-[12px] font-medium text-[var(--jmc-primary-text)]">
                 {(account.displayName || account.email).slice(0, 2).toUpperCase()}
               </span>
             )}
@@ -2189,7 +2189,7 @@ const AccountPanel: React.FC<{
                 {account.email}
               </p>
               {account.institution && (
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--jmc-primary)] font-medium">
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--jmc-primary-text)] font-medium">
                   <GraduationCap className="h-3.5 w-3.5 shrink-0" />
                   <span>{account.institution}</span>
                   {account.hostedDomain && (
@@ -2240,7 +2240,7 @@ const AccountPanel: React.FC<{
       <section className="rounded-[var(--jmc-radius-lg)] bg-[var(--jmc-bg-surface)] p-4 border border-[var(--jmc-border-subtle)] space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-[var(--jmc-primary)]" />
+            <KeyRound className="h-4 w-4 text-[var(--jmc-primary-text)]" />
             <h3 className="text-[12.5px] font-semibold">{t('auth.customClient')}</h3>
           </div>
           <button
@@ -2261,12 +2261,12 @@ const AccountPanel: React.FC<{
           <div className="flex flex-wrap items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)]/80 p-2.5 border border-[var(--jmc-border-subtle)] text-[11px]">
             <span className="text-[var(--jmc-text-dim)] font-medium">Aktif İstemci:</span>
             {clientValidation.isCustom ? (
-              <span className="inline-flex items-center gap-1 font-medium text-[var(--jmc-accent)]">
+              <span className="inline-flex items-center gap-1 font-medium text-[var(--jmc-accent-text)]">
                 <Check className="h-3.5 w-3.5" />
                 Özel Google Cloud İstemcisi ({clientValidation.activeClientId.slice(0, 16)}...)
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 font-medium text-[var(--jmc-primary)]">
+              <span className="inline-flex items-center gap-1 font-medium text-[var(--jmc-primary-text)]">
                 <Check className="h-3.5 w-3.5" />
                 Varsayılan Resmi Masaüstü İstemcisi (Desktop OAuth 2.0 PKCE)
               </span>
@@ -2274,8 +2274,8 @@ const AccountPanel: React.FC<{
             <span
               className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
                 clientValidation.hasClientSecret
-                  ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success)]'
-                  : 'bg-[var(--jmc-warning)]/15 text-[var(--jmc-warning)]'
+                  ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success-text)]'
+                  : 'bg-[var(--jmc-warning)]/15 text-[var(--jmc-warning-text)]'
               }`}
             >
               {clientValidation.hasClientSecret ? 'Client Secret: Hazır' : 'Client Secret: Eksik'}
@@ -2284,7 +2284,7 @@ const AccountPanel: React.FC<{
               <button
                 type="button"
                 onClick={handleResetToDefault}
-                className="ml-auto inline-flex items-center gap-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-danger)] transition-colors"
+                className="ml-auto inline-flex items-center gap-1 text-[10.5px] font-medium text-[var(--jmc-text-muted)] hover:text-[var(--jmc-danger-text)] transition-colors"
                 title="Özel Client ID ve Secret'ı kaldırıp uygulamanın yerleşik .env istemcisine dön"
               >
                 <RotateCcw className="h-3 w-3" />
@@ -2296,12 +2296,12 @@ const AccountPanel: React.FC<{
 
         {/* Google Test Users Uyarısı / Çözüm Rehberi */}
         <div className="rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)]/5 p-2.5 border border-[var(--jmc-primary)]/20 text-[11px] leading-relaxed text-[var(--jmc-text-muted)] space-y-1">
-          <div className="flex items-center gap-1.5 font-medium text-[var(--jmc-primary)]">
+          <div className="flex items-center gap-1.5 font-medium text-[var(--jmc-primary-text)]">
             <Info className="h-3.5 w-3.5 shrink-0" />
             <span>&quot;Erişim engellendi&quot; veya &quot;client_secret is missing&quot; alıyorsanız:</span>
           </div>
           <p>
-            Google Masaüstü OAuth 2.0 istemcileri hem <strong>Client ID</strong> hem de <strong>Client Secret</strong> gerektirir. En kolay yöntem olarak Google Cloud Console&apos;dan indirdiğiniz <code className="font-mono text-[var(--jmc-primary)]">client_secret_*.json</code> dosyasını seçebilirsiniz.
+            Google Masaüstü OAuth 2.0 istemcileri hem <strong>Client ID</strong> hem de <strong>Client Secret</strong> gerektirir. En kolay yöntem olarak Google Cloud Console&apos;dan indirdiğiniz <code className="font-mono text-[var(--jmc-primary-text)]">client_secret_*.json</code> dosyasını seçebilirsiniz.
           </p>
         </div>
 
@@ -2336,7 +2336,7 @@ const AccountPanel: React.FC<{
               className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--jmc-text)] border border-[var(--jmc-border)] transition-colors hover:bg-[var(--jmc-bg-surface)] active:scale-[0.98]"
               title="Google Cloud Console'dan indirdiğiniz client_secret_*.json dosyasını doğrudan seçin"
             >
-              <FileCode2 className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+              <FileCode2 className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />
               <span>Dosya Seç (.json)...</span>
             </button>
             <button
@@ -2348,7 +2348,7 @@ const AccountPanel: React.FC<{
             </button>
           </div>
           {importStatus && (
-            <p className="text-[11px] text-[var(--jmc-success)] font-medium animate-fade-in">
+            <p className="text-[11px] text-[var(--jmc-success-text)] font-medium animate-fade-in">
               {importStatus}
             </p>
           )}
@@ -2573,7 +2573,7 @@ const SyncPanel: React.FC<{
 
       {status && status.activeErrors.length > 0 && (
         <section>
-          <h3 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--jmc-warning)]">
+          <h3 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--jmc-warning-text)]">
             {lang === 'tr' ? 'Son hatalar' : 'Recent errors'}
           </h3>
           <ul className="space-y-0.5">
@@ -2611,7 +2611,7 @@ const SyncPanel: React.FC<{
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <Folder className="h-4 w-4 text-[var(--jmc-primary)]" />
+              <Folder className="h-4 w-4 text-[var(--jmc-primary-text)]" />
               <p className="text-[12.5px] font-medium">
                 {lang === 'tr' ? 'İndirilenler Klasörü' : 'Downloads Directory'}
               </p>
@@ -2620,7 +2620,7 @@ const SyncPanel: React.FC<{
                   {lang === 'tr' ? 'Varsayılan' : 'Default'}
                 </span>
               ) : (
-                <span className="rounded-full bg-[var(--jmc-primary)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--jmc-primary)]">
+                <span className="rounded-full bg-[var(--jmc-primary)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--jmc-primary-text)]">
                   {lang === 'tr' ? 'Özel Konum' : 'Custom'}
                 </span>
               )}
@@ -2648,7 +2648,7 @@ const SyncPanel: React.FC<{
               className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg)] px-3 py-2 text-[11.5px] font-medium text-[var(--jmc-text)] border border-[var(--jmc-border)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:border-[var(--jmc-primary)] active:scale-95"
               title={lang === 'tr' ? 'Klasörü Dosya Gezgininde Aç' : 'Open in File Explorer'}
             >
-              <ExternalLink className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+              <ExternalLink className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />
               <span>{lang === 'tr' ? 'Klasörü Aç' : 'Open Folder'}</span>
             </button>
 
@@ -2677,7 +2677,7 @@ const SyncPanel: React.FC<{
         </div>
 
         {folderNotice && (
-          <p className="text-[11px] text-[var(--jmc-success)] font-medium animate-fade-in">
+          <p className="text-[11px] text-[var(--jmc-success-text)] font-medium animate-fade-in">
             {folderNotice}
           </p>
         )}
@@ -2826,7 +2826,7 @@ const ToolsPanel: React.FC<{
                     2. <strong>Brave Search API</strong> (Varsa, bağımsız web dizini)<br />
                     3. <strong>DuckDuckGo HTML Arama</strong> (100% Anahtarsız, yerel ve sınırsız)
                   </p>
-                  <p className="text-[var(--jmc-primary)] font-medium">
+                  <p className="text-[var(--jmc-primary-text)] font-medium">
                     ✓ Herhangi bir API anahtarı girmeseniz dahi DuckDuckGo ile asistan web aramaları otomatik olarak sorunsuz çalışır.
                   </p>
                 </div>
@@ -2839,7 +2839,7 @@ const ToolsPanel: React.FC<{
                         {t('settings.tools.tavilyKey')}
                       </label>
                       {permissions.tavilyKeySet ? (
-                        <span className="inline-flex items-center gap-1 text-[10.5px] text-[var(--jmc-success)] font-medium">
+                        <span className="inline-flex items-center gap-1 text-[10.5px] text-[var(--jmc-success-text)] font-medium">
                           <Check className="h-3 w-3" />
                           <span>Kasada Saklanıyor {permissions.tavilyKeyMasked ? `(${permissions.tavilyKeyMasked})` : ''}</span>
                         </span>
@@ -2882,7 +2882,7 @@ const ToolsPanel: React.FC<{
                       disabled={savingTavily || !tavilyDraft.trim()}
                       className={`rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                         permissions.tavilyKeySet && !tavilyDraft.trim()
-                          ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success)] border border-[var(--jmc-success)]/30'
+                          ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success-text)] border border-[var(--jmc-success)]/30'
                           : 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50'
                       }`}
                     >
@@ -2892,7 +2892,7 @@ const ToolsPanel: React.FC<{
                       <button
                         type="button"
                         onClick={deleteTavily}
-                        className="rounded-[var(--jmc-radius-sm)] px-2 py-1 text-[11px] text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger)] transition-colors"
+                        className="rounded-[var(--jmc-radius-sm)] px-2 py-1 text-[11px] text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger-text)] transition-colors"
                       >
                         {t('settings.tools.deleteKey')}
                       </button>
@@ -2902,7 +2902,7 @@ const ToolsPanel: React.FC<{
                     <p
                       id="jmc-tavily-key-error"
                       role="alert"
-                      className="flex items-start gap-1 text-[10.5px] text-[var(--jmc-danger)]"
+                      className="flex items-start gap-1 text-[10.5px] text-[var(--jmc-danger-text)]"
                     >
                       <AlertCircle className="h-3 w-3 mt-px shrink-0" />
                       <span>{tavilyError}</span>
@@ -2918,7 +2918,7 @@ const ToolsPanel: React.FC<{
                         Brave Search API Anahtarı (İsteğe bağlı)
                       </label>
                       {permissions.braveKeySet ? (
-                        <span className="inline-flex items-center gap-1 text-[10.5px] text-[var(--jmc-success)] font-medium">
+                        <span className="inline-flex items-center gap-1 text-[10.5px] text-[var(--jmc-success-text)] font-medium">
                           <Check className="h-3 w-3" />
                           <span>Kasada Saklanıyor {permissions.braveKeyMasked ? `(${permissions.braveKeyMasked})` : ''}</span>
                         </span>
@@ -2959,7 +2959,7 @@ const ToolsPanel: React.FC<{
                       disabled={savingBrave || !braveDraft.trim()}
                       className={`rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                         permissions.braveKeySet && !braveDraft.trim()
-                          ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success)] border border-[var(--jmc-success)]/30'
+                          ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success-text)] border border-[var(--jmc-success)]/30'
                           : 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50'
                       }`}
                     >
@@ -2969,7 +2969,7 @@ const ToolsPanel: React.FC<{
                       <button
                         type="button"
                         onClick={deleteBrave}
-                        className="rounded-[var(--jmc-radius-sm)] px-2 py-1 text-[11px] text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger)] transition-colors"
+                        className="rounded-[var(--jmc-radius-sm)] px-2 py-1 text-[11px] text-[var(--jmc-text-dim)] hover:text-[var(--jmc-danger-text)] transition-colors"
                       >
                         {t('settings.tools.deleteKey')}
                       </button>
@@ -2979,7 +2979,7 @@ const ToolsPanel: React.FC<{
                     <p
                       id="jmc-brave-key-error"
                       role="alert"
-                      className="flex items-start gap-1 text-[10.5px] text-[var(--jmc-danger)]"
+                      className="flex items-start gap-1 text-[10.5px] text-[var(--jmc-danger-text)]"
                     >
                       <AlertCircle className="h-3 w-3 mt-px shrink-0" />
                       <span>{braveError}</span>
@@ -3024,7 +3024,7 @@ const LanguagePanel: React.FC<{
             aria-pressed={lang === code}
             className={`w-full rounded-[var(--jmc-radius)] px-3 py-2 text-left text-[12.5px] transition-colors ${
               lang === code
-                ? 'bg-[var(--jmc-bg-surface)] font-medium text-[var(--jmc-primary)] shadow-[var(--jmc-shadow-sm)]'
+                ? 'bg-[var(--jmc-bg-surface)] font-medium text-[var(--jmc-primary-text)] shadow-[var(--jmc-shadow-sm)]'
                 : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
             }`}
           >
@@ -3101,7 +3101,7 @@ const PrivacyPanel: React.FC<{
 
           {storeProblem || vaultProblem ? (
             <div className="space-y-2 rounded-[var(--jmc-radius)] border border-[var(--jmc-warning)]/35 bg-[var(--jmc-warning)]/10 p-3">
-              <p className="flex items-start gap-2 text-[12px] font-medium text-[var(--jmc-warning)]">
+              <p className="flex items-start gap-2 text-[12px] font-medium text-[var(--jmc-warning-text)]">
                 <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>Şifreli depolama açılamadı</span>
               </p>
@@ -3127,7 +3127,7 @@ const PrivacyPanel: React.FC<{
             </div>
           ) : (
             <p className="flex items-start gap-2 text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
-              <CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--jmc-success)]" />
+              <CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--jmc-success-text)]" />
               <span>
                 Şifreli veritabanı ve anahtar kasası açıldı. Verileriniz yerinde ve okunabilir
                 durumda.
@@ -3195,7 +3195,7 @@ const PrivacyPanel: React.FC<{
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] px-3 py-2 text-[12px] font-medium text-[var(--jmc-danger)] transition-colors hover:bg-[var(--jmc-badge-bg)]"
+            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] px-3 py-2 text-[12px] font-medium text-[var(--jmc-danger-text)] transition-colors hover:bg-[var(--jmc-badge-bg)]"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Tüm yerel verileri sil
@@ -3255,7 +3255,7 @@ const SmallButton: React.FC<{
     disabled={disabled}
     className={`inline-flex shrink-0 items-center gap-1.5 rounded-[var(--jmc-radius)] px-2.5 py-1.5 text-[11px] transition-colors disabled:opacity-50 ${
       danger
-        ? 'text-[var(--jmc-danger)] hover:bg-[var(--jmc-badge-bg)]'
+        ? 'text-[var(--jmc-danger-text)] hover:bg-[var(--jmc-badge-bg)]'
         : 'bg-[var(--jmc-bg)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
     }`}
   >
@@ -3329,9 +3329,9 @@ const StatusRow: React.FC<{
     <span
       className={`min-w-0 truncate text-right text-[11.5px] ${
         tone === 'ok'
-          ? 'text-[var(--jmc-success)]'
+          ? 'text-[var(--jmc-success-text)]'
           : tone === 'warn'
-            ? 'text-[var(--jmc-warning)]'
+            ? 'text-[var(--jmc-warning-text)]'
             : 'text-[var(--jmc-text)]'
       } ${mono ? 'font-mono text-[10.5px]' : ''}`}
       title={value}

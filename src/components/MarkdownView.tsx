@@ -196,7 +196,7 @@ const CodeBlock: React.FC<{
     <div className="my-2.5 overflow-hidden rounded-[var(--jmc-radius)] bg-[var(--jmc-code-bg)] shadow-[var(--jmc-shadow-sm)] border border-[var(--jmc-border-subtle)]">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg)]/40">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-[var(--jmc-primary)]">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-[var(--jmc-primary-text)]">
             {lang || 'kod'}
           </span>
           <span className="text-[10px] text-[var(--jmc-text-dim)]">· {lines.length} satır</span>
@@ -208,9 +208,9 @@ const CodeBlock: React.FC<{
           className="flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] px-1.5 py-0.5 text-[10px] text-[var(--jmc-text-dim)] transition-colors hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-text)]"
         >
           {copied ? (
-            <Check className="h-3 w-3 text-[var(--jmc-success)]" />
+            <Check className="h-3 w-3 text-[var(--jmc-success-text)]" />
           ) : failed ? (
-            <AlertCircle className="h-3 w-3 text-[var(--jmc-danger)]" />
+            <AlertCircle className="h-3 w-3 text-[var(--jmc-danger-text)]" />
           ) : (
             <Copy className="h-3 w-3" />
           )}

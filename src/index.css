@@ -54,6 +54,23 @@
   --jmc-on-warning: #0b0b0f;
   --jmc-on-danger: #ffffff;
   --jmc-on-success: #0b0b0f;
+
+  /*
+   * Dolgu renklerinin yari saydam rozet UZERINDEKIMETIN olarak
+   * kullanilabilir hali. g-[var(--jmc-primary)]/15 text-[var(--jmc-primary)]
+   * gibi yazimlarda zemin yuzeye yakindir, dolayisiyla renk yuzeye gore
+   * kontrastli olmak zorundadir.
+   *
+   * --jmc-on-* ile KARIŞTIRMA: o, dolgunun UZERINDE yazilan metindir
+   * (beyaz/koyu); bu ise rengin kendisidir, yalnizca koyulastirilmis hali.
+   *
+   * Tema degisiminde ThemeContext hesaplar; degerler ilk boyama icindir.
+   */
+  --jmc-primary-text: #0b5fff;
+  --jmc-accent-text: #7c3aed;
+  --jmc-success-text: #0f7a52;
+  --jmc-warning-text: #8a5a06;
+  --jmc-danger-text: #c0392f;
   --jmc-warning: #e0a03a;
   --jmc-danger: #ef5f6b;
   --jmc-success: #3fb98a;

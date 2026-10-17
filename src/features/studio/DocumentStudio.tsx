@@ -332,7 +332,7 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
               </button>
             )}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
-              <span className="rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-badge-bg)] px-2 py-0.5 font-medium text-[var(--jmc-primary)]">
+              <span className="rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-badge-bg)] px-2 py-0.5 font-medium text-[var(--jmc-primary-text)]">
                 {courseWork.workType === 'ASSIGNMENT'
                   ? t('coursework.workType.ASSIGNMENT')
                   : courseWork.workType === 'SHORT_ANSWER_QUESTION'
@@ -441,8 +441,8 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
             role="status"
             className={`flex items-start gap-2 rounded-[var(--jmc-radius)] px-3 py-2 text-[11.5px] leading-relaxed ${
               notice.tone === 'ok'
-                ? 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-success)]'
-                : 'bg-[var(--jmc-badge-bg)] text-[var(--jmc-warning)]'
+                ? 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-success-text)]'
+                : 'bg-[var(--jmc-badge-bg)] text-[var(--jmc-warning-text)]'
             }`}
           >
             {notice.tone === 'ok' ? (
@@ -583,7 +583,7 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
                       <div className="flex items-baseline justify-between gap-2 text-[12px] font-medium">
                         <span>{level.title}</span>
                         {level.points != null && (
-                          <span className="font-mono text-[11px] text-[var(--jmc-primary)]">
+                          <span className="font-mono text-[11px] text-[var(--jmc-primary-text)]">
                             {level.points}
                           </span>
                         )}
@@ -637,9 +637,9 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-text)] disabled:opacity-50"
               >
                 {copied ? (
-                  <Check className="h-3.5 w-3.5 text-[var(--jmc-success)]" />
+                  <Check className="h-3.5 w-3.5 text-[var(--jmc-success-text)]" />
                 ) : copyFailed ? (
-                  <AlertCircle className="h-3.5 w-3.5 text-[var(--jmc-danger)]" />
+                  <AlertCircle className="h-3.5 w-3.5 text-[var(--jmc-danger-text)]" />
                 ) : (
                   <Copy className="h-3.5 w-3.5" />
                 )}
@@ -698,7 +698,7 @@ const TabButton: React.FC<{
     aria-current={active ? 'page' : undefined}
     className={`inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] px-2.5 py-1.5 text-[12px] transition-colors ${
       active
-        ? 'bg-[var(--jmc-bg-surface)] font-medium text-[var(--jmc-primary)] shadow-[var(--jmc-shadow-sm)]'
+        ? 'bg-[var(--jmc-bg-surface)] font-medium text-[var(--jmc-primary-text)] shadow-[var(--jmc-shadow-sm)]'
         : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
     }`}
   >
@@ -714,7 +714,7 @@ const AiShortcut: React.FC<{
   <button
     type="button"
     onClick={onClick}
-    className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-2.5 py-1.5 text-[11.5px] text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-primary)]"
+    className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-2.5 py-1.5 text-[11.5px] text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-primary-text)]"
   >
     {icon}
     {label}
@@ -778,7 +778,7 @@ const AttachmentRow: React.FC<{
         className="min-w-0 flex-1 text-left"
         title="Görüntülemek için tıklayın"
       >
-        <span className="block truncate text-[12px] font-medium hover:text-[var(--jmc-primary)] transition-colors">
+        <span className="block truncate text-[12px] font-medium hover:text-[var(--jmc-primary-text)] transition-colors">
           {attachment.title}
         </span>
         <span className="block truncate font-mono text-[10.5px] text-[var(--jmc-text-dim)]">
@@ -792,7 +792,7 @@ const AttachmentRow: React.FC<{
             type="button"
             onClick={onPreview}
             title="Uygulama İçinde Görüntüle"
-            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
+            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-primary)]/25 transition-colors"
           >
             <Eye className="h-3.5 w-3.5" />
             <span>Görüntüle</span>
@@ -804,7 +804,7 @@ const AttachmentRow: React.FC<{
             type="button"
             onClick={onInspect}
             title="Yapay Zekâ Asistanı ile İncele"
-            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
+            className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)]/10 border border-[var(--jmc-primary)]/20 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-primary)]/20 transition-colors"
           >
             <Sparkles className="h-3 w-3" />
             <span className="hidden sm:inline">İncele</span>
@@ -817,7 +817,7 @@ const AttachmentRow: React.FC<{
               type="button"
               onClick={() => void (window.jmcAPI?.openPath ? window.jmcAPI.openPath(targetPath) : window.jmcAPI?.openLocalFile(targetPath))}
               title="İndirilen Dosyayı Aç"
-              className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success)] hover:bg-[var(--jmc-success)]/25 transition-colors"
+              className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-success)]/15 px-2 py-1 text-[10.5px] font-semibold text-[var(--jmc-success-text)] hover:bg-[var(--jmc-success)]/25 transition-colors"
             >
               <FolderOpen className="h-3.5 w-3.5" />
               <span>Aç</span>
@@ -842,7 +842,7 @@ const AttachmentRow: React.FC<{
             className="inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-2 py-1 text-[10.5px] font-medium text-[var(--jmc-text-dim)] hover:text-[var(--jmc-text)] hover:border-[var(--jmc-primary)] transition-colors disabled:opacity-50"
           >
             {isDownloading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary)]" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--jmc-primary-text)]" />
             ) : (
               <Download className="h-3.5 w-3.5" />
             )}

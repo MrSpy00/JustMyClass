@@ -164,6 +164,83 @@ export function deriveOnColorText(c: ThemeColors): OnColorText {
   }
 }
 
+/**
+ * Dolgu renklerinin, AÇIK/yarı saydam yüzeylerde METİN olarak
+ * kullanılabilir hallerini üretir.
+ *
+ * KULLANICI BILDIRIMI
+ * -------------------
+ * "Bazi temalarda yazilar okunmaz oluyo." Balonlar duzeltildikten
+ * sonra kalan ikinci sebep BUDUR ve tamamen ayri bir nedendir.
+ *
+ * KULLANIM DESENI
+ * ---------------
+ * Uygulamada ~50 yerde rozetler su sekilde yaziliyor:
+ *
+ *   `bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)]`
+ *   `bg-[var(--jmc-warning)]/10 text-[var(--jmc-warning)]`
+ *
+ * Zemin, rengin yalnizca %10-20'si yuzeyin uzerine bindirilmis oldugu
+ * icin ETKIN zemin yuzeye yakindir. Okunurluk dolayisiyla rengin
+ * yuzeye gore kontrastina baglidir — ve tema renkleri buna gore
+ * secilmemis.
+ *
+ * OLCULEN HATALAR (yalnizca metin/3 yuzey, 4.5 esigi):
+ *
+ *   Pastel Soft  accent  #d96a9a / #efe9f7 = 2.73   <-- okunamaz
+ *   Pastel Soft  accent  #d96a9a / #ffffff = 3.24
+ *   Pastel Soft  warning #a9701a / #efe9f7 = 3.52
+ *   Bordeaux     primary #c8405a / #28151b = 3.57
+ *   Sand         accent  #8a6d2f / #eae5d9 = 3.88
+ *   Pastel Soft  warning #a9701a / #f7f4fb = 3.84
+ *   Light        warning #a86a08 / #f0f2f5 = 3.96
+ *
+ * 25 ihlal, 17 temanin 7'sinde.
+ *
+ * COZUM
+ * -----
+ * `onPrimary` KAVRAMI YETERLI DEGIL: o "primary dolgunun UZERINDE
+ * yazilacak metin" demektir, yani dolgunun karsi ucunu secer. Burada
+ * ise metin rengi, rengin KENDISI ve zemini neredeyse yuzeydir.
+ *
+ * Bu yuzden ayri bir turetilmis deger gerekir: rol rengi, butun
+ * yuzeylerde 4.5:1'i gecmeye ZORLANIR. Zaten okunabilir olan temalarda
+ * deger DEGISMEEZ (`ensureContrastOnAll` okunabilir bir rengi olduğu
+ * gibi birakir), yani bu duzeltme yalnizca gercekten bozuk olan 7
+ * temayi etkiler.
+ *
+ * `primaryText` ile `onPrimary` KARIŞTIRILMAMALI: biri bu renge
+ * bakarken digeri bu rengin UZERINDE yazarken kullanilir.
+ */
+export interface RoleTextColors {
+  primaryText: string
+  accentText: string
+  successText: string
+  warningText: string
+  dangerText: string
+}
+
+export function deriveRoleTextColors(c: ThemeColors): RoleTextColors {
+  const bgs = linkBackgrounds(c)
+  return {
+    primaryText: ensureContrastOnAll(c.primary, bgs, MIN_TEXT_CONTRAST),
+    accentText: ensureContrastOnAll(c.accent, bgs, MIN_TEXT_CONTRAST),
+    successText: ensureContrastOnAll(c.success, bgs, MIN_TEXT_CONTRAST),
+    warningText: ensureContrastOnAll(c.warning, bgs, MIN_TEXT_CONTRAST),
+    dangerText: ensureContrastOnAll(c.danger, bgs, MIN_TEXT_CONTRAST),
+  }
+}
+
+/**
+ * Normal boy metin icin WCAG 2.2 AA esigi.
+ *
+ * Baglanti hedefi (5.5) bundan YUKSEK tutulur; baglanti govde metniyle
+ * ayni boydadir ve fark edilebilir olmasi gerekir. Roster/durum
+ * metni icin AA esigi yeterlidir, cunku zaten dolgunun kontrastina
+ * gore zorlandi.
+ */
+const MIN_TEXT_CONTRAST = 4.5
+
 /** Iki rengi karıştırır; `amount` = ikinci rengin ağırlığı (0–1). */
 export function mixHex(a: string, b: string, amount: number): string {
   const ca = parseHex(a)

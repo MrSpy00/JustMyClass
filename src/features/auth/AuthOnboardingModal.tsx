@@ -358,12 +358,12 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
         {/* Başlık ve İkon */}
         <header className="pr-8">
           <div className="flex items-center gap-2.5">
-            <div className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary)]">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary-text)]">
               <GraduationCap className="h-5 w-5" />
             </div>
             <div>
               <h2 className="text-[17px] font-semibold tracking-tight">{t('auth.title')}</h2>
-              <span className="text-[11px] font-mono text-[var(--jmc-primary)]">Google Classroom & Drive Bağlantısı</span>
+              <span className="text-[11px] font-mono text-[var(--jmc-primary-text)]">Google Classroom & Drive Bağlantısı</span>
             </div>
           </div>
           <p className="mt-2 text-[12px] leading-relaxed text-[var(--jmc-text-muted)]">
@@ -375,7 +375,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
         {error && (
           <div
             role="alert"
-            className="mt-4 flex items-start gap-2.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-danger)]/10 px-3.5 py-3 text-[11.5px] leading-relaxed text-[var(--jmc-danger)] border border-[var(--jmc-danger)]/25 animate-fade-in"
+            className="mt-4 flex items-start gap-2.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-danger)]/10 px-3.5 py-3 text-[11.5px] leading-relaxed text-[var(--jmc-danger-text)] border border-[var(--jmc-danger)]/25 animate-fade-in"
           >
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <div className="space-y-1">
@@ -388,7 +388,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
         {successNotice && (
           <div
             role="status"
-            className="mt-4 flex items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-success)]/10 px-3.5 py-2.5 text-[11.5px] font-medium text-[var(--jmc-success)] border border-[var(--jmc-success)]/25 animate-fade-in"
+            className="mt-4 flex items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-success)]/10 px-3.5 py-2.5 text-[11.5px] font-medium text-[var(--jmc-success-text)] border border-[var(--jmc-success)]/25 animate-fade-in"
           >
             <Check className="h-4 w-4 shrink-0" />
             <span>{successNotice}</span>
@@ -403,12 +403,12 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
               <div className="space-y-2.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] p-3.5 border border-[var(--jmc-primary)]/30 animate-pulse">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-[var(--jmc-primary)]" />
+                    <Loader2 className="h-4 w-4 animate-spin text-[var(--jmc-primary-text)]" />
                     <span className="text-[12.5px] font-medium text-[var(--jmc-text)]">
                       {t('auth.openingBrowser')}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-[11px] font-mono text-[var(--jmc-primary)]">
+                  <div className="flex items-center gap-1 text-[11px] font-mono text-[var(--jmc-primary-text)]">
                     <Clock className="h-3 w-3" />
                     <span>{formatCountdown(countdown)}</span>
                   </div>
@@ -446,7 +446,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                 </button>
                 <div className="flex items-center justify-between gap-1.5 text-[11px] px-2.5 py-1.5 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] border border-[var(--jmc-border-subtle)] text-[var(--jmc-text-dim)]">
                   <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                    <ShieldCheck className="h-3.5 w-3.5 text-[var(--jmc-primary)] shrink-0" />
+                    <ShieldCheck className="h-3.5 w-3.5 text-[var(--jmc-primary-text)] shrink-0" />
                     <span className="truncate">
                       {clientValidation?.isCustom
                         ? `Özel İstemci Devrede (${clientValidation.activeClientId.slice(0, 16)}...)`
@@ -504,7 +504,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                 </button>
               </div>
               <p className="text-[10.5px] text-[var(--jmc-text-muted)] leading-relaxed">
-                Yerel güvenlik duvarı veya port engeli nedeniyle geri dönüş yakalanamazsa, tarayıcınızın adres çubuğundaki URL'yi veya <code className="font-mono text-[var(--jmc-primary)]">code=</code> parametresini buraya yapıştırabilirsiniz.
+                Yerel güvenlik duvarı veya port engeli nedeniyle geri dönüş yakalanamazsa, tarayıcınızın adres çubuğundaki URL'yi veya <code className="font-mono text-[var(--jmc-primary-text)]">code=</code> parametresini buraya yapıştırabilirsiniz.
               </p>
               <div className="flex gap-2">
                 <input
@@ -530,11 +530,11 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
           {/* Güvenlik Notları */}
           <ul className="space-y-1.5 text-[11.5px] leading-relaxed text-[var(--jmc-text-muted)]">
             <li className="flex gap-2 items-center">
-              <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-success)]" />
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-success-text)]" />
               <span>Google Classroom dersleri ve ödevleri doğrudan resmi Google API'lerinden çekilir.</span>
             </li>
             <li className="flex gap-2 items-center">
-              <Lock className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-primary)]" />
+              <Lock className="h-3.5 w-3.5 shrink-0 text-[var(--jmc-primary-text)]" />
               <span>Erişim belirteçleri yalnızca cihazınızın işletim sistemi kasasında (DPAPI) şifreli tutulur.</span>
             </li>
           </ul>
@@ -548,7 +548,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
               className="flex w-full items-center justify-between gap-2 text-left text-[12px] font-medium text-[var(--jmc-text-muted)] transition-colors hover:text-[var(--jmc-text)]"
             >
               <span className="flex items-center gap-1.5">
-                <KeyRound className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+                <KeyRound className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />
                 <span>Gelişmiş: Kendi Google Cloud İstemcinizi Kullanın (İsteğe Bağlı)</span>
               </span>
               {showAdvanced ? (
@@ -564,7 +564,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   <div className="flex items-center justify-between text-[11px] py-1.5 px-2.5 rounded bg-[var(--jmc-bg)] border border-[var(--jmc-border-subtle)]">
                     <span className="text-[var(--jmc-text-dim)]">Aktif İstemci Durumu:</span>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-[10.5px] text-[var(--jmc-primary)]">
+                      <span className="font-medium text-[10.5px] text-[var(--jmc-primary-text)]">
                         {clientValidation.valid
                           ? clientValidation.isCustom
                             ? 'Özel Kurumsal İstemci Aktif'
@@ -586,7 +586,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   </div>
                 )}
                 <p className="text-[11px] leading-relaxed text-[var(--jmc-text-dim)]">
-                  Varsayılan olarak <code className="font-mono text-[var(--jmc-primary)]">.env</code> ile yapılandırılan yerleşik masaüstü istemcisi kullanılır. İsteğe bağlı olarak kendi Google Cloud Console projenizin <strong>Masaüstü Uygulaması (Desktop App)</strong> Client ID + Client Secret bilgilerini girebilir veya JSON dosyanızı seçebilirsiniz:
+                  Varsayılan olarak <code className="font-mono text-[var(--jmc-primary-text)]">.env</code> ile yapılandırılan yerleşik masaüstü istemcisi kullanılır. İsteğe bağlı olarak kendi Google Cloud Console projenizin <strong>Masaüstü Uygulaması (Desktop App)</strong> Client ID + Client Secret bilgilerini girebilir veya JSON dosyanızı seçebilirsiniz:
                 </p>
 
                 <div className="space-y-2">
@@ -605,7 +605,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                       onClick={saveClientId}
                       className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-text)] border border-[var(--jmc-border)] transition-colors hover:bg-[var(--jmc-bg)] active:scale-[0.97]"
                     >
-                      {clientIdSaved && <Check className="h-3 w-3 text-[var(--jmc-success)]" />}
+                      {clientIdSaved && <Check className="h-3 w-3 text-[var(--jmc-success-text)]" />}
                       {clientIdSaved ? t('auth.clientSaved') : t('auth.saveClient')}
                     </button>
                   </div>
@@ -632,7 +632,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                       className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-bg)] px-2.5 py-1 text-[11px] text-[var(--jmc-text)] border border-[var(--jmc-border)] hover:bg-[var(--jmc-bg-surface)] font-medium transition-colors"
                       title="Google Cloud Console'dan indirdiğiniz client_secret_*.json dosyasını doğrudan seçin"
                     >
-                      <FileCode2 className="h-3.5 w-3.5 text-[var(--jmc-primary)]" />
+                      <FileCode2 className="h-3.5 w-3.5 text-[var(--jmc-primary-text)]" />
                       <span>Dosya Seç (.json)</span>
                     </button>
                     <button
@@ -659,7 +659,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                 {/* 5 Adımlı İnteraktif Kurulum Rehberi */}
                 {showGuide && (
                   <div className="space-y-2 rounded-lg bg-[var(--jmc-bg)] p-3 text-[11px] text-[var(--jmc-text-muted)] border border-[var(--jmc-border-subtle)] animate-fade-in">
-                    <div className="rounded bg-[var(--jmc-badge-bg)] p-2 text-[10.5px] text-[var(--jmc-primary)] font-medium">
+                    <div className="rounded bg-[var(--jmc-badge-bg)] p-2 text-[10.5px] text-[var(--jmc-primary-text)] font-medium">
                       Google Classroom ve Google Drive API servislerinin projenizde etkinleştirildiğinden emin olun.
                     </div>
 
@@ -769,7 +769,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                 </button>
               </div>
               <p className="text-[11px] text-[var(--jmc-text-muted)]">
-                Google Cloud Console'dan indirdiğiniz <code className="font-mono text-[var(--jmc-primary)]">client_secret_....json</code> dosyasının içeriğini buraya yapıştırın:
+                Google Cloud Console'dan indirdiğiniz <code className="font-mono text-[var(--jmc-primary-text)]">client_secret_....json</code> dosyasının içeriğini buraya yapıştırın:
               </p>
               <textarea
                 rows={6}
@@ -785,7 +785,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     setShowJsonModal(false)
                     void handlePickAndImportFile()
                   }}
-                  className="inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[11px] text-[var(--jmc-primary)] hover:bg-[var(--jmc-bg)] border border-[var(--jmc-border)] transition-colors font-medium"
+                  className="inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[11px] text-[var(--jmc-primary-text)] hover:bg-[var(--jmc-bg)] border border-[var(--jmc-border)] transition-colors font-medium"
                 >
                   <FileCode2 className="h-3.5 w-3.5" />
                   <span>Dosyadan Seç...</span>

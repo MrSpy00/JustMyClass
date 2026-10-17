@@ -28,11 +28,11 @@ const Toast: React.FC<{ toast: Toast; onDismiss: () => void }> = ({ toast, onDis
   >
     {toast.kind === 'error' ? (
       <AlertTriangle
-        className="h-4 w-4 shrink-0 text-[var(--jmc-danger)]"
+        className="h-4 w-4 shrink-0 text-[var(--jmc-danger-text)]"
         aria-hidden="true"
       />
     ) : (
-      <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--jmc-success)]" aria-hidden="true" />
+      <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--jmc-success-text)]" aria-hidden="true" />
     )}
     <span className="min-w-0 flex-1 font-medium">{toast.text}</span>
     <button

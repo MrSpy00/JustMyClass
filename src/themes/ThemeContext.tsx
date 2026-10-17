@@ -11,6 +11,7 @@ import {
   deriveCodeTokens,
   deriveLinkColors,
   deriveOnColorText,
+  deriveRoleTextColors,
   isLightTheme,
   parseCustomThemes,
   serializeCustomThemes,
@@ -232,6 +233,30 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     set('--jmc-on-warning', onColor.onWarning)
     set('--jmc-on-danger', onColor.onDanger)
     set('--jmc-on-success', onColor.onSuccess)
+
+    /*
+      DOLGU RENKLERININ "YARI SAYDAM UZERINDE METIN" HALI
+      -----------------------------------------------------
+      Rozetler `bg-[var(--jmc-primary)]/15 text-[var(--jmc-primary-text)]`
+      seklinde yaziliyor. Zemin rengin yalnizca %15'i yuzeyin uzerine
+      bindirildigi icin etkin zemin yuzeye yakindir; okunurluk rengin
+      YUZEYE gore kontrastina baglidir.
+
+      Turetilmis degerler, zaten okunabilir olan temalarda DEGISMEZ
+      (`ensureContrastOnAll` okunabilir rengi oldugu gibi birakir).
+      Olculeen 25 ihlalin tamami duzelir; en kotusu Pastel Soft accent
+      2.73 idi (normal metin icin gereken 4.5'in belirgin altinda).
+
+      AYRIM: `--jmc-*-text` bu rengin UZERINDE olmayan, yani acik bir
+      zeminde kullanilan halidir. `--jmc-on-*` ise dolgunun UZERINDE
+      yazilan metindir. Ikisi karistirilmamalidir.
+    */
+    const roleText = deriveRoleTextColors(colors)
+    set('--jmc-primary-text', roleText.primaryText)
+    set('--jmc-accent-text', roleText.accentText)
+    set('--jmc-success-text', roleText.successText)
+    set('--jmc-warning-text', roleText.warningText)
+    set('--jmc-danger-text', roleText.dangerText)
     set('--jmc-warning', colors.warning)
     set('--jmc-danger', colors.danger)
     set('--jmc-success', colors.success)
