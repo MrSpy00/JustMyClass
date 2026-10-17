@@ -12,6 +12,12 @@ import { StorageService } from '../storageService'
 import { ToolDispatcher, extractTextFromPdf, extractTextFromDocx } from '../toolDispatcher'
 import { providerHttp, HttpError, HttpClient } from '../httpClient'
 import { JustMyClassMemoryService } from './memoryService'
+import {
+  trimToContextWindow,
+  isContextOverflowError,
+  estimateTokens,
+  CONTEXT_TRIM_USER_NOTICE,
+} from './contextBudget'
 
 type ChatRole = 'user' | 'assistant' | 'system'
 
@@ -1498,6 +1504,35 @@ export class AiOrchestrator {
     return BUILTIN_PROVIDER_IDS.has(providerId)
   }
 
+  /**
+   * Modelin gercek baglam penceresini ve cikti payini cozer.
+   *
+   * NEDEN GEREKIYOR
+   * ---------------
+   * Gecmis budulmeden once modelin pencere degerini bilmek gerekiyor.
+   * Kimlik dogrudan `ListModels` yanitindan (`contextWindow`,
+   * `contextLength`) veya gomulu tanimlardan gelir; bazi modellerde
+   * HIC gelmez (yerel Ollama/llama.cpp cogu zaman donmez).
+   *
+   * Bilinmeyen modelde **budeme yapilmaz** (`contextWindow: 0`). Bilinmeyen
+   * pencereye gore budemek, gercekten sigan bir gecmisi kesip kullaniciya
+   * olmayan bir sorun yaratirdi; asil kurtarma hata durumunda zaten var.
+   */
+  private resolveModelLimits(
+    providerId: ProviderId,
+    modelId: string,
+  ): { contextWindow: number; maxOutputTokens: number } {
+    const prov = this.providers.get(providerId)
+    if (!prov) return { contextWindow: 0, maxOutputTokens: 0 }
+    const id = (modelId ?? '').trim()
+    const found = prov.models.find(m => m.id === id)
+    if (!found) return { contextWindow: 0, maxOutputTokens: 0 }
+    return {
+      contextWindow: Number(found.contextWindow) || 0,
+      maxOutputTokens: Number(found.maxOutputTokens) || 0,
+    }
+  }
+
   private customProvidersRestored = false
 
   public ensureCustomProvidersRestored(): void {
@@ -2184,6 +2219,19 @@ export class AiOrchestrator {
         : String(err)
 
     const lower = raw.toLowerCase()
+
+    // Baglam tasmasi EN SPESIFIK sinyaldir; bu yuzden butun diger
+    // kontrollerden ONCE bakilir. Aksi halde genel "HTTP 400" dalina
+    // düşer ve kullaniciya "ekleri kaldırın" gibi alakasız bir tavsiye
+    // verilirdi (asıl sorun ek değil, biriken sohbet geçmişidir).
+    if (isContextOverflowError(err)) {
+      return (
+        `${providerName} bağlam penceresini aştı: bu sohbetin geçmişi seçili modele sığmıyor. ` +
+        `Uygulama geçmişi otomatik olarak kırptı ama yine de sığmadıysa ` +
+        `yeni bir sohbet başlatın veya pencereyi büyük bir modele (ör. ${GEMINI_FALLBACK_MODEL}) geçirin.`
+      )
+    }
+
     if (
       lower.includes('insufficient_quota') ||
       lower.includes('exceeded your current quota') ||
@@ -2352,6 +2400,32 @@ export class AiOrchestrator {
       let currentMessages = chatMessages
       const maxRetries = 2
       let attempt = 0
+
+      // --- PROAKTIF BUTCE KONTROLU ---------------------------------------
+      // Gecmis, ILK cagri yapilmadan ONCE kistirilir. Onceki surumde
+      // hicbir kisit yoktu ve tasma durumunda kurtarma yalnizca 413'e
+      // bakiyordu; saglayicilar cogu tasmayi 400 `context_length_exceeded`
+      // olarak bildirdigi icin kurtarma hic devreye girmiyordu.
+      const limits = this.resolveModelLimits(p.id, model)
+      if (limits.contextWindow > 0 && currentMessages.length > 1) {
+        const before = currentMessages.length
+        const budgeted = trimToContextWindow(currentMessages, {
+          contextWindow: limits.contextWindow,
+          maxOutputTokens: limits.maxOutputTokens,
+          systemPromptTokens: estimateTokens(systemPrompt),
+        })
+        if (budgeted.trimmed) {
+          currentMessages = budgeted.messages as TurnMessage[]
+          // Kullaniciya acikca bildir: gecmisinin bir kismi kirpildi.
+          onChunk(`\n\n*(${CONTEXT_TRIM_USER_NOTICE})*\n\n`)
+          console.warn(
+            `[AiOrchestrator] Baglam budendi: ${before} -> ${currentMessages.length} mesaj ` +
+              `(pencere=${limits.contextWindow}, butce=${budgeted.budget}, atilan=${budgeted.droppedCount})`,
+          )
+        }
+      }
+
+      let overflowAttempts = 0
       while (true) {
         attempt++
         try {
@@ -2367,13 +2441,42 @@ export class AiOrchestrator {
               ? err.status === 413
               : /413|payload too large|entity too large/i.test(String(err))
 
-          if (isPayloadTooLarge && currentMessages.length > 2) {
-            // 413 durumunda: mesaj geçmişini buda ve araç sonuçlarını kısalt
-            currentMessages = currentMessages.slice(-4).map(m => ({
-              ...m,
-              content:
-                m.content.length > 6000 ? m.content.slice(0, 6000) + '\n...[Metin boyutu nedeniyle kısaltıldı]...' : m.content,
-            }))
+          // --- BAGLAM TASMASI KURTARMASI ----------------------------------
+          // 413 VE 400 tabanli tasma sinyalleri birlikte dinlenir; en fazla
+          // 3 kademe kisitlama yapilir, sonra GERCEK hata kullaniciya gider.
+          const overflowed = isPayloadTooLarge || isContextOverflowError(err)
+          if (overflowed && overflowAttempts < 3 && currentMessages.length > 1) {
+            overflowAttempts += 1
+            const before = currentMessages.length
+            // Kademeli budeme: her denemede daha agresif kisilir, boylece
+            // tek atamada gereksiz mesaj kaybi olmaz.
+            const keep = Math.max(1, Math.floor(currentMessages.length * (overflowAttempts === 1 ? 0.4 : 0.15)))
+            const clipped = currentMessages
+              .slice(-keep)
+              .map(m => ({
+                ...m,
+                content:
+                  m.content.length > 4000 ? m.content.slice(0, 4000) + '\n...[Metin boyutu nedeniyle kısaltıldı]...' : m.content,
+              }))
+            // Arac sonuclari bu asamada TUMDEN dusurulur; yalniz ara cagri
+            // icerikleri degil, cifti bozuk bir blok birakilmasin diye.
+            const orphanTools = clipped.filter(
+              m =>
+                m.role === 'tool' ||
+                (m.role === 'assistant' && Array.isArray(m.toolCalls) && m.toolCalls.length > 0),
+            )
+            const cleaned = orphanTools.length ? clipped.filter(m => m.role !== 'tool') : clipped
+            currentMessages = cleaned.length
+              ? ([
+                  { role: 'system', content: '[Önceki konuşma bağlam penceresine sığmadığı için özetlendi.]' } as TurnMessage,
+                  ...cleaned,
+                ] as TurnMessage[])
+              : currentMessages.slice(-1)
+            console.warn(
+              `[AiOrchestrator] Baglam tasmasi kurtarmasi #${overflowAttempts}: ` +
+                `${before} -> ${currentMessages.length} mesaj (${p.id}/${model})`,
+            )
+            onChunk(`\n\n*(${CONTEXT_TRIM_USER_NOTICE})*\n\n`)
             continue
           }
 
@@ -2391,8 +2494,15 @@ export class AiOrchestrator {
           // hedefliyordu; IKISI DE GOOGLE TARAFINDAN KAPATILDI. Yani
           // otomatik kurtarma da 404 veriyor ve kullaniciya gosterilen
           // hata mesaji da ayni olmayan modeli oneriyordu.
+          //
+          // DIKKAT: 400 cok genis bir durum kodu. Baglam tasmasi da 400
+          // doner; onu "model erisim hatasi" sanmak kullanicinin gecmisini
+          // yine budup kazanimi gostererek gercek nedeni saklar. Bu yuzden
+          // tasma sinyali once dislanir.
+          const isContextOverflow = isPayloadTooLarge || isContextOverflowError(err)
           const isGeminiModelIssue =
             p.protocolType === 'gemini' &&
+            !isContextOverflow &&
             ((err instanceof HttpError && (err.status === 404 || err.status === 403 || err.status === 400)) ||
               /not found|not granted access|model.*not.*exist|invalid argument.*model|unsupported/i.test(String(err)))
 

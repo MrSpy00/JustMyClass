@@ -1852,7 +1852,7 @@ export class ToolDispatcher {
       }
 
       try {
-        const buf = this.storageService.readCasFile(cached.absolutePath)
+        const buf = this.storageService.readCasFile(cached.absolutePath, cached.entry.sha256)
         const title = cached.entry.title.toLowerCase()
         const mime = (cached.entry.mimeType || '').toLowerCase()
 

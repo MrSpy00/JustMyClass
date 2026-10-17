@@ -832,7 +832,7 @@ function setupIpcHandlers() {
     if (typeof fileId !== 'string') throw new Error('Geçersiz dosya kimliği.')
     const cached = storageService.getCachedFile(fileId)
     if (!cached) throw new Error('Dosya önbellekte yok.')
-    return storageService.readCasFile(cached.absolutePath)
+    return storageService.readCasFile(cached.absolutePath, cached.entry.sha256)
   })
   handle('drive:getFilePreview', (_e, attachment: any, courseId: unknown) => {
     if (!attachment || typeof attachment !== 'object') throw new Error('Geçersiz ek.')
@@ -857,7 +857,7 @@ function setupIpcHandlers() {
       return { success: false, canceled: true }
     }
 
-    const decrypted = storageService.readCasFile(cached.absolutePath)
+    const decrypted = storageService.readCasFile(cached.absolutePath, cached.entry.sha256)
     fs.writeFileSync(result.filePath, decrypted)
     return { success: true, filePath: result.filePath }
   })

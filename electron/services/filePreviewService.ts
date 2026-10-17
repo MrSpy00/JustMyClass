@@ -1153,7 +1153,7 @@ export class FilePreviewService {
       throw new Error(`"${attachment.title}" dosyası önbelleğe alınamadı.`)
     }
 
-    const buf = this.storageService.readCasFile(cached.absolutePath)
+    const buf = this.storageService.readCasFile(cached.absolutePath, cached.entry.sha256)
     const title = cached.entry.title || attachment.title
     const ext = path.extname(title).toLowerCase()
     const mime = cached.entry.mimeType || attachment.mimeType || 'application/octet-stream'

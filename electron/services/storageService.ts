@@ -42,6 +42,85 @@ export interface DraftEntry {
 }
 
 const DB_FILE = 'classroom.store.v2'
+
+/**
+ * Atomik dosya yazimi: gecici dosyaya yaz, sonra `rename` ile hedefe tası.
+ *
+ * NEDEN ATOMIK
+ * ------------
+ * Dogrudan `writeFileSync` hedef dosyayi YERINDE keser: yazma sirasinda
+ * surec cokurse (guc kesintisi, kullaniciyi kapatma, cokmeli guncelleme)
+ * diskte YARIM BIR DOSYA kalir. Ana depo daha once tmp+rename kullaniyordu;
+ * ancak CAS dosyalari dogrudan yaziliyordu, yani indirilen/guncellenen
+ * dosyalar bozulmaya acikti.
+ *
+ * `rename` ayni dosya sistemi icinde atomiktir: ya hedefe tamamen
+ * gecer ya da hic olmaz. Okuyucu hicbir zaman yarim dosya gormez.
+ *
+ * AYRICA: hedef zaten ayni icerigi tasiyorsa yazma yapilmaz. Icerik
+ * adresli depoda (CAS) ayni icerik defalarca kaydedilir; gereksiz
+ * yazma hem yavaftir hem de dosya zamanini degistirir.
+ */
+function atomicWriteFileSync(target: string, data: Buffer): void {
+  const dir = path.dirname(target)
+  const tmp = path.join(dir, `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`)
+  try {
+    fs.writeFileSync(tmp, data, { mode: 0o600 })
+    // Ayni icerik zaten diskteyse dokunma.
+    if (fs.existsSync(target)) {
+      try {
+        const current = fs.readFileSync(target)
+        if (current.length === data.length && current.equals(data)) {
+          safeUnlinkSync(tmp)
+          return
+        }
+      } catch {
+        /* okunamadiysa yeniden yazmaya devam et */
+      }
+    }
+    fs.renameSync(tmp, target)
+  } catch (err) {
+    safeUnlinkSync(tmp)
+    throw err
+  }
+}
+
+/** Gecici dosya temizligi; sessizce yoksayilir (asıl hatayi gizlemesin). */
+function safeUnlinkSync(file: string): void {
+  try {
+    fs.unlinkSync(file)
+  } catch {
+    /* zaten yok / kilitli */
+  }
+}
+
+/** Duz icerigin SHA-256 ozeti. */
+function sha256Hex(content: Buffer): string {
+  return crypto.createHash('sha256').update(content).digest('hex')
+}
+
+/** SHA-256 ozetinin gercek hex bicimi. */
+const SHA256_HEX = /^[0-9a-f]{64}$/i
+
+/**
+ * CAS dosya adindan beklenen ozeti cikarir.
+ *
+ * Ad duzeni: `<sha256>.<sanitize edilmis baslik>`. Baslik icinde nokta
+ * olabilir (`rapor.v2.pdf`), bu yuzden ayirici ILK noktadir.
+ *
+ * Eski duzen (`<sha256>_<baslik>`) ve basliksiz dosyalar da tolere edilir;
+ * eski kayitlar okunmaya devam eder.
+ */
+function sha256FromCasFileName(filePath: string): string | null {
+  const base = path.basename(filePath)
+  const dot = base.indexOf('.')
+  const underscore = base.indexOf('_')
+  let candidate = ''
+  if (dot > 0 && dot < underscore) candidate = base.slice(0, dot)
+  else if (underscore > 0) candidate = base.slice(0, underscore)
+  else if (dot > 0) candidate = base.slice(0, dot)
+  return SHA256_HEX.test(candidate) ? candidate.toLowerCase() : null
+}
 const LEGACY_DB_FILE = 'jmc_vault_database.bin'
 const LEGACY_JSON_FILE = 'jmc_local_store.json'
 
@@ -205,9 +284,7 @@ export class StorageService {
     try {
       const plain = Buffer.from(JSON.stringify(this.db), 'utf8')
       const cipher = aesEncrypt(this.ensureKey(), plain)
-      const tmp = `${this.dbPath}.tmp`
-      fs.writeFileSync(tmp, cipher, { mode: 0o600 })
-      fs.renameSync(tmp, this.dbPath)
+      atomicWriteFileSync(this.dbPath, cipher)
     } catch (err) {
       console.error('[StorageService] Sifreli depo yazilamadi:', err instanceof Error ? err.message : err)
       throw err
@@ -480,15 +557,16 @@ export class StorageService {
     content: Buffer,
     driveFileId?: string,
   ): { sha256: string; absolutePath: string } {
-    const hash = crypto.createHash('sha256').update(content).digest('hex')
-    const subDir = hash.slice(0, 2)
-    const targetDir = path.join(this.casDir, subDir)
-    fs.mkdirSync(targetDir, { recursive: true })
-
+    const hash = sha256Hex(content)
     const safeTitle = title.replace(/[^\p{L}\p{N}._-]+/gu, '_').slice(0, 120) || 'dosya'
+    // Icera gore bolunmus dizin: ayni icerik ayni yere gider (tekillestirme).
+    const targetDir = path.join(this.casDir, hash.slice(0, 2))
+    fs.mkdirSync(targetDir, { recursive: true })
     const targetFile = path.join(targetDir, `${hash}.${safeTitle}`)
     const encrypted = aesEncrypt(this.ensureKey(), content)
-    fs.writeFileSync(targetFile, encrypted, { mode: 0o600 })
+    // Atomik: yarim dosya birakmaz. Ayni icerik zaten varsa `atomicWriteFileSync`
+    // yazmayi atlar.
+    atomicWriteFileSync(targetFile, encrypted)
 
     const entry: CachedFileEntry = {
       fileId,
@@ -510,9 +588,58 @@ export class StorageService {
     return { sha256: hash, absolutePath: targetFile }
   }
 
-  /** Sifreli CAS dosyasini cozer ve duz icerigi dondurur. */
-  public readCasFile(absolutePath: string): Buffer {
-    return aesDecrypt(this.ensureKey(), fs.readFileSync(absolutePath))
+  /**
+   * Sifreli CAS dosyasini cozer ve duz icerigi dondurur.
+   *
+   * BUTUNLUK DOGRULAMASI
+   * --------------------
+   * ESKI SURUM DOGRULAMA YAPMIYORDU. Iki ayri bozulma sessizce gecirdi:
+   * 1. Surec yazma sirasinda cokerse diskte yarim sifreli dosya kalirdi.
+   * 2. `updateLocalFileContent` icerigi ESKI hash'in adini tasiyan dosyaya
+   *    yaziyordu; dosya adi ile icerik uyumsuzlugu hic yakalanmazdi.
+   *
+   * Artik beklenen ozet; acikca verilmezse DOSYA ADINDAN turetilir
+   * (`<sha256>.<baslik>` duzeni). Uyuşmazlık sessizce gecilmez; acik bir
+   * hata olarak yukseltilir, boylece kullaniciya bozuk dosya gosterilmez.
+   *
+   * Yol guvenligi de burada tekrar denetlenir: `readCasFile` disaridan
+   * gelen bir yol alabiliyor ve CAS disina cikmaya calisan bir yol
+   * reddedilmelidir.
+   */
+  public readCasFile(absolutePath: string, expectedSha256?: string): Buffer {
+    const inside = this.isInsideCas(absolutePath)
+    if (!inside) {
+      throw new Error('Onbellek dosyasi guvenli depolama alaninin disinda.')
+    }
+    if (!fs.existsSync(inside)) {
+      throw new Error('Onbellekteki dosya diskte bulunamadi.')
+    }
+    const plain = aesDecrypt(this.ensureKey(), fs.readFileSync(inside))
+    const expected = (expectedSha256 || sha256FromCasFileName(inside) || '').toLowerCase()
+    if (expected) {
+      const actual = sha256Hex(plain)
+      if (actual !== expected) {
+        // Bozulan dosyayi sessizce kullanmak, kullaniciya UYGULANAMAZ bir
+        // icerik gostermek demektir. Dosya adi ile icerik eslesmiyor.
+        throw new Error(
+          'Onbellekteki dosya bozulmus: icerik ile kayit tutmuyor. Dosya yeniden indirilecek.',
+        )
+      }
+    }
+    return plain
+  }
+
+  /**
+   * Bir onbellek dosyasinin butunlugu denetlenir (okumadan bagimsiz).
+   * Bozuk dosya tespiti icin; `getStoreHealth` ve tanilama ekranlari kullanir.
+   */
+  public verifyCasFile(absolutePath: string, expectedSha256?: string): { ok: boolean; reason?: string } {
+    try {
+      this.readCasFile(absolutePath, expectedSha256)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) }
+    }
   }
 
   public getCachedFile(fileIdOrTitle: string): { entry: CachedFileEntry; absolutePath: string } | null {
@@ -564,15 +691,58 @@ export class StorageService {
     const cached = this.getCachedFile(fileId)
     if (!cached) throw new Error('Dosya yerel onbellekte bulunamadi.')
 
-    const newHash = crypto.createHash('sha256').update(buf).digest('hex')
+    const newHash = sha256Hex(buf)
+    const previousPath = cached.absolutePath
+    const previousRelative = cached.entry.casRelativePath
+
+    if (newHash === cached.entry.sha256) {
+      // Icerik degismemis: dosyaya hic dokunma, yalniz zaman damgasini tazele.
+      cached.entry.localModifiedAt = new Date().toISOString()
+      this.persist()
+      return { newHash }
+    }
+
+    // YENI DOSYA YAZILIR. ESKISININ UZERINE DEGIL.
+    //
+    // HATANIN GELISMESI: eski surum `fs.writeFileSync(cached.absolutePath, ...)`
+    // ile yeni icerigi ESKI hash'in adini tasiyan dosyaya yaziyordu; sonra
+    // yalnizca `entry.sha256` guncelleniyordu. Boylece dosya adi ile icerik
+    // kalici olarak eslesmez oluyordu ve ad, icerigin ne oldugunu anlatmaz
+    // hale geliyordu.
+    //
+    // CAS'in temel degismezi "dosya adi = icerik ozeti" oldugu icin, guncellenmis
+    // bir dosyaya eski adi tasimak bu degismezi ihlal eder. Dogru davranis:
+    // yeni hash'li yeni dosya yaz, indeksi yeni yola cevir, eskiyi sil.
+    const safeTitle =
+      cached.entry.title.replace(/[^\p{L}\p{N}._-]+/gu, '_').slice(0, 120) || 'dosya'
+    const newDir = path.join(this.casDir, newHash.slice(0, 2))
+    fs.mkdirSync(newDir, { recursive: true })
+    const newPath = path.join(newDir, `${newHash}.${safeTitle}`)
     const encrypted = aesEncrypt(this.ensureKey(), buf)
-    fs.writeFileSync(cached.absolutePath, encrypted, { mode: 0o600 })
+    atomicWriteFileSync(newPath, encrypted)
 
     cached.entry.sha256 = newHash
     cached.entry.sizeBytes = buf.length
+    cached.entry.casRelativePath = path.relative(this.casDir, newPath)
     cached.entry.localModifiedAt = new Date().toISOString()
     cached.entry.syncState = 'LOCAL_MODIFIED'
+
+    // Indeks yazildiktan SONRA eskiyi sil. Boylece bir hata olusursa eski
+    // dosya durmaya devam eder; kullanici veri kaybetmez.
     this.persist()
+
+    if (previousPath !== newPath && previousRelative !== cached.entry.casRelativePath) {
+      // Ayni icerik baska bir dosya girdisi tarafindan paylasiliyorsa
+      // SILLENMEZ: birlikte kullanilan bir onbellek kaydi kalirsa o kayit
+      // kullanilamaz hale gelirdi.
+      const sharedElsewhere = Object.values(this.db.cachedFiles).some(
+        e =>
+          e.casRelativePath === previousRelative &&
+          !(e.fileId === fileId || (cached.entry.driveFileId && e.fileId === cached.entry.driveFileId)),
+      )
+      if (!sharedElsewhere) safeUnlinkSync(previousPath)
+    }
+
     return { newHash }
   }
 

@@ -114,7 +114,7 @@ export class DriveService {
             const safeTitle = (cached.entry.title || attachment.title || 'dosya').replace(/[\\/:*?"<>|]/g, '_').trim() || 'dosya'
             let destPath = path.join(downloadsFolder, safeTitle)
             if (!fs.existsSync(destPath)) {
-              const content = this.storageService.readCasFile(cached.absolutePath)
+              const content = this.storageService.readCasFile(cached.absolutePath, cached.entry.sha256)
               fs.writeFileSync(destPath, content)
             }
             downloadedPath = destPath
