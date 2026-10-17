@@ -439,7 +439,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                 <button
                   type="button"
                   onClick={loginWithGoogle}
-                  className="inline-flex w-full items-center justify-center gap-2.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-4 py-3 text-[13.5px] font-semibold text-white transition-all duration-150 hover:bg-[var(--jmc-primary-hover)] active:scale-[0.98] shadow-md hover:shadow-lg"
+                  className="inline-flex w-full items-center justify-center gap-2.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-4 py-3 text-[13.5px] font-semibold text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-all duration-150 hover:bg-[var(--jmc-primary-hover)] active:scale-[0.98] shadow-md hover:shadow-lg"
                 >
                   <GoogleMark className="h-5 w-5" />
                   <span>{t('auth.continueGoogle')}</span>
@@ -519,7 +519,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   type="button"
                   onClick={handleManualCodeSubmit}
                   disabled={manualBusy || !manualCode.trim()}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-medium text-white transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-60"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-60"
                 >
                   {manualBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Giriş Yap'}
                 </button>
@@ -664,7 +664,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     </div>
 
                     <div className="flex items-start gap-2">
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--jmc-primary)] text-[9px] font-bold text-white">
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--jmc-primary)] text-[9px] font-bold text-[var(--jmc-on-primary)]">
                         1
                       </span>
                       <div>
@@ -680,7 +680,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     </div>
 
                     <div className="flex items-start gap-2">
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--jmc-primary)] text-[9px] font-bold text-white">
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--jmc-primary)] text-[9px] font-bold text-[var(--jmc-on-primary)]">
                         2
                       </span>
                       <div>
@@ -706,7 +706,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     </div>
 
                     <div className="flex items-start gap-2">
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--jmc-primary)] text-[9px] font-bold text-white">
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--jmc-primary)] text-[9px] font-bold text-[var(--jmc-on-primary)]">
                         3
                       </span>
                       <div>
@@ -722,7 +722,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     </div>
 
                     <div className="flex items-start gap-2">
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--jmc-primary)] text-[9px] font-bold text-white">
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--jmc-primary)] text-[9px] font-bold text-[var(--jmc-on-primary)]">
                         4
                       </span>
                       <div>
@@ -738,7 +738,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     </div>
 
                     <div className="flex items-start gap-2">
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--jmc-primary)] text-[9px] font-bold text-white">
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--jmc-primary)] text-[9px] font-bold text-[var(--jmc-on-primary)]">
                         5
                       </span>
                       <div>
@@ -802,7 +802,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     type="button"
                     onClick={handleImportJson}
                     disabled={!jsonInput.trim()}
-                    className="rounded bg-[var(--jmc-primary)] px-3.5 py-1.5 text-[11.5px] font-medium text-white hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50"
+                    className="rounded bg-[var(--jmc-primary)] px-3.5 py-1.5 text-[11.5px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50"
                   >
                     İçe Aktar ve Kaydet
                   </button>

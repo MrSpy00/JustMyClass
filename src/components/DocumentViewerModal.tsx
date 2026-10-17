@@ -604,16 +604,52 @@ export function DocumentViewerModal({
   }, [isOpen, slideView, slideCount, slideFileId])
 
   // Dosya önizlemesini yukle
+  //
+  // ZAMAN ASIMI NEDEN VAR?
+  // ----------------------
+  // Kullanicinin bildirdigi: "PDF gördüğü gibi kalıyor, devamı gelmiyor."
+  // Ekran "Belge Hazırlanıyor..." yazısında sonsuza kadar kalıyordu.
+  //
+  // Bu iki ayri bir arıza sınıfıdır:
+  //   1) Ana süreçteki cıkarma yavaş/kilitli kalırsa IPC çözülmez. Artık
+  //      cıkarma doğrusal (O(n)) ve sinirlidir, ama yine de bir garanti
+  //      yoktur: cok buyuk/bozuk bir dosyada beklenmedik bir yol takilabilir.
+  //   2) IPC katmani bir hataya duser, cevap donmezse ayni sonuc.
+  //
+  // Zaman asimi bu ikisini de yakalar: sure dolunca bekleme biter ve
+  // kullanici BELIRLI bir hata mesaji gorur. Yalnizca donen bir
+  // gosterge yerine acik bir aciklama alir; ayrica dosyayi indirip
+  // harici bir okuyucuda acabilir.
+  const PREVIEW_TIMEOUT_MS = 60_000
+
   const loadPreview = useCallback(async () => {
     if (!attachment) return
     setLoading(true)
     setError(null)
+    let timer = 0
     try {
-      const res = await window.jmcAPI.getFilePreview(attachment, courseId)
+      // DIKKAT: `getFilePreview` SADECE BIR KEZ cagrilir. Zaman asimi
+      // icin ikinci bir cagri yapmak isi ikiye katlar ve asil sorunu
+      // (donen istek) yine cozmez; yalnizca daha cok is yaratirdi.
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timer = window.setTimeout(
+          () =>
+            reject(
+              new Error(
+                'Belge hazırlanamadı: işlem 60 saniyeyi aştı ve durduruldu. ' +
+                  'Dosya çok büyük veya bozuk olabilir. Dosyayı indirip harici bir ' +
+                  'okuyucuda açmayı deneyin.',
+              ),
+            ),
+          PREVIEW_TIMEOUT_MS,
+        )
+      })
+      const res = await Promise.race([window.jmcAPI.getFilePreview(attachment, courseId), timeout])
       setPreview(res)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dosya önizlemesi yüklenemedi.')
     } finally {
+      if (timer) window.clearTimeout(timer)
       setLoading(false)
     }
   }, [attachment, courseId])
@@ -1132,7 +1168,7 @@ export function DocumentViewerModal({
                 onClick={handleDirectDownload}
                 disabled={downloading}
                 title="İndirilenler klasörüne doğrudan kaydet"
-                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-semibold text-white shadow-sm transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-semibold text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] shadow-sm transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95 disabled:opacity-50"
               >
                 {downloading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1218,7 +1254,7 @@ export function DocumentViewerModal({
                         onClick={() => setLineSpacing(spacing)}
                         className={`rounded px-1.5 py-0.5 text-[10.5px] transition-colors ${
                           lineSpacing === spacing
-                            ? 'bg-[var(--jmc-primary)] text-white font-medium'
+                            ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] font-medium'
                             : 'hover:bg-[var(--jmc-bg-surface)] text-[var(--jmc-text-dim)]'
                         }`}
                       >
@@ -1302,7 +1338,7 @@ export function DocumentViewerModal({
                     onClick={() => setMarkdownMode('preview')}
                     className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-all ${
                       markdownMode === 'preview'
-                        ? 'bg-[var(--jmc-primary)] text-white shadow-xs'
+                        ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] shadow-xs'
                         : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                     }`}
                   >
@@ -1314,7 +1350,7 @@ export function DocumentViewerModal({
                     onClick={() => setMarkdownMode('raw')}
                     className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-all ${
                       markdownMode === 'raw'
-                        ? 'bg-[var(--jmc-primary)] text-white shadow-xs'
+                        ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] shadow-xs'
                         : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                     }`}
                   >
@@ -1338,7 +1374,7 @@ export function DocumentViewerModal({
                       onClick={() => setPdfMode('embed')}
                       className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-all ${
                         pdfMode === 'embed'
-                          ? 'bg-[var(--jmc-primary)] text-white shadow-xs'
+                          ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] shadow-xs'
                           : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                       }`}
                     >
@@ -1350,7 +1386,7 @@ export function DocumentViewerModal({
                       onClick={() => setPdfMode('text')}
                       className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-all ${
                         pdfMode === 'text'
-                          ? 'bg-[var(--jmc-primary)] text-white shadow-xs'
+                          ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] shadow-xs'
                           : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                       }`}
                     >
@@ -1816,7 +1852,7 @@ export function DocumentViewerModal({
                               <button
                                 type="button"
                                 onClick={() => setPdfMode('text')}
-                                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-2 text-[12px] font-semibold text-white transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95"
+                                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-2 text-[12px] font-semibold text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95"
                               >
                                 <BookOpen className="h-3.5 w-3.5" />
                                 <span>Ayıklanan Metni Gör</span>
@@ -2048,6 +2084,22 @@ export function DocumentViewerModal({
                    *     numara vurgusu ve üst bilgi çubuğu canlı güncellenir.
                    *   'single': eski davranış — yalnızca aktif slayt.
                    */}
+                   *
+                   * KART DUZENI: BLOG KAPSAYICI (BLOK), FLEX DEGIL
+                   * --------------------------------------------------
+                   * Kullanici: "cok uzun olan sayfalar alta dogru gidiyor
+                   * ama arkas[i] bos kaliyor".
+                   *
+                   * Kart daha once `flex flex-col justify-between` idi. Ust
+                   * kapayici da `flex flex-col items-center` oldugu icin kart
+                   * iceriginden kisaldiiginda arka plani yalnizca kendi
+                   * kutusu kadar kapliyor ve madde listesi kartin DISINDA,
+                   * sayfa zemini uzerinde gorunuyordu; alt bilgi cubugu bile
+                   * kartin disinda kaliyordu.
+                   *
+                   * `h-fit` ile kart acikca "icerik kadar yuksek" olur. Blok
+                   * kapsayicida arka plan tanim geregi tum icerigi kapsar,
+                   * dolayisiyla bu turden bir kuculme olusamaz.
                   {preview.kind === 'pptx' && slides && (
                     <div className="flex h-full min-h-0 flex-col overflow-hidden">
                       {/* Slayt İçerik Alanı */}
@@ -2067,7 +2119,7 @@ export function DocumentViewerModal({
                               ref={el => {
                                 slideRefs.current[idx] = el
                               }}
-                              className={`w-full max-w-4xl shrink-0 scroll-mt-4 rounded-2xl border bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl flex flex-col justify-between transition-all ${
+                              className={`w-full max-w-4xl shrink-0 h-fit scroll-mt-4 rounded-2xl border bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl transition-all ${
                                 idx === activeSlideIndex
                                   ? 'border-[var(--jmc-primary)]/70 ring-1 ring-[var(--jmc-primary)]/30'
                                   : 'border-[var(--jmc-border)]'
@@ -2108,7 +2160,7 @@ export function DocumentViewerModal({
                             </div>
                           ))
                         ) : slides[activeSlideIndex] ? (
-                          <div className="w-full max-w-4xl my-auto min-h-[380px] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl flex flex-col justify-between transition-all">
+                          <div className="w-full max-w-4xl my-auto h-fit min-h-[380px] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl transition-all">
                             <div>
                               <div className="flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)] border-b border-[var(--jmc-border-subtle)] pb-3">
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-400 px-2.5 py-0.5 font-semibold text-[10.5px]">
@@ -2168,7 +2220,7 @@ export function DocumentViewerModal({
                             disabled={activeSlideIndex <= 0}
                             onClick={() => goToSlide(activeSlideIndex - 1)}
                             title="Önceki Slayt (Sol Ok)"
-                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-white hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
+                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-[var(--jmc-on-primary)] hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
                           >
                             <ChevronLeft className="h-4 w-4" />
                             <span>Önceki</span>
@@ -2178,7 +2230,7 @@ export function DocumentViewerModal({
                             disabled={activeSlideIndex >= slides.length - 1}
                             onClick={() => goToSlide(activeSlideIndex + 1)}
                             title="Sonraki Slayt (Sağ Ok)"
-                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-white hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
+                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-border)] bg-[var(--jmc-bg)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--jmc-text)] shadow-xs transition-all hover:bg-[var(--jmc-primary)] hover:text-[var(--jmc-on-primary)] hover:border-[var(--jmc-primary)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
                           >
                             <span>Sonraki</span>
                             <ChevronRight className="h-4 w-4" />
@@ -2192,7 +2244,7 @@ export function DocumentViewerModal({
                               title="Tüm slaytları tek sayfada kaydırarak göster"
                               className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10.5px] font-medium transition-all ${
                                 slideView === 'continuous'
-                                  ? 'bg-[var(--jmc-primary)] text-white'
+                                  ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]'
                                   : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                               }`}
                             >
@@ -2205,7 +2257,7 @@ export function DocumentViewerModal({
                               title="Yalnızca aktif slaydı göster"
                               className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10.5px] font-medium transition-all ${
                                 slideView === 'single'
-                                  ? 'bg-[var(--jmc-primary)] text-white'
+                                  ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]'
                                   : 'text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                               }`}
                             >
@@ -2225,7 +2277,7 @@ export function DocumentViewerModal({
                               title={`Slayt ${idx + 1}: ${s.title || 'Başlıksız'}`}
                               className={`h-7 min-w-[28px] px-1.5 rounded text-[11px] font-mono transition-all ${
                                 activeSlideIndex === idx
-                                  ? 'bg-[var(--jmc-primary)] text-white font-bold shadow-xs scale-105'
+                                  ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] font-bold shadow-xs scale-105'
                                   : 'bg-[var(--jmc-bg)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] border border-[var(--jmc-border-subtle)]'
                               }`}
                             >
@@ -2436,7 +2488,7 @@ export function DocumentViewerModal({
                           <button
                             type="button"
                             onClick={() => void window.jmcAPI?.openExternalUrl((attachment.alternateLink || preview.dataUrl)!)}
-                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-4 py-2 text-[12px] font-semibold text-white shadow-md hover:bg-[var(--jmc-primary-hover)] active:scale-95 transition-all"
+                            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-4 py-2 text-[12px] font-semibold text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] shadow-md hover:bg-[var(--jmc-primary-hover)] active:scale-95 transition-all"
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
                             <span>Tarayıcıda Aç</span>

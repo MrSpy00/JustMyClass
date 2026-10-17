@@ -235,7 +235,7 @@ export function CustomSelect<T extends string | number = string>({
                             <span
                               className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                                 isSelected
-                                  ? 'bg-[var(--jmc-primary)] text-white'
+                                  ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]'
                                   : 'bg-[var(--jmc-badge-bg)] text-[var(--jmc-text-dim)]'
                               }`}
                             >

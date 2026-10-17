@@ -490,7 +490,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                   onClick={() => setAssignmentFilter('all')}
                   className={`rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                     assignmentFilter === 'all'
-                      ? 'bg-[var(--jmc-primary)] text-white'
+                      ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]'
                       : 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                   }`}
                 >
@@ -501,7 +501,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                   onClick={() => setAssignmentFilter('pending')}
                   className={`rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                     assignmentFilter === 'pending'
-                      ? 'bg-[var(--jmc-primary)] text-white'
+                      ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]'
                       : 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                   }`}
                 >
@@ -512,7 +512,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                   onClick={() => setAssignmentFilter('turned_in')}
                   className={`rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                     assignmentFilter === 'turned_in'
-                      ? 'bg-[var(--jmc-primary)] text-white'
+                      ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]'
                       : 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                   }`}
                 >
@@ -523,7 +523,7 @@ export const CourseOverview: React.FC<CourseOverviewProps> = ({
                   onClick={() => setAssignmentFilter('graded')}
                   className={`rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                     assignmentFilter === 'graded'
-                      ? 'bg-[var(--jmc-primary)] text-white'
+                      ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]'
                       : 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                   }`}
                 >

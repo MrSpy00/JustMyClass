@@ -10,6 +10,7 @@ import {
   createCustomTheme,
   deriveCodeTokens,
   deriveLinkColors,
+  deriveOnColorText,
   isLightTheme,
   parseCustomThemes,
   serializeCustomThemes,
@@ -216,6 +217,21 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const linkColors = deriveLinkColors(colors)
     set('--jmc-link', linkColors.link)
     set('--jmc-link-hover', linkColors.linkHover)
+
+    // Dolgu renklerinin UZERINDE okunabilir metin rengi.
+    //
+    // Onceki surumde kullanici balonu `text-white` ile sabit yaziliydi.
+    // `primary` acik bir ton oldugunda (High Contrast #ffd400 -> 1.43,
+    // Graphite #b8bcc6 -> 1.90, Matrix -> 2.00) beyaz metin okunmuyordu;
+    // 17 temanin 16'sinda kullanicinin kendi mesaji bozuk kontrastti.
+    const onColor = deriveOnColorText(colors)
+    set('--jmc-on-primary', onColor.onPrimary)
+    set('--jmc-on-primary-hover', onColor.onPrimaryHover)
+    set('--jmc-on-accent', onColor.onAccent)
+    set('--jmc-on-accent-hover', onColor.onAccentHover)
+    set('--jmc-on-warning', onColor.onWarning)
+    set('--jmc-on-danger', onColor.onDanger)
+    set('--jmc-on-success', onColor.onSuccess)
     set('--jmc-warning', colors.warning)
     set('--jmc-danger', colors.danger)
     set('--jmc-success', colors.success)

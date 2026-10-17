@@ -305,6 +305,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [messages, setMessages] = useState<AiMessage[]>([])
   const [inputPrompt, setInputPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
+  /**
+   * Uretimin surdugu asistan mesajinin kimligi.
+   *
+   * NEDEN AYRI BIR DEGISKEN?
+   * "Yanit bekleniyor..." gostergesi yalnizca GERCEKTEN bekleyen mesaja
+   * ait olmalidir. Onceki surumde her bos asistan mesaji bekliyor gibi
+   * gorunuyordu; uretim bitip icerik bos kaldiginda gosterge kalici
+   * olarak yanip sonmaya devam ediyordu.
+   */
+  const [awaitingMessageId, setAwaitingMessageId] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
   /**
@@ -1353,6 +1363,7 @@ const resetSessionUiState = useCallback(() => {
     const history = [...messages, userMsg]
     setInputPrompt('')
     setIsGenerating(true)
+    setAwaitingMessageId(assistantId)
     chatStuckRef.current = true
     setShowScrollBottom(false)
     setMessages(prev => [
@@ -1478,6 +1489,7 @@ const resetSessionUiState = useCallback(() => {
       }
     } finally {
       setIsGenerating(false)
+      setAwaitingMessageId(null)
       scrollToBottom('smooth')
     }
   }, [activeContext, aiMode, chatAttachment, currentSessionId, inputPrompt, isGenerating, loadMemory, messages, onNotify, scrollToBottom, selectedModelId, selectedProviderId, sessions])
@@ -1495,6 +1507,7 @@ const resetSessionUiState = useCallback(() => {
       /* iptal basarisiz olsa bile arayuzu kilitli birakma */
     } finally {
       setIsGenerating(false)
+      setAwaitingMessageId(null)
     }
   }, [])
 
@@ -1636,7 +1649,7 @@ const resetSessionUiState = useCallback(() => {
                   className="h-8 w-8 rounded-full object-cover shadow-[var(--jmc-shadow-sm)]"
                 />
               ) : (
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--jmc-primary)] text-[11px] font-semibold text-white">
+                <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--jmc-primary)] text-[11px] font-semibold text-[var(--jmc-on-primary)]">
                   {initials(account.displayName || account.email)}
                 </span>
               )}
@@ -2076,7 +2089,7 @@ const resetSessionUiState = useCallback(() => {
                   }}
                   className={`inline-flex items-center gap-1 rounded-[var(--jmc-radius-sm)] px-1.5 py-0.5 text-[10.5px] font-medium transition-colors border max-w-[120px] truncate ${
                     isHistoryOpen
-                      ? 'bg-[var(--jmc-primary)] text-white border-transparent'
+                      ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] border-transparent'
                       : 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)] border-[var(--jmc-border-subtle)]'
                   }`}
                   title={t('ai.chat.history')}
@@ -2095,7 +2108,7 @@ const resetSessionUiState = useCallback(() => {
                   }}
                   className={`rounded p-1 transition-colors ${
                     isMemoryOpen
-                      ? 'bg-[var(--jmc-primary)] text-white'
+                      ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]'
                       : 'text-[var(--jmc-text-dim)] hover:bg-[var(--jmc-bg-surface)] hover:text-[var(--jmc-text)]'
                   }`}
                   aria-label={t('ai.chat.memoryTitle')}
@@ -2146,7 +2159,7 @@ const resetSessionUiState = useCallback(() => {
                   <button
                     type="button"
                     onClick={handleNewChat}
-                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)] px-2 py-0.5 text-[10.5px] font-medium text-white hover:bg-[var(--jmc-primary-hover)] transition-colors"
+                    className="inline-flex items-center gap-1 rounded bg-[var(--jmc-primary)] px-2 py-0.5 text-[10.5px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] transition-colors"
                   >
                     <Plus className="h-3 w-3" />
                     {t('ai.chat.newChat')}
@@ -2298,7 +2311,7 @@ const resetSessionUiState = useCallback(() => {
                     <button
                       type="submit"
                       disabled={!newMemoryKey.trim() || !newMemoryValue.trim()}
-                      className="rounded bg-[var(--jmc-primary)] px-2.5 py-1 text-[10.5px] font-medium text-white hover:bg-[var(--jmc-primary-hover)] transition-colors disabled:opacity-40"
+                      className="rounded bg-[var(--jmc-primary)] px-2.5 py-1 text-[10.5px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] transition-colors disabled:opacity-40"
                     >
                       Kaydet
                     </button>
@@ -2397,7 +2410,7 @@ const resetSessionUiState = useCallback(() => {
                     aria-pressed={aiMode === mode.id}
                     className={`rounded-[var(--jmc-radius-sm)] px-2 py-[3px] text-[10.5px] font-medium transition-all ${
                       aiMode === mode.id
-                        ? 'bg-[var(--jmc-primary)] text-white shadow-xs'
+                        ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] shadow-xs'
                         : 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                     }`}
                   >
@@ -2436,7 +2449,7 @@ const resetSessionUiState = useCallback(() => {
                     <button
                       type="button"
                       onClick={() => onOpenSettings('providers')}
-                      className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11px] font-medium text-white shadow-xs hover:bg-[var(--jmc-primary-hover)] active:scale-95 transition-all"
+                      className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] shadow-xs hover:bg-[var(--jmc-primary-hover)] active:scale-95 transition-all"
                     >
                       <Wrench className="h-3 w-3" />
                       <span>{t('settings.tab.providers')} / Anahtar Gir</span>
@@ -2448,6 +2461,28 @@ const resetSessionUiState = useCallback(() => {
               {messages.map(msg => {
                 const isUser = msg.role === 'user'
                 const isError = Boolean(msg.isError) && !isUser
+                /*
+                  BEKLEME DOGRUSU
+                  ----------------
+                  Onceki surum yalnizca `msg.content` bos mu diye bakiyordu.
+                  Oysa icerik bos bir mesaj iki farkli anlama gelebilir:
+
+                    1) Uretim gercekten suruyor  -> "Yanit bekleniyor..." dogru
+                    2) Uretim BITTI ama sonuc bos kaldi -> gosterge sonsuza
+                       kadar yanip soner ve kullanici gercek bir hata mesaji
+                       HIC gormez. Kullanicinin bildirdigi "full yanit bekleniyor
+                       da gozukuyor, ilerisi gelmiyor" tam olarak bu durumdu.
+
+                  Artik beklenen mesaj, uretimin gercekten surdugu ve listedeki
+                  SON asistan mesaji olan tek mesajdir. Bitis sonrasi kalan
+                  bos mesaj da sessizce kaybolmaz: acikca "bos yanit" notu
+                  gorunur.
+                */
+                const isAwaitingReply =
+                  !isUser &&
+                  isGenerating &&
+                  awaitingMessageId === msg.id &&
+                  !msg.content
                 return (
                   <article
                     key={msg.id}
@@ -2478,16 +2513,27 @@ const resetSessionUiState = useCallback(() => {
                         <div
                           className={`rounded-[var(--jmc-radius-lg)] px-3 py-2.5 shadow-[var(--jmc-shadow-sm)] border border-[var(--jmc-border-subtle)] ${
                             isUser
-                              ? 'bg-[var(--jmc-primary)] text-white border-transparent'
+                              ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] border-transparent'
                               : 'bg-[var(--jmc-bg-surface)] text-[var(--jmc-text)]'
                           }`}
                         >
                           {msg.content ? (
                             <MarkdownView content={msg.content} isUser={isUser} />
-                          ) : (
+                          ) : isAwaitingReply ? (
                             <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--jmc-text-dim)]">
                               <span className="h-1.5 w-1.5 animate-[jmc-pulse-soft_1.2s_ease-in-out_infinite] rounded-full bg-[var(--jmc-primary)]" />
                               Yanıt bekleniyor...
+                            </span>
+                          ) : (
+                            /*
+                              Uretim bitti ama icerik bos. Onceki surumde bu
+                              durum "Yanit bekleniyor..." olarak gosteriliyor ve
+                              sonsuza kadar yanip sonuyordu; kullanici cevabin
+                              gelmedigini saniyordu.
+                            */
+                            <span className="inline-flex items-start gap-1.5 text-[11px] italic text-[var(--jmc-text-dim)]">
+                              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                              <span>Model boş bir yanıt döndürdü. Soruyu biraz değiştirip tekrar deneyin.</span>
                             </span>
                           )}
                         </div>
@@ -2598,7 +2644,7 @@ const resetSessionUiState = useCallback(() => {
                                   <button
                                     type="button"
                                     onClick={() => void handleApproveTool(tc.id)}
-                                    className="rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)] px-3 py-1 text-[11px] font-medium text-white hover:bg-[var(--jmc-primary-hover)] transition-all active:scale-95 shadow-xs"
+                                    className="rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)] px-3 py-1 text-[11px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] transition-all active:scale-95 shadow-xs"
                                   >
                                     {t('ai.approve')}
                                   </button>
@@ -2698,7 +2744,7 @@ const resetSessionUiState = useCallback(() => {
                 <button
                   type="button"
                   onClick={() => scrollToBottom()}
-                  className="flex items-center gap-1.5 rounded-full bg-[var(--jmc-primary)] px-3 py-1.5 text-[11px] font-medium text-white shadow-lg hover:bg-[var(--jmc-primary-hover)] active:scale-95 transition-all border border-white/20"
+                  className="flex items-center gap-1.5 rounded-full bg-[var(--jmc-primary)] px-3 py-1.5 text-[11px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] shadow-lg hover:bg-[var(--jmc-primary-hover)] active:scale-95 transition-all border border-white/20"
                   title={t('ai.chat.scrollToBottom')}
                 >
                   <ArrowDown className="h-3.5 w-3.5 animate-bounce" />
@@ -2773,7 +2819,7 @@ const resetSessionUiState = useCallback(() => {
                 type="submit"
                 disabled={isGenerating || (!inputPrompt.trim() && !chatAttachment) || !aiReady}
                 aria-label={t('ai.send')}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] text-white transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95 disabled:opacity-40 shadow-xs"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95 disabled:opacity-40 shadow-xs"
               >
                 <Send className="h-3.5 w-3.5" />
               </button>
@@ -2813,7 +2859,7 @@ const resetSessionUiState = useCallback(() => {
 // =========================================================================
 
 const primaryButton =
-  'inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-semibold text-white shadow-[var(--jmc-shadow-sm)] transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50'
+  'inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-semibold text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] shadow-[var(--jmc-shadow-sm)] transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50'
 const ghostButton =
   'inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-bg-surface)] px-3 py-1.5 text-[11.5px] font-semibold text-[var(--jmc-text)] shadow-[var(--jmc-shadow-sm)] transition-colors hover:bg-[var(--jmc-bg-elevated)]'
 

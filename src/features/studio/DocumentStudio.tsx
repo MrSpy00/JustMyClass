@@ -383,7 +383,7 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
                 type="button"
                 onClick={handleTurnIn}
                 disabled={busy !== null}
-                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-1.5 text-[11.5px] font-medium text-white shadow-[var(--jmc-shadow-sm)] transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-1.5 text-[11.5px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] shadow-[var(--jmc-shadow-sm)] transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50"
               >
                 {busy === 'turnin' ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -649,7 +649,7 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
                 type="button"
                 onClick={handleSave}
                 disabled={busy !== null || !courseId}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-medium text-white transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50"
               >
                 {busy === 'save' ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

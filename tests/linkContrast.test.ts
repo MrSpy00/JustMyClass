@@ -81,14 +81,35 @@ describe('deriveLinkColors', () => {
   })
 
   it('link rengi accent okunabilir degilse primary denenir', () => {
+    // `primary`in kesinlikle 5.5 kontrasti saglayacak kadar koyu
+    // secilmesi gerekir; aksi halde (daha once 4.5 hedefi varken)
+    // bir sonraki aday olan `accentHover` devreye girerdi.
     const colors: ThemeColors = {
       ...(THEMES.Light as ThemeColors),
       accent: '#fefefe', // beyaz zeminde okunmaz
-      primary: '#0b5fff',
-      primaryHover: '#0842cc',
+      primary: '#00307a',
+      primaryHover: '#002055',
     }
     const { link } = deriveLinkColors(colors)
-    expect(link.toLowerCase()).toBe('#0b5fff')
+    expect(link.toLowerCase()).toBe('#00307a')
+  })
+
+  it('hicbir aday hedefi karsilamiyorsa kontrast ZORLANIR', () => {
+    // Acik temada tek bir koyu ve okunabilir aday yoksa renk zorlanir.
+    const colors: ThemeColors = {
+      ...(THEMES.Light as ThemeColors),
+      accent: '#fefefe',
+      accentHover: '#fefefe',
+      primary: '#fefefe',
+      primaryHover: '#fefefe',
+      text: '#fefefe',
+      bg: '#ffffff',
+      bgElevated: '#ffffff',
+      bgSurface: '#ffffff',
+    }
+    const { link, linkHover } = deriveLinkColors(colors)
+    expect(contrastRatio(link, '#ffffff')).toBeGreaterThanOrEqual(5.5)
+    expect(contrastRatio(linkHover, '#ffffff')).toBeGreaterThanOrEqual(7.5)
   })
 
   it('hicbir aday okunabilir degilse kontrast ZORLANIR (guvenlik agi)', () => {

@@ -1083,16 +1083,184 @@ export function extractTextFromPdf(buf: Buffer): string {
   // -------------------------------------------------------------------------
   // Yazitip cozumlemesi icin gerekli. Onceki surumde nesne dizini HIC
   // kurulmuyordu; `/F1 12 0 R` gibi bir referans `12` sayisi saniliyordu.
+  // -------------------------------------------------------------------------
+  // TEK GECISLI DIZINLEYICI (OBJE + AKIS)
+  // -------------------------------------------------------------------------
+  //
+  // HATANIN GELISMESI
+  // -----------------
+  // Onceki surum IKI ayri tarama yapiyordu ve ikisi de O(n^2) idi:
+  //
+  //   1) `str.indexOf('endobj', om.index)`  -> her nesne icin dosyanin
+  //      sonuna kadar ilerliyor.
+  //   2) `str.lastIndexOf('obj', match.index)` -> her akis icin dosyanin
+  //      BASINA kadar GERI tarıyor. Son akis icin bu ~11 MB'dir; 500 akis
+  //      oldugunda ~2.7 GB karakter taramasi olusuyor.
+  //   3) `str.slice(dictStart, match.index)` -> her akis icin yeni bir
+  //      onlarca KB'lik dize olusturuyor.
+  //
+  // `extractTextFromPdf` Ana surecte SENKRON cagrildigi icin bu, 11 MB'lik
+  // bir PDF'de onlarca saniyelik donma demek; kullanici ekranda "Belge
+  // Hazirlaniyor..." yuzunden sonsuza kadar kaliyor ve tum arayuz donuyor.
+  //
+  // COZUM
+  // -----
+  // `obj` / `endobj` / `stream` / `endstream` belirtecleri TEK bir
+  // duzenli ifade ile dosya boyunca sirali taranir. Ayni gecis hem nesne
+  // govdesini hem de akis sahipligini doldurur: toplam maliyet O(n) olur
+  // ve yazma hatasi ihtimali ortadan kalkar (ikinci bir tarama gerekmez).
   const objDict = new Map<number, string>()
+
+  /** Bulunan akis: ait oldugu nesne, sozluk metni ve ham akis govdesi. */
+  interface RawStreamEntry {
+    objNum: number | null
+    dictSlice: string
+    rawData: string
+    /** Ham govdenin `buf` icindeki baslangic ofseti. */
+    streamStart: number
+  }
+  const rawStreams: RawStreamEntry[] = []
+
+  // GECEK SINIRLAR
+  // -------------
+  // Bozuk/olusturulmus dosyalar milyonlarca sahte `stream` belirteci
+  // uretebilir. Bunlar hem bellegi hem de sureci tuketirdigi icin sert
+  // sinirlar konur; asil bir PDF'in onlarca-yuzlerce akisi vardir.
+  const MAX_PDF_OBJECTS = 200_000
+  const MAX_PDF_STREAMS = 20_000
+  /** Tek bir akisin cozulmus en fazla bayt sayisi (zip bomba korumasi). */
+  const MAX_PDF_STREAM_BYTES = 32 * 1024 * 1024
+
   {
-    const objRe = /(?:^|[\s>])(\d+)\s+(\d+)\s+obj\b/g
-    let om: RegExpExecArray | null
-    while ((om = objRe.exec(str)) !== null) {
-      const num = parseInt(om[1], 10)
-      if (!Number.isFinite(num)) continue
-      const endIdx = str.indexOf('endobj', om.index)
-      const bodyEnd = endIdx === -1 ? Math.min(str.length, om.index + 4000) : endIdx
-      objDict.set(num, str.slice(om.index + om[0].length, bodyEnd))
+    // `stream` kelimesi `endstream`in icinde de gecer, ama `\bstream\b`
+    // `endstream`e UYMAZ: `endstream`de `stream`in onunde `d` vardir, yani
+    // kelime siniri yoktur. Bu yuzden ayri bir lookbehind alternatifi
+    // gerekmez (onceki taslakta vardi ve hicbir sey katmiyordu).
+    const tokenRe = /(\d+)\s+(\d+)\s+obj\b|endobj\b|endstream\b|\bstream\b/g
+
+    let tm: RegExpExecArray | null
+    let currentObjNum: number | null = null
+    /** Aktif nesnenin govdesinin `str` icindeki baslangici. */
+    let currentObjBodyStart = -1
+    /** Aktif nesnenin sozlugunun basladigi yer (akis sahipligi icin). */
+    let currentObjStart = -1
+    /** `stream` kelimesinin basladigi yer. */
+    let pendingStreamKeyword = -1
+    let objects = 0
+
+    /*
+      DURUM MAKINESI - ZORUNLU
+      -------------------------
+      Sikistirilmis akis govdesi IKILIDIR ve icinde `stream`, `endobj`
+      ya da `12 0 obj` benzeri bayt dizileri OLABILIR. Ilk taslak
+      belirtecleri durumsuz sayiyordu; boylece bir sayfanin akisi yanlis
+      baslangic ofsetiyle KAYBOLUYORDU ve o sayfanin metni cikmiyordu
+      (12 sayfalik denemede 1-8 cikti, 9-12 kayboldu).
+
+      Dogru davranis: `stream` goruldugunde akisin ICINDE sayilir ve
+      `endstream` gelene kadar hicbir belirtec dikkate alinmaz. Boylece
+      ikili govde icindeki sahte belirtecler yanlis eslesme uretmez.
+
+      (Kalan tek kabul: govdenin icinde `endstream` bayt dizisi varsa
+      akis orada kesilir. Onceki surumun
+      `/stream[\r\n]+([\s\S]*?)[\r\n]+endstream/` deseni de ayni kabulu
+      tasiyordu; yani bu bir regresyon degil.)
+    */
+    let insideStream = false
+
+    while ((tm = tokenRe.exec(str)) !== null) {
+      const token = tm[0]
+
+      // Akis icindeyken yalnizca cikis belirteci anlamlidir.
+      if (insideStream) {
+        if (token !== 'endstream') continue
+        insideStream = false
+
+        // Akis govdesi `stream` anahtar kelimesinden sonra, satir sonu
+        // atlandiktan sonra baslar.
+        let bodyStart = pendingStreamKeyword + 'stream'.length
+        if (str.charCodeAt(bodyStart) === 13) bodyStart += 1 // \r
+        if (str.charCodeAt(bodyStart) === 10) bodyStart += 1 // \n
+
+        // Bu akisin sozlugu: aktif nesnenin basindan `stream` anahtarina kadar.
+        const dictSlice =
+          currentObjStart >= 0 && currentObjStart <= pendingStreamKeyword
+            ? str.slice(currentObjStart, pendingStreamKeyword)
+            : str.slice(Math.max(0, pendingStreamKeyword - 1500), pendingStreamKeyword)
+
+// Govde sonu: ONCE `/Length` degerine guvenilir, ancak olmayinca
+        // `endstream` oncesindeki satir sonuna guvenilir.
+        //
+        // NEDEN BU SIRA ONEMLI?
+        // -------------------
+        // Satir sonu temizligi, govdenin SON bayti 0x0A/0x0D ise o bayti
+        // da siler. Sikistirilmis veri IKILIDIR ve boyle bir baytla
+        // bitmesi tamamen normaldir; boyle bir akisin inflate'i basarisiz
+        // olur ve O SAYFA TAMAMEN KAYBOLUR. Testte 12 sayfanin 9'u bu
+        // yuzden cikmiyordu.
+        //
+        // `/Length` ise PDF sozlugunde yazan BOYUTTUR: inflate girdisinin
+        // gercekten kac bayt olmasi gerektigini tam olarak bildirir.
+        // `/Length 12 0 R` yazimi bir referanstir (dolayli boyut) ve
+        // guvenilmez; bu yuzden negatif bakis ile elenir.
+        const declared = /\/Length\s+(\d+)(?!\s+\d+\s+R)/.exec(dictSlice)
+        let bodyEnd = tm.index
+        if (declared && declared[1]) {
+          const n = parseInt(declared[1], 10)
+          if (Number.isFinite(n) && n >= 0 && bodyStart + n <= str.length) {
+            bodyEnd = bodyStart + n
+          } else {
+            // Bildirilen boyut tutarsiz: satir sonu tahminine duser.
+            if (bodyEnd > bodyStart && str.charCodeAt(bodyEnd - 1) === 10) bodyEnd -= 1
+            if (bodyEnd > bodyStart && str.charCodeAt(bodyEnd - 1) === 13) bodyEnd -= 1
+          }
+        } else {
+          if (bodyEnd > bodyStart && str.charCodeAt(bodyEnd - 1) === 10) bodyEnd -= 1
+          if (bodyEnd > bodyStart && str.charCodeAt(bodyEnd - 1) === 13) bodyEnd -= 1
+        }
+
+        if (bodyEnd > bodyStart) {
+          if (rawStreams.length < MAX_PDF_STREAMS) {
+            rawStreams.push({
+              objNum: currentObjNum,
+              dictSlice,
+              rawData: str.slice(bodyStart, bodyEnd),
+              streamStart: bodyStart,
+            })
+          }
+        }
+        pendingStreamKeyword = -1
+        continue
+      }
+
+      if (tm[1] !== undefined) {
+        if (objects >= MAX_PDF_OBJECTS) break
+        objects += 1
+        currentObjNum = parseInt(tm[1], 10)
+        currentObjStart = tm.index
+        currentObjBodyStart = tm.index + token.length
+        continue
+      }
+
+      if (token === 'endobj') {
+        // Govde, gercek `endobj` konumuna kadar alinir. Onceki surum
+        // `indexOf('endobj', ...)` ile ayni sonucu veriyordu ama her
+        // nesne icin dosyanin sonuna kadar tarama yaptigi icin O(n^2)
+        // idi; simdi `endobj` TETIKLENDIGI icin konum zaten elimizde ve
+        // toplam maliyet O(n).
+        if (currentObjNum !== null && currentObjBodyStart >= 0 && tm.index > currentObjBodyStart) {
+          objDict.set(currentObjNum, str.slice(currentObjBodyStart, tm.index))
+        }
+        currentObjNum = null
+        currentObjBodyStart = -1
+        continue
+      }
+
+      if (token === 'stream') {
+        pendingStreamKeyword = tm.index
+        insideStream = true
+        continue
+      }
     }
   }
 
@@ -1101,18 +1269,11 @@ export function extractTextFromPdf(buf: Buffer): string {
   const decompressedStreams: string[] = []
   /** nesne no -> cozulmus akis metni */
   const streamByObj = new Map<number, string>()
-  const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g
-  let match: RegExpExecArray | null
 
-  while ((match = streamRegex.exec(str)) !== null) {
-    const rawData = match[1]
-    const objIndex = str.lastIndexOf('obj', match.index)
-    const dictStart = Math.max(0, objIndex !== -1 ? objIndex : match.index - 1500)
-    const dictSlice = str.slice(dictStart, match.index)
-
-    // Bu akis hangi nesneye ait? (`12 0 obj << ... stream`)
-    const objNumMatch = /(\d+)\s+\d+\s+obj\s*$/.exec(str.slice(Math.max(0, dictStart), objIndex + 3).trimEnd() + ' ') || /(\d+)\s+\d+\s+obj\b/.exec(str.slice(Math.max(0, objIndex - 24), objIndex + 3))
-    const objNum = objNumMatch ? parseInt(objNumMatch[1], 10) : null
+  for (const entry of rawStreams) {
+    const rawData = entry.rawData
+    const objNum = entry.objNum
+    const dictSlice = entry.dictSlice
 
     // Resim (Image), Font programı (FontFile/Type1/CIDFont), XObject ve ikili akışları atla
     if (
@@ -1151,15 +1312,31 @@ export function extractTextFromPdf(buf: Buffer): string {
       // `12`yi bayt sayisi saniyor ve 12 baytlik bir "akis" inflate
       // ediliyordu -> sayfa metni tamamen kayboluyordu.
       const lenMatch = dictSlice.match(/\/Length\s+(\d+)(?!\s+\d+\s+R)/)
-      const streamStart = match.index + match[0].indexOf(rawData)
+      const streamStart = entry.streamStart
       const streamLen = lenMatch ? Math.min(parseInt(lenMatch[1], 10), rawData.length) : rawData.length
       const streamBuf = buf.subarray(streamStart, streamStart + streamLen)
 
+      /*
+        ZIP BOMBA KORUMASI
+        -------------------
+        Sikistirilmis girdi kucuk, cozulen hali gigabayt olabilir: az
+        sayida bayttan milyonlarca bayt ureten bir akis (zip bombasi)
+        hem bellegi tuketir hem de Ana sureci ANINDA dondurur. O
+        surecte donmus bir Electron hicbir sey cizemez ve kullanicinin
+        "Belge Hazirlaniyor..." ekrani takilir kalir.
+
+        Bu yuzden hem girdi hem cozulen cikti sinirlandirilir. Bir akis
+        siniri asarsa ATLANIR (metin eksik olur) ama uygulama ayakta
+        kalir; bu, yarim metin gostermekten cok daha iyidir.
+      */
+      if (streamLen > MAX_PDF_STREAM_BYTES) continue
+
       try {
-        decomp = zlib.inflateSync(streamBuf)
+        // \maxOutputLength\ verilmezse inflate sinirsiz buyuyebilir.
+        decomp = zlib.inflateSync(streamBuf, { maxOutputLength: MAX_PDF_STREAM_BYTES })
       } catch {
         try {
-          decomp = zlib.inflateRawSync(streamBuf)
+          decomp = zlib.inflateRawSync(streamBuf, { maxOutputLength: MAX_PDF_STREAM_BYTES })
         } catch {
           // Açılmayan FlateDecode akışları ASLA ham ikili metin olarak eklenmez!
           decomp = null

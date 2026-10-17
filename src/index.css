@@ -40,6 +40,20 @@
    */
   --jmc-link: #7fc4ff;
   --jmc-link-hover: #b3dcff;
+
+  /*
+   * Dolgu renklerinin UZERINDE okunabilir metin. Onceki surumde
+   * `text-white` sabit yaziliydi ve acik `primary` renkli temalarda
+   * kullanicinin mesaji okunmuyordu (High Contrast 1.43, Graphite 1.90).
+   * Bunlar da hesaplanir; degerler yalnizca ilk boyama icindir.
+   */
+  --jmc-on-primary: #0b0b0f;
+  --jmc-on-primary-hover: #0b0b0f;
+  --jmc-on-accent: #0b0b0f;
+  --jmc-on-accent-hover: #0b0b0f;
+  --jmc-on-warning: #0b0b0f;
+  --jmc-on-danger: #ffffff;
+  --jmc-on-success: #0b0b0f;
   --jmc-warning: #e0a03a;
   --jmc-danger: #ef5f6b;
   --jmc-success: #3fb98a;
@@ -337,11 +351,23 @@ textarea,
 .prose a {
   color: var(--jmc-link);
   text-decoration: underline;
-  text-underline-offset: 2px;
-  text-decoration-thickness: 1px;
+  text-underline-offset: 2.5px;
+  /*
+   * Kullanicinin "link belirginligini artir" istegi: ince alt cizgi
+   * govde metniyle karisip linki gizliyordu. 1.5px kalinlik + daha
+   * genis ofset, linki hem renkle hem bicimle ayirt edilebilir kiliyor.
+   */
+  text-decoration-thickness: 1.5px;
+  font-weight: 500;
+  border-radius: 2px;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
 }
 .prose a:hover {
   color: var(--jmc-link-hover);
+  /* Uzerine gelince hafif bir zemin: renk koyu temalarda solmaz. */
+  background-color: color-mix(in srgb, var(--jmc-link) 12%, transparent);
 }
 /*
  * Diger baglanti yuzeyleri (belge onizleme, hata mesaji, gezinme).
@@ -355,6 +381,11 @@ a,
 a:hover,
 .link-styled:hover {
   color: var(--jmc-link-hover);
+}
+/* Baglanti metni SECILIRKEN de okunabilir kalsin. */
+a::selection,
+.link-styled::selection {
+  background-color: color-mix(in srgb, var(--jmc-link) 35%, transparent);
 }
 .prose hr {
   border: 0;

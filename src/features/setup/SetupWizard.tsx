@@ -311,7 +311,7 @@ export function SetupWizard({
                   onClose()
                   onOpenAuth()
                 }}
-                className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-primary)]/40 bg-[var(--jmc-primary)]/15 px-2.5 py-1.5 text-[11.5px] font-semibold text-[var(--jmc-primary)] transition-colors hover:bg-[var(--jmc-primary)] hover:text-white"
+                className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-[var(--jmc-radius)] border border-[var(--jmc-primary)]/40 bg-[var(--jmc-primary)]/15 px-2.5 py-1.5 text-[11.5px] font-semibold text-[var(--jmc-primary)] transition-colors hover:bg-[var(--jmc-primary)] hover:text-[var(--jmc-on-primary)]"
               >
                 {account ? 'Hesap Ayarlarını Aç' : 'Google ile Bağlan'}
               </button>
@@ -361,7 +361,7 @@ export function SetupWizard({
                       type="button"
                       onClick={handleSaveQuickKey}
                       disabled={savingKey || !quickApiKey.trim()}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)] px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)] px-2.5 py-1 text-[11px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50"
                     >
                       {savingKey ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Kaydet'}
                     </button>
@@ -630,7 +630,7 @@ export function SetupWizard({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--jmc-shadow-md)] transition-[background-color,transform] duration-[var(--jmc-dur)] ease-[var(--jmc-ease)] hover:bg-[var(--jmc-primary-hover)] active:scale-[0.98]"
+            className="inline-flex items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-4 py-2 text-[12px] font-semibold text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] shadow-[var(--jmc-shadow-md)] transition-[background-color,transform] duration-[var(--jmc-dur)] ease-[var(--jmc-ease)] hover:bg-[var(--jmc-primary-hover)] active:scale-[0.98]"
           >
             <Check className="h-4 w-4" aria-hidden="true" />
             Kurulumu Tamamla & Başla

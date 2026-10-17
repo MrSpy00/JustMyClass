@@ -1449,7 +1449,7 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                 type="button"
                 onClick={submit}
                 disabled={saving || !draft.baseUrl.trim()}
-                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-medium text-white disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-on-primary)] disabled:opacity-50"
               >
                 {saving && <Loader2 className="h-3 w-3 animate-spin" />}
                 Ekle
@@ -1897,7 +1897,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
           <button
             type="button"
             onClick={handleSave}
-            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-medium text-white transition-colors hover:bg-[var(--jmc-primary-hover)]"
+            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius-sm)] bg-[var(--jmc-primary)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-colors hover:bg-[var(--jmc-primary-hover)]"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('settings.appearance.customSave')}
@@ -2160,7 +2160,7 @@ const AccountPanel: React.FC<{
             type="button"
             onClick={onLogin}
             disabled={!onLogin}
-            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-2 text-[12px] font-medium text-white transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-2 text-[12px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95 disabled:opacity-50"
           >
             <LogIn className="h-3.5 w-3.5" />
             {t('welcome.connectGoogle')}
@@ -2342,7 +2342,7 @@ const AccountPanel: React.FC<{
             <button
               type="button"
               onClick={handleSaveClient}
-              className="rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-1.5 text-[11.5px] font-medium text-white transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50"
+              className="rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-1.5 text-[11.5px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-colors hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50"
             >
               {saved ? t('auth.clientSaved') : t('auth.saveClient')}
             </button>
@@ -2535,7 +2535,7 @@ const SyncPanel: React.FC<{
           type="button"
           onClick={() => void onSync()}
           disabled={syncing}
-          className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-2 text-[12px] font-medium text-white transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-2 text-[12px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-all hover:bg-[var(--jmc-primary-hover)] active:scale-95 disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
           {syncing ? t('settings.sync.syncing') : t('settings.sync.syncNow')}
@@ -2655,7 +2655,7 @@ const SyncPanel: React.FC<{
             <button
               type="button"
               onClick={() => void handleSelectFolder()}
-              className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-2 text-[11.5px] font-medium text-white transition-colors hover:bg-[var(--jmc-primary-hover)] active:scale-95"
+              className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3 py-2 text-[11.5px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] transition-colors hover:bg-[var(--jmc-primary-hover)] active:scale-95"
               title={lang === 'tr' ? 'Farklı Bir İndirme Klasörü Seç' : 'Choose a Different Downloads Folder'}
             >
               <FolderOpen className="h-3.5 w-3.5" />
@@ -2883,7 +2883,7 @@ const ToolsPanel: React.FC<{
                       className={`rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                         permissions.tavilyKeySet && !tavilyDraft.trim()
                           ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success)] border border-[var(--jmc-success)]/30'
-                          : 'bg-[var(--jmc-primary)] text-white hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50'
+                          : 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50'
                       }`}
                     >
                       {permissions.tavilyKeySet && !tavilyDraft.trim() ? 'Kayıtlı ✓' : t('settings.tools.saveKey')}
@@ -2960,7 +2960,7 @@ const ToolsPanel: React.FC<{
                       className={`rounded-[var(--jmc-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                         permissions.braveKeySet && !braveDraft.trim()
                           ? 'bg-[var(--jmc-success)]/15 text-[var(--jmc-success)] border border-[var(--jmc-success)]/30'
-                          : 'bg-[var(--jmc-primary)] text-white hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50'
+                          : 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] disabled:opacity-50'
                       }`}
                     >
                       {permissions.braveKeySet && !braveDraft.trim() ? 'Kayıtlı ✓' : t('settings.tools.saveKey')}
@@ -3210,7 +3210,7 @@ const PrivacyPanel: React.FC<{
                 type="button"
                 onClick={() => void onWipe()}
                 disabled={wiping}
-                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-danger)] px-3 py-1.5 text-[11.5px] font-medium text-white disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-danger)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--jmc-on-danger)] disabled:opacity-50"
               >
                 {wiping && <Loader2 className="h-3 w-3 animate-spin" />}
                 Evet, sil

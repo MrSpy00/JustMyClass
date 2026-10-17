@@ -346,7 +346,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                     onClick={() => {
                       onOpenAuth()
                     }}
-                    className="inline-flex items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-5 py-2.5 text-[12.5px] font-semibold text-white shadow-md hover:bg-[var(--jmc-primary-hover)] active:scale-95 transition-all"
+                    className="inline-flex items-center gap-2 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-5 py-2.5 text-[12.5px] font-semibold text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] shadow-md hover:bg-[var(--jmc-primary-hover)] active:scale-95 transition-all"
                   >
                     <Globe className="h-4 w-4" />
                     <span>Google Hesabını Şimdi Bağla</span>
@@ -461,21 +461,21 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setSelectedProvider('gemini')}
-                      className={`px-2 py-0.5 rounded ${selectedProvider === 'gemini' ? 'bg-[var(--jmc-primary)] text-white' : 'text-[var(--jmc-text-muted)]'}`}
+                      className={`px-2 py-0.5 rounded ${selectedProvider === 'gemini' ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]' : 'text-[var(--jmc-text-muted)]'}`}
                     >
                       Gemini
                     </button>
                     <button
                       type="button"
                       onClick={() => setSelectedProvider('openai')}
-                      className={`px-2 py-0.5 rounded ${selectedProvider === 'openai' ? 'bg-[var(--jmc-primary)] text-white' : 'text-[var(--jmc-text-muted)]'}`}
+                      className={`px-2 py-0.5 rounded ${selectedProvider === 'openai' ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]' : 'text-[var(--jmc-text-muted)]'}`}
                     >
                       OpenAI
                     </button>
                     <button
                       type="button"
                       onClick={() => setSelectedProvider('deepseek')}
-                      className={`px-2 py-0.5 rounded ${selectedProvider === 'deepseek' ? 'bg-[var(--jmc-primary)] text-white' : 'text-[var(--jmc-text-muted)]'}`}
+                      className={`px-2 py-0.5 rounded ${selectedProvider === 'deepseek' ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]' : 'text-[var(--jmc-text-muted)]'}`}
                     >
                       DeepSeek
                     </button>
@@ -493,7 +493,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                     type="button"
                     onClick={handleSaveQuickKey}
                     disabled={savingKey || !quickApiKey.trim()}
-                    className="rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-1.5 text-[11.5px] font-medium text-white hover:bg-[var(--jmc-primary-hover)] transition-colors disabled:opacity-40"
+                    className="rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-3.5 py-1.5 text-[11.5px] font-medium text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] transition-colors disabled:opacity-40"
                   >
                     {savingKey ? 'Kaydediliyor...' : 'Kaydet'}
                   </button>
@@ -628,7 +628,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                         onClick={() => void handleAutoSyncChange(min)}
                         className={`rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
                           autoSyncMinutes === min
-                            ? 'bg-[var(--jmc-primary)] text-white'
+                            ? 'bg-[var(--jmc-primary)] text-[var(--jmc-on-primary)]'
                             : 'bg-[var(--jmc-bg)] border border-[var(--jmc-border)] text-[var(--jmc-text-muted)] hover:text-[var(--jmc-text)]'
                         }`}
                       >
@@ -717,7 +717,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
               <button
                 type="button"
                 onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))}
-                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-4 py-1.5 text-[11.5px] font-semibold text-white hover:bg-[var(--jmc-primary-hover)] transition-colors active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-primary)] px-4 py-1.5 text-[11.5px] font-semibold text-[var(--jmc-on-primary)] hover:text-[var(--jmc-on-primary-hover)] hover:bg-[var(--jmc-primary-hover)] transition-colors active:scale-95"
               >
                 <span>İleri</span>
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -726,7 +726,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
               <button
                 type="button"
                 onClick={handleFinish}
-                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-success)] px-4 py-1.5 text-[11.5px] font-semibold text-white hover:opacity-95 transition-all active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-[var(--jmc-radius)] bg-[var(--jmc-success)] px-4 py-1.5 text-[11.5px] font-semibold text-[var(--jmc-on-success)] hover:opacity-95 transition-all active:scale-95"
               >
                 <Check className="h-3.5 w-3.5" />
                 <span>Tamamla</span>

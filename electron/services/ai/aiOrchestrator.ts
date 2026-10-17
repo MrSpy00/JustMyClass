@@ -235,7 +235,83 @@ export const JMC_AI_TOOLS = [
  * aracı gercekten cagirmiyor, yalnizca dosya ADINI okuyup icerik
  * uyduruyordu.
  */
-interface StreamOutcome {
+/**
+   * Saglayicinin bos bir cevapla donmesini TEK noktada engeller.
+   *
+   * KULLANICI BILDIRIMI
+   * -------------------
+   * "Full yanit bekleniyor da gozukuyor, ilerisi gelmiyor; bir sey bozuldu."
+   * Ekranda uclu mesajin altinda da "Yanit bekleniyor..." yaziyordu.
+   *
+   * KOK NEDEN
+   * ---------
+   * Arayuz, icerigi bos olan bir asistan mesajini "uretim devam ediyor"
+   * saniyor: `{msg.content ? <MarkdownView/> : <yanip sonen nokta> Yanit bekleniyor...}`
+   * Bu ayrim YANLIS. `isGenerating` kapandiginda artik bekleyen bir sey
+   * yoktur; mesaj kalici olarak yanip sonen bir noktaya donusur ve
+   * kullanici gercek bir hata mesaji hic gormez.
+   *
+   * Burada her akis, metin ve arac cagrisi olmadan donmeden ONCE
+   * denetlenir. Boylece HATA olur, kullanici hata gorur, nokta sonmez.
+   *
+   * NEDEN DORT AYRI YERDE TEKRAR DEGIL?
+   * ----------------------------------
+   * dort akis yolu var (OpenAI uyumlu, Anthropic uyumlu, Gemini, Ollama).
+   * Ortak bir noktada toplanirsa bir yolun kacirilmasi tek bir hatayi
+   * donusur; dort kez yazilirsa biri unutulunca ayni hata yeniden dogar.
+   */
+  export function describeEmptyOutcome(outcome: StreamOutcome): string | null {
+    if (outcome.content.trim().length > 0) return null
+    if (outcome.toolCalls.length > 0) return null
+
+    const reason = (outcome.stopReason ?? '').trim()
+    const key = reason.toUpperCase()
+
+    // Bilinen, kullanıcıya açıklama gerektiren bitiş sebepleri.
+    const EXPLAINED: Record<string, string> = {
+      SAFETY: 'güvenlik/içerik filtresi',
+      RECITATION: 'telif/benzerlik filtresi (RECITATION)',
+      PROHIBITED_CONTENT: 'yasak içerik filtresi (PROHIBITED_CONTENT)',
+      BLOCKLIST: 'engelli içerik listesi (BLOCKLIST)',
+      SPII: 'kişisel olarak tanımlanabilir bilgi filtresi (SPII)',
+      IMAGE_SAFETY: 'görsel güvenlik filtresi (IMAGE_SAFETY)',
+      IMAGE_PROHIBITED_CONTENT: 'görsel içerik filtresi (IMAGE_PROHIBITED_CONTENT)',
+      MAX_TOKENS: 'çıktı sınırı (MAX_TOKENS)',
+      MAX_OUTPUT_TOKENS: 'çıktı sınırı (MAX_OUTPUT_TOKENS)',
+    }
+    const known = EXPLAINED[key]
+    if (known) {
+      return (
+        `Model yanıt üretmedi: ${known}. Sorunuzu kısaltmayı veya farklı bir ` +
+        'model seçmeyi deneyin.'
+      )
+    }
+
+    // Bitiş sebebi bildirilmediyse bile boşluk bir hatadır; nedeni
+    // olmayan bir boşluğu "bilinmeyen neden" diye gizlemek kullanıcıyı
+    // yalnızca ekranında bırakırdı.
+    const suffix = reason ? ` (bitiş sebebi: ${reason})` : ''
+    return (
+      'Model boş bir yanıt döndürdü' +
+      `${suffix}. Bu genellikle ekinin desteklenmemesi, modelin isteği ` +
+      'redd etmesi veya sağlayıcının akışı kesmesiyle olur. Soruyu biraz ' +
+      'değiştirip yeniden deneyin; eki olmadan da çalışıyorsa sorun ektedir.'
+    )
+  }
+
+  /**
+   * Akis sonucunu dogrular; bossa anlamli bir hata firlatir.
+   *
+   * @returns Ayni sonuc (ozdes), boylece cagiran taraf `return` yerine
+   *          `return assertNonEmptyOutcome(...)` yazabilir.
+   */
+  export function assertNonEmptyOutcome(outcome: StreamOutcome): StreamOutcome {
+    const problem = describeEmptyOutcome(outcome)
+    if (problem) throw new Error(problem)
+    return outcome
+  }
+
+  interface StreamOutcome {
   content: string
   reasoning: string
   /** Modelin istedigi arac cagrilari (protokolden çıkarılmış, normalize). */
@@ -2587,8 +2663,26 @@ export class AiOrchestrator {
       }
 
       if (!fallbackSuccess) {
-        const friendlyMessage = this.formatProviderErrorMessage(lastErr, activeProv.displayName)
-        throw new Error(friendlyMessage)
+        /*
+          ASIL NEDEN KORUNUR
+          -------------------
+          Onceki surum `lastErr = fbErr` yaptigi icin, yedek saglayici
+          FARKLI bir sebepten basarisiz oldugunda kullaniciya yedegin
+          hatasi gosteriliyordu. Ornek: birincil saglayici "bos yanit"
+          donduruyor, yedek "Cannot read properties of undefined" ile
+          patliyor -> ekranda kimseye bir sey ifade etmeyen ikinci hata
+          gorunuyor ve asil neden kayboluyordu.
+
+          Artik BIRINCIL hata esas alinir; yedegin hatasi yalnizca ek
+          baglam olarak eklenir. Boylece "bos yanit", "guvenlik filtresi"
+          gibi gercek nedenler kullaniciya ulasir.
+        */
+        const primaryMessage = this.formatProviderErrorMessage(primaryErr, activeProv.displayName)
+        if (lastErr === primaryErr || String(lastErr) === String(primaryErr)) {
+          throw new Error(primaryMessage)
+        }
+        const fallbackMessage = this.formatProviderErrorMessage(lastErr, activeProv.displayName)
+        throw new Error(`${primaryMessage} (Yedek sağlayıcı da başarısız oldu: ${fallbackMessage})`)
       }
     }
 
@@ -3141,7 +3235,7 @@ export class AiOrchestrator {
       )
     }
 
-    return { content, reasoning, toolCalls, stopReason }
+    return assertNonEmptyOutcome({ content, reasoning, toolCalls, stopReason })
   }
 
   private async callAnthropicStream(
@@ -3338,7 +3432,7 @@ export class AiOrchestrator {
       )
     }
 
-    return { content, reasoning, toolCalls, stopReason }
+    return assertNonEmptyOutcome({ content, reasoning, toolCalls, stopReason })
   }
 
   private async callGeminiStream(
@@ -3619,7 +3713,7 @@ export class AiOrchestrator {
       )
     }
 
-    return { content, reasoning, toolCalls, stopReason }
+    return assertNonEmptyOutcome({ content, reasoning, toolCalls, stopReason })
   }
 
   private async callOllamaStream(
@@ -3732,7 +3826,7 @@ export class AiOrchestrator {
       }
     }
 
-    return { content, reasoning, toolCalls, stopReason }
+    return assertNonEmptyOutcome({ content, reasoning, toolCalls, stopReason })
   }
 }
 
@@ -3747,7 +3841,38 @@ export function isLoopbackUrl(baseUrl: string): boolean {
 }
 
 /** Response govdesini parça parça (Uint8Array) veren async iterator. */
-async function* iterateStream(res: Response): AsyncGenerator<Uint8Array> {
+/**
+ * Bir akista iki parca arasinda izin verilen en fazla bekleme.
+ *
+ * 120 saniye: normal bir akista bu kadar aralik olmaz (partiler saniyeler
+ * icinde gelir), ama agir ilk token uretimi olan yerel modellerde olur.
+ * Uzerine cikmak "sunucu dondu" demektir; kullanici bu durumda sonsuza
+ * kadar beklemektense net bir hata gorur.
+ */
+const STREAM_STALL_TIMEOUT_MS = 120_000
+
+/**
+ * Ham HTTP govdesini parcalar halinde verir.
+ *
+ * NEDEN BURADA ZAMAN ASIMI VAR?
+ * ---------------------------
+ * `reader.read()` veri gelmedikce geri donmez. Bir saglayici baglantiyi
+ * acik tutup sessizce bekletirse (veya yarim kalan bir akista takilirsa)
+ * `for await` SONSUZA KADAR beklemez; kullanici ekranda "Yanit bekleniyor..."
+ * gorur ve hicbir hata mesaji almaz.
+ *
+ * `httpClient` govde icin bir zaman asimi kuruyor ama o MUTLAK bir
+ * zaman asimidir: basliklar geldikten sonra sayilan sure. Uzun bir
+ * akista bu yanlis olcecek olur (sessiz ama devam eden bir akis
+ * gereksiz yere kesilir), buna karsilik HIC VERI GELMEYEN bir akis
+ * hic yakalanmaz. Dogru olan OLCUM BIRAKILMA SURESIDIR.
+ *
+ * `stallMs` boyunca tek bir bayt gelmezse akis iptal edilir. Bu,
+ * "asla sonsuza kadar bekleme" garantisini verir.
+ *
+ * @param stallMs Ardisik iki parca arasinda izin verilen en fazla sure.
+ */
+async function* iterateStream(res: Response, stallMs = STREAM_STALL_TIMEOUT_MS): AsyncGenerator<Uint8Array> {
   const body = res.body
   if (!body) {
     const buf = new Uint8Array(await res.arrayBuffer())
@@ -3757,11 +3882,43 @@ async function* iterateStream(res: Response): AsyncGenerator<Uint8Array> {
   const reader = body.getReader()
   try {
     for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      if (value) yield value
+      let timer: NodeJS.Timeout | undefined
+      const stalled = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new Error(
+              `Sunucu ${Math.round(stallMs / 1000)} saniye boyunca veri göndermedi; ` +
+                'bağlantı kesildi. Lütfen tekrar deneyin.',
+            ),
+          )
+        }, stallMs)
+        // Zamanlayici akisi bloklamasin.
+        timer.unref?.()
+      })
+
+      let result: ReadableStreamReadResult<Uint8Array>
+      try {
+        result = await Promise.race([reader.read(), stalled])
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+
+      if (result.done) break
+      if (result.value) yield result.value
     }
+  } catch (err) {
+    // Akis birakildiginda soketi bos birakma.
+    try {
+      await reader.cancel()
+    } catch {
+      /* iptal basarisiz olsa da asil hata yukarida zaten var */
+    }
+    throw err
   } finally {
-    reader.releaseLock()
+    try {
+      reader.releaseLock()
+    } catch {
+      /* kilit zaten serbest birakilmis olabilir */
+    }
   }
 }

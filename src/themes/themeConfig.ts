@@ -89,7 +89,82 @@ export function isLightTheme(colors: ThemeColors): boolean {
   return isLightBackground(colors.bg)
 }
 
-/** İki rengi karıştırır; `amount` = ikinci rengin ağırlığı (0–1). */
+/**
+ * Bir dolgunun ÜZERİNDE okunabilir metin rengi seçer.
+ *
+ * KULLANICI BILDIRIMI
+ * -------------------
+ * "Bazi temalarda yazilar okunmaz oluyor; asistan arkaplan metin
+ * kutucuğundan."
+ *
+ * KOK NEDEN
+ * ---------
+ * Kullanici balonunda metin rengi `text-white` olarak SERT yaziliydi:
+ * `bg-[var(--jmc-primary)] text-white`. Oysa `primary` bir dugme rengidir
+ * ve 17 temanin 16'sinda acik bir tondadir. Beyaz metnin bu renkler
+ * uzerindeki kontrasti:
+ *
+ *     High Contrast (#ffd400)  1.43   Graphite (#b8bcc6)   1.90
+ *     Matrix (#35d07f)         2.00   Cyberpunk (#31c7e8)  2.01
+ *     Amber CRT (#e0a341)      2.21   Hacker Green        2.65
+ *     Abyss / Forest (#3aa87c) 2.97   Dark (#4c8dff)      3.20
+ *
+ * Yani kullanicinin kendi mesaji neredeyse HICbir temada okunmuyordu.
+ *
+ * COZUM
+ * -----
+ * Beyaz ve koyu siyah arasinda kontrasti DUSUK olan secilir. Ayni
+ * orneklerde koyu metin 5.0-14.7 araligina cikiyor: `#4c8dff` uzerinde
+ * beyaz 3.20 iken koyu 6.56'dir.
+ *
+ * Esik degerle degil KARSILASTIRMA karar verilir.
+ *
+ * NEDEN SAF SIYAH (`#000000`) VE SAF BEYAZ?
+ * ------------------------------------------
+ * "Koyu metin" icin `#0b0b0f` (yumuşak siyah) kullanilirsa ARА tonlarda
+ * 4.5:1'in altinda kalir: `#a06680` uzerinde 4.46, Sunset Vibes'in hover
+ * tonunda 4.48. Saf siyah ise bu ikisini de gecer.
+ *
+ * Matematiksel garanti: beyaz icin `(1.05)/(L+0.05) >= 4.5` -> `L <= 0.1833`;
+ * siyah icin `(L+0.05)/0.05 >= 4.5` -> `L >= 0.175`. Bu iki aralik
+ * ORTUSUR (0.175 - 0.1833). Yani HICBIR renkte secilen uclarin ikisinden
+ * biri 4.5:1'i gecer. Yumuşak siyahda bu ortusma kayboluyordu.
+ */
+export function contrastTextOn(bg: string): string {
+  return contrastRatio('#ffffff', bg) >= contrastRatio('#000000', bg) ? '#ffffff' : '#000000'
+}
+
+/** Dolgunun uzerinde okunabilir metin + o metnin `hover` tonu icin taban. */
+export interface OnColorText {
+  onPrimary: string
+  onPrimaryHover: string
+  onAccent: string
+  onAccentHover: string
+  /** Durum renkleri (uyari / tehlike / basari) uzerindeki metin. */
+  onWarning: string
+  onDanger: string
+  onSuccess: string
+}
+
+/**
+ * Butun dolgu renkleri icin uzerlerine yazilacak metin renklerini uretir.
+ *
+ * Her alan bagimsiz hesaplanir; `primary` koyu iken `accent` acik olabilir,
+ * bu yuzden tek bir karar ikisine birden uygulanamaz.
+ */
+export function deriveOnColorText(c: ThemeColors): OnColorText {
+  return {
+    onPrimary: contrastTextOn(c.primary),
+    onPrimaryHover: contrastTextOn(c.primaryHover),
+    onAccent: contrastTextOn(c.accent),
+    onAccentHover: contrastTextOn(c.accentHover),
+    onWarning: contrastTextOn(c.warning),
+    onDanger: contrastTextOn(c.danger),
+    onSuccess: contrastTextOn(c.success),
+  }
+}
+
+/** Iki rengi karıştırır; `amount` = ikinci rengin ağırlığı (0–1). */
 export function mixHex(a: string, b: string, amount: number): string {
   const ca = parseHex(a)
   const cb = parseHex(b)
@@ -164,13 +239,19 @@ export function ensureContrast(color: string, bg: string, target: number): strin
  *
  * WCAG 2.2 AA, normal boy metin icin 4.5:1 ister. Baglantilar govde
  * metniyle ayni boydadir; bu yuzden "buyuk metin" istisnasi (3:1)
- * kullanilmaz. Kullanicinin bildirdigi sorun tam olarak bu: bazi
- * temalarda link, arka planla ayni renge dustugu icin okunmuyordu.
+ * kullanilmaz.
+ *
+ * KULLANICI "BIRAZ DAHA BELIRGIN" ISTEDI
+ * -------------------------------------
+ * Hedef 4.5 -> 5.5'e cikarildi. Govde metni temada 13-16 kontrast
+ * verirken linkin 5.5'te kalmasi, arada yeterli bir fark birakiyor:
+ * link "bir baska sey" gibi duruyor. 5.5 zorlandigi icin yine de her
+ * temada basarilir bir renk uretilir.
  */
-const LINK_MIN_CONTRAST = 4.5
+const LINK_MIN_CONTRAST = 5.5
 
-/** Uzerine gelindiginde hedeflenen biraz daha guclu kontrast. */
-const LINK_HOVER_CONTRAST = 6
+/** Uzerine gelindiginde hedeflenen kontrast: govde metnini asar. */
+const LINK_HOVER_CONTRAST = 7.5
 
 /** Baglanti renginin okunmasi gereken tum yuzeyler. */
 function linkBackgrounds(c: ThemeColors): string[] {
@@ -249,38 +330,65 @@ export interface LinkColors {
  */
 export function deriveLinkColors(c: ThemeColors): LinkColors {
   const bgs = linkBackgrounds(c)
-
-  // Tema gomulu bir link rengi tanimladiysa o esas alinir.
   const explicit = (c as { link?: string }).link
-  if (explicit) {
-    const link = ensureContrastOnAll(explicit, bgs, LINK_MIN_CONTRAST)
-    return {
-      link,
-      linkHover: ensureContrastOnAll(link, bgs, LINK_HOVER_CONTRAST),
-    }
+
+  const fallbackBase = c.accent || c.primary || c.text || '#ffffff'
+  const raw = explicit ?? (firstReadableCandidate(c, bgs) ?? fallbackBase)
+
+  let link = ensureContrastOnAll(raw, bgs, LINK_MIN_CONTRAST)
+
+  /*
+    GOVDE METNINDEN FARKLILIK
+    --------------------------
+    Aday listesi `text`i de iceriyor ve bazi temalarda `accent`/`primary`
+    okunabilir olmadigi halde `text` secilir. O zaman link tam olarak govde
+    metniyle ayni renge gelir ve alt cizgi disinda link olmaktan cikar.
+    (Bordeaux'ta olculdu: link `#f6ebee`, metin `#f6ebee`.)
+
+    Cozum: renk metinle ayni kalirsa kontrast hedefi BOYULMADAN rengi
+    kademeli olarak zeminin karsi ucuna kaydirilir. Boylece hem okunabilir
+    kalir hem de govde metninden gorunur sekilde ayrilir.
+  */
+  if (link.toLowerCase() === c.text.toLowerCase()) {
+    link = shiftAwayFrom(link, c.text, bgs, LINK_MIN_CONTRAST)
   }
 
-  // Once zaten okunabilir bir aday varsa KENDISI kullanilir.
-  const candidates = [c.accent, c.primary, c.accentHover, c.primaryHover, c.text]
-  for (const candidate of candidates) {
-    if (!candidate) continue
-    if (worstContrast(candidate, bgs) >= LINK_MIN_CONTRAST) {
-      return {
-        link: candidate,
-        linkHover: ensureContrastOnAll(candidate, bgs, LINK_HOVER_CONTRAST),
-      }
-    }
-  }
-
-  // Hicbiri okunabilir degil -> kontrast zorlanir. accent tercih edilir
-  // cunku kontrast zorlamasi rengi beyaza/karaya cekse de link gibi
-  // gorunmeye devam eder.
-  const base = c.accent || c.primary || c.text || '#ffffff'
-  const link = ensureContrastOnAll(base, bgs, LINK_MIN_CONTRAST)
   return {
     link,
-    linkHover: ensureContrastOnAll(base, bgs, LINK_HOVER_CONTRAST),
+    linkHover: ensureContrastOnAll(link, bgs, LINK_HOVER_CONTRAST),
   }
+}
+
+/** Adaylar arasindan zaten butun yuzeylerde okunabilir ilki secer. */
+function firstReadableCandidate(c: ThemeColors, bgs: string[]): string | undefined {
+  for (const candidate of [c.accent, c.primary, c.accentHover, c.primaryHover, c.text]) {
+    if (!candidate) continue
+    if (worstContrast(candidate, bgs) >= LINK_MIN_CONTRAST) return candidate
+  }
+  return undefined
+}
+
+/**
+ * Rengi, kontrast hedefini bozmadan `avoid` renginden uzaklastirir.
+ *
+ * Kontrastin EN IYI iki ucu arasinda kademeli gider; boylece renk ne
+ * yeterli okunurlugu kaybeder ne de hedeflenen koyu/acik tona savurulur.
+ */
+function shiftAwayFrom(color: string, avoid: string, bgs: string[], target: number): string {
+  const worst = bgs.reduce(
+    (w, bg) => (contrastRatio(color, bg) < contrastRatio(color, w) ? bg : w),
+    bgs[0],
+  )
+  const towards =
+    contrastRatio('#ffffff', worst) >= contrastRatio('#000000', worst) ? '#ffffff' : '#000000'
+
+  let out = color
+  for (let i = 0; i < 40; i += 1) {
+    out = mixHex(out, towards, 0.03)
+    if (out.toLowerCase() === avoid.toLowerCase()) continue
+    if (worstContrast(out, bgs) >= target) return out
+  }
+  return out
 }
 
 /* ------------------------------------------------------------------ */
