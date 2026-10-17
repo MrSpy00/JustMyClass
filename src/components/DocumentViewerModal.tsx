@@ -2083,23 +2083,41 @@ export function DocumentViewerModal({
                    *     IntersectionObserver ile takip edilir, alt çubuktaki
                    *     numara vurgusu ve üst bilgi çubuğu canlı güncellenir.
                    *   'single': eski davranış — yalnızca aktif slayt.
-                   */}
-                   *
-                   * KART DUZENI: BLOG KAPSAYICI (BLOK), FLEX DEGIL
-                   * --------------------------------------------------
+*
+                   * KART KUCULMESI: `shrink-0` ZORUNLU
+                   * ----------------------------------
                    * Kullanici: "cok uzun olan sayfalar alta dogru gidiyor
-                   * ama arkas[i] bos kaliyor".
-                   *
-                   * Kart daha once `flex flex-col justify-between` idi. Ust
-                   * kapayici da `flex flex-col items-center` oldugu icin kart
-                   * iceriginden kisaldiiginda arka plani yalnizca kendi
-                   * kutusu kadar kapliyor ve madde listesi kartin DISINDA,
+                   * ama arkas[i] bos kaliyor" - madde listesi kartin disinda,
                    * sayfa zemini uzerinde gorunuyordu; alt bilgi cubugu bile
                    * kartin disinda kaliyordu.
                    *
-                   * `h-fit` ile kart acikca "icerik kadar yuksek" olur. Blok
-                   * kapsayicida arka plan tanim geregi tum icerigi kapsar,
-                   * dolayisiyla bu turden bir kuculme olusamaz.
+                   * GERCEK KOK NEDEN (ilk tespit yanlisti, duzeltildi):
+                   * Ust kapayici su yapida:
+                   *
+                   *   flex-1 min-h-0 overflow-y-auto ... flex flex-col
+                   *
+                   * `flex-1` + `min-h-0` kapayiciya BELIRLI bir yukseklik
+                   * verir. Bir flex SUTUNunda icerik bu yuksekligi asarsa,
+                   * varsayilan `flex-shrink: 1` olan ogeler KUCULTULUR.
+                   * Oge kuculur; `overflow` varsayilan `visible` oldugu icin
+                   * icerigi tasar - arka plan ise yalnizca kucultulmus kutuyu
+                   * kaplar. Tam olarak gorulen budur.
+                   *
+                   * Surekli gorunumdeki kartta `shrink-0` VARDI ve hicbir
+                   * sorun yoktu. TEK SLAYT gorunumundeki karda `shrink-0`
+                   * YOKTU; `min-h-[380px]` de buna ek olarak taban yuksekligi
+                   * veriyordu. Kullanici ekran goruntusunde gordugu da tam
+                   * olarak bu dal (tek slayt + klavye ipucu).
+                   *
+                   * Duzeltme: `shrink-0` eklendi. `h-fit` TEK BASINA
+                   * YETMEZDI - flex-shrink taban yuksekligi `fit-content`
+                   * olsa bile kucultebilir. Bu yuzden `h-fit` kaldirilip
+                   * yerine `shrink-0` kullanildi.
+                   *
+                   * `justify-between` geri getirildi: `min-h-[380px]`
+                   * sayesinde kisa slaytlarda alt bilgi asagi yaslanir.
+                   * Uzun icerikte bosluk olmadigi icin zaten etkisizdir.
+                   */}
                   {preview.kind === 'pptx' && slides && (
                     <div className="flex h-full min-h-0 flex-col overflow-hidden">
                       {/* Slayt İçerik Alanı */}
@@ -2160,7 +2178,7 @@ export function DocumentViewerModal({
                             </div>
                           ))
                         ) : slides[activeSlideIndex] ? (
-                          <div className="w-full max-w-4xl my-auto h-fit min-h-[380px] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl transition-all">
+                          <div className="w-full max-w-4xl shrink-0 my-auto min-h-[380px] rounded-2xl border border-[var(--jmc-border)] bg-[var(--jmc-bg-surface)] p-6 md:p-10 shadow-2xl flex flex-col justify-between transition-all">
                             <div>
                               <div className="flex items-center justify-between text-[11px] text-[var(--jmc-text-dim)] border-b border-[var(--jmc-border-subtle)] pb-3">
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-400 px-2.5 py-0.5 font-semibold text-[10.5px]">
