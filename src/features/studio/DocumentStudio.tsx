@@ -325,7 +325,7 @@ export const DocumentStudio: React.FC<DocumentStudioProps> = ({
               <button
                 type="button"
                 onClick={onBackToCourse}
-                className="mb-2 inline-flex items-center gap-1.5 text-[11.5px] font-medium text-[var(--jmc-primary)] hover:underline transition-all group"
+                className="mb-2 inline-flex items-center gap-1.5 text-[11.5px] font-medium text-[var(--jmc-link)] hover:underline transition-all group"
               >
                 <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
                 <span>{course?.name ? `${course.name} Genel Bakışına Dön` : 'Ders Genel Bakışı'}</span>

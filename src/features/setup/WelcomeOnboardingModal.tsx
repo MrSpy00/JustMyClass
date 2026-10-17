@@ -388,7 +388,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                   <button
                     type="button"
                     onClick={() => openUrl('https://aistudio.google.com/app/apikey')}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--jmc-primary)] hover:underline"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--jmc-link)] hover:underline"
                   >
                     <span>aistudio.google.com'dan Anahtar Al</span>
                     <ExternalLink className="h-3 w-3" />

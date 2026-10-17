@@ -9,6 +9,7 @@ import {
   contrastRatio,
   createCustomTheme,
   deriveCodeTokens,
+  deriveLinkColors,
   isLightTheme,
   parseCustomThemes,
   serializeCustomThemes,
@@ -37,6 +38,15 @@ export interface ThemeAudit {
   muted: ContrastReport
   dim: ContrastReport
   primaryOnBg: ContrastReport
+  /**
+   * Baglantinin zemine gore kontrasti.
+   *
+   * `deriveLinkColors` kontrasti zorladigi icin bu deger pratikte her
+   * zaman AA'nin ustundedir. Yine de olculur: kullanici bir tema
+   * GOMULU `link` rengi tanimladiysa ve bu renk hedefin altinda kaldiysa
+   * panelde gorunur.
+   */
+  linkOnBg: ContrastReport
 }
 
 function report(ratio: number): ContrastReport {
@@ -49,6 +59,10 @@ function auditTheme(c: ThemeColors): ThemeAudit {
     muted: report(contrastRatio(c.textMuted, c.bg)),
     dim: report(contrastRatio(c.textDim, c.bg)),
     primaryOnBg: report(contrastRatio(c.primary, c.bg)),
+    // Baglanti rengi kontrasti ZORLAYARAK uretilir; bu yuzden asagidaki
+    // degerle bakilir. Uretilen rengin kendisi olculur, ham temadaki
+    // `accent` degil.
+    linkOnBg: report(contrastRatio(deriveLinkColors(c).link, c.bg)),
   }
 }
 
@@ -195,6 +209,13 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     set('--jmc-primary-hover', colors.primaryHover)
     set('--jmc-accent', colors.accent)
     set('--jmc-accent-hover', colors.accentHover)
+
+    // Baglanti renkleri: tema tanimlamadiysa kontrast zorlanarak hesaplanir.
+    // Bu iki degisken olmadan bazi temalarda link arka planla ayni renge
+    // dustugu icin OKUNMUZ kalirdi.
+    const linkColors = deriveLinkColors(colors)
+    set('--jmc-link', linkColors.link)
+    set('--jmc-link-hover', linkColors.linkHover)
     set('--jmc-warning', colors.warning)
     set('--jmc-danger', colors.danger)
     set('--jmc-success', colors.success)

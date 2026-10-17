@@ -431,6 +431,20 @@ export interface ThemeColors {
   badgeBg: string
   /** Yükseltilmiş yüzeylerin düşüş gölgesi. Çizgi yerine derinlik için kullanılır. */
   elevation: string
+  /**
+   * Baglanti rengi.
+   *
+   * BILINCLI OLARAK ISTEGE BAGLI: hicbir temada tanimlanmadiginda
+   * `deriveLinkColors` kontrast zorlayarak hesaplar. Boylece gomulu
+   * temalarin hicbiri elle guncellenmeden okunabilir baglanti rengi
+   * kazanir ve ozel tema olusturucu da ayni kurala uyar.
+   *
+   * Alan yine de tanimlanabilir: bir tema tasarimcisi link rengini
+   * ozellestirmek isterse degerine sayilir (yine de kontrast denetlenir).
+   */
+  link?: string
+  /** Baglanti uzerine gelindigindeki renk. */
+  linkHover?: string
 }
 
 /**

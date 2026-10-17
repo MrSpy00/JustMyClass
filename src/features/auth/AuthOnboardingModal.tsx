@@ -469,7 +469,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   <button
                     type="button"
                     onClick={handlePickAndImportFile}
-                    className="shrink-0 text-[10.5px] font-medium text-[var(--jmc-primary)] hover:underline ml-1"
+                    className="shrink-0 text-[10.5px] font-medium text-[var(--jmc-link)] hover:underline ml-1"
                   >
                     JSON Seç
                   </button>
@@ -648,7 +648,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowGuide(v => !v)}
-                    className="flex items-center gap-1.5 text-[11px] text-[var(--jmc-primary)] hover:underline font-medium"
+                    className="flex items-center gap-1.5 text-[11px] text-[var(--jmc-link)] hover:underline font-medium"
                   >
                     <HelpCircle className="h-3.5 w-3.5" />
                     <span>Kurulum Rehberi</span>
@@ -672,7 +672,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                         <button
                           type="button"
                           onClick={() => openUrl(CLOUD_URLS.console)}
-                          className="ml-1.5 inline-flex items-center gap-0.5 text-[var(--jmc-primary)] hover:underline"
+                          className="ml-1.5 inline-flex items-center gap-0.5 text-[var(--jmc-link)] hover:underline"
                         >
                           Cloud Console <ExternalLink className="h-2.5 w-2.5" />
                         </button>
@@ -689,7 +689,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                           <button
                             type="button"
                             onClick={() => openUrl(CLOUD_URLS.classroomApi)}
-                            className="inline-flex items-center gap-0.5 text-[var(--jmc-primary)] hover:underline"
+                            className="inline-flex items-center gap-0.5 text-[var(--jmc-link)] hover:underline"
                           >
                             Classroom API <ExternalLink className="h-2.5 w-2.5" />
                           </button>
@@ -697,7 +697,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                           <button
                             type="button"
                             onClick={() => openUrl(CLOUD_URLS.driveApi)}
-                            className="inline-flex items-center gap-0.5 text-[var(--jmc-primary)] hover:underline"
+                            className="inline-flex items-center gap-0.5 text-[var(--jmc-link)] hover:underline"
                           >
                             Drive API <ExternalLink className="h-2.5 w-2.5" />
                           </button>
@@ -714,7 +714,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                         <button
                           type="button"
                           onClick={() => openUrl(CLOUD_URLS.consent)}
-                          className="ml-1.5 inline-flex items-center gap-0.5 text-[var(--jmc-primary)] hover:underline"
+                          className="ml-1.5 inline-flex items-center gap-0.5 text-[var(--jmc-link)] hover:underline"
                         >
                           İzin Ekranı <ExternalLink className="h-2.5 w-2.5" />
                         </button>
@@ -730,7 +730,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                         <button
                           type="button"
                           onClick={() => openUrl(CLOUD_URLS.credentials)}
-                          className="ml-1.5 inline-flex items-center gap-0.5 text-[var(--jmc-primary)] hover:underline"
+                          className="ml-1.5 inline-flex items-center gap-0.5 text-[var(--jmc-link)] hover:underline"
                         >
                           Kimlik Bilgileri <ExternalLink className="h-2.5 w-2.5" />
                         </button>

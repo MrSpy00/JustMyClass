@@ -19,6 +19,7 @@
  *     adresin disinda birakilir.
  */
 import React from 'react'
+import { isRealTld } from '../lib/tldList'
 
 /**
  * Dosya UZANTILARI — bunlar alan adi SANILAMAZ.
@@ -26,36 +27,52 @@ import React from 'react'
  * `index.html`, `rapor.pdf`, `main.ts` gibi kalsitlar alan adi regex'ine
  * takilirdi ve kullaniciya yanlis baglanti olarak gosterilirdi.
  */
-const FILE_EXTENSIONS = new Set([
-  'txt', 'js', 'jsx', 'ts', 'tsx', 'json', 'html', 'htm', 'css', 'scss', 'less',
-  'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'avif', 'heic',
-  'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 'rtf', 'odt', 'ods',
-  'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'exe', 'dll', 'msi', 'apk', 'dmg',
-  'iso', 'mp3', 'mp4', 'm4a', 'm4v', 'wav', 'flac', 'ogg', 'mov', 'avi', 'mkv',
-  'webm', 'woff', 'woff2', 'ttf', 'otf', 'eot',
-  'py', 'rb', 'php', 'java', 'kt', 'swift', 'go', 'rs', 'c', 'h', 'cpp', 'hpp',
-  'cs', 'sh', 'bat', 'ps1', 'sql', 'log', 'yml', 'yaml', 'toml', 'ini', 'conf',
-  'env', 'gitignore', 'lock', 'map', 'min', 'd.ts', 'bak', 'tmp', 'srt', 'vtt',
-])
+/**
+ * YALNIZCA hem dosya uzantisi HEM de gercek bir TLD olan etiketler.
+ *
+ * NEDEN BU KADAR KUCUK?
+ * -------------------
+ * Onceki surumde 60+ dosya uzantisi reddediliyordu. Ancak sekiz tanesi
+ * (`md`, `mov`, `py`, `java`, `rs`, `sh`, `zip`, `map`) IANA tarafindan
+ * delege edilmis GERCEK ust duzeylerdir; yeniden tanimlanmis gTLD'lerdir.
+ * Yani o liste hem gercek alan adlarini hem de dosya adlarini ayni anda
+ * reddediyordu.
+ *
+ * Artik TLD dogrulamasi IANA listesine bakar ve bu ayrim GEREKMEZ;
+ * geri kalan 50+ uzantinin listede olmadigi zaten belli olur. Burada
+ * yalnizca gercekten IKISI DE olan etiketler kalir: sohbet metninde
+ * `script.py`, `notlar.md` yazdiginda dosya soylemek, alan adi soylemekten
+ * cok daha olasidir. (Bu deger `scripts/tlds.txt` ile karsilastirilarak
+ * bulunur; liste yenilenirse bu kume de gozden gecirilmelidir.)
+ */
+const AMBIGUOUS_EXTENSIONS = new Set(['md', 'mov', 'py', 'java', 'rs', 'sh', 'zip', 'map'])
 
 /**
  * Gercek bir alan adi olup olmadigini denetler.
  *
- * Iki yanlis pozitif sinifi vardir:
- *   1. Surum numaralari: "1.5", "v2.0", "2024.1"  -> son segment rakam icerir
- *   2. Dosya adlari: "index.html", "main.ts"       -> uzantı listesinde
- * Ayrica "ornek.com.tr" gibi cok etiketli adlar ve iki harfli ulke uzantilari
- * (.tr, .de, .uk) desteklenir.
+ * Uc yanlis pozitif sinifi vardir:
+ *   1. UYDURMA UZANTILAR: "linkgib.linkler", "baglanti.adres"
+ *      -> son etiket IANA listesinde YOK.
+ *   2. Surum numaralari: "1.5", "v2.0", "2024.1" -> son etiket rakam icerir.
+ *   3. Belirsiz dosya adlari: "index.html", "main.ts" -> TLD listesinde
+ *      olmayanlar zaten 1. maddeyle elenir; gercek TLD olan bir kacinin
+ *      dosya adi olarak gorunmesi mumkinse (`script.py`) AMBIGUOUS_EXTENSIONS
+ *      eler.
+ *
+ * Ayrica "ornek.com.tr" gibi cok etiketli adlar ve iki harfli ulke
+ * uzantilari (.tr, .de, .uk) desteklenir.
  */
 function isPlausibleBareDomain(host: string): boolean {
   if (!host || host.length < 4 || host.length > 253) return false
   if (/^\d/.test(host)) return false
   const labels = host.split('.')
   if (labels.length < 2) return false
-  // TLD saf harf olmali (`.pdf`, `.123` gecerli sayilmaz)
   const tld = labels[labels.length - 1]
+  // TLD saf harf olmali (`.pdf`, `.123` gecerli sayilmaz)
   if (!/^[a-z]{2,24}$/i.test(tld)) return false
-  if (FILE_EXTENSIONS.has(tld.toLowerCase())) return false
+  // IANA dogrulamasi: uydurma uzantilar burada elenir.
+  if (!isRealTld(tld)) return false
+  if (AMBIGUOUS_EXTENSIONS.has(tld.toLowerCase())) return false
   // Her etiket kurallara uymali
   for (const label of labels) {
     if (!label || label.length > 63) return false
@@ -78,8 +95,25 @@ function normalizeCandidate(raw: string): string | null {
   // yakalaniyordu; sonuc `odev@` atilip `example.com` baglanti olarak
   // cikiyordu. Kullanici mail gondermek istiyordu, tarayici web sayfasi
   // acmaya calisiyordu.
-  if (/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}$/.test(raw)) {
-    return `mailto:${raw}`
+  //
+  // IKINCI HATA: e-posta deseni TLD dogrulamiyordu; `ornek@baglanti.adres`
+  // gibi uydurma alan adlari da gecerli sayiliyordu. Artik ayni IANA
+  // denetimi uygulanir.
+  const emailMatch = /^([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+)$/.exec(raw)
+  if (emailMatch) {
+    const host = emailMatch[2]
+    const hostLabels = host.split('.')
+    const hostTld = hostLabels[hostLabels.length - 1]
+    if (
+      hostLabels.length >= 2 &&
+      /^[a-z]{2,24}$/i.test(hostTld) &&
+      isRealTld(hostTld) &&
+      !AMBIGUOUS_EXTENSIONS.has(hostTld.toLowerCase()) &&
+      hostLabels.every(l => l.length > 0 && l.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(l))
+    ) {
+      return `mailto:${raw}`
+    }
+    return null
   }
 
   // Yaylisiz aday: once yolu ayir, sonra alan adini dogrula.
@@ -103,6 +137,18 @@ function normalizeCandidate(raw: string): string | null {
  * TLD deseninde `(?![\w-])` LOOKAHEAD'i sarttir: olmadan `video.mp4`
  * dosyasi `video.mp` olarak kesilip YANLIS adres sayilirdi (TLD deseni
  * rakam kabul etmedigi icin `4`'te duruyordu).
+ *
+ * NEDEN BIR "KISA ADRES" ESIGI YOK?
+ * -------------------------------
+ * Onceki surumde `raw.length < 8` diye bir kapı vardı ve şema ya da e-posta
+ * içermeyen 8 karakterden kısa her adres atılıyordu. O kapı, TLD denetimi
+ * YALNIZCA "2-24 harf" diye baktigi dönemin kalıntısıydı: `1.5`, `N.O`,
+ * `ok.irs` gibi yanlış pozitifleri basitçe eliyordu.
+ *
+ * Artık `isPlausibleBareDomain` IANA listesine baktığı için o sınıfların
+ * her biri KESIN ve HESAPLANABILIR bir kuralla zaten eleniyor. Sabit 8
+ * karakterlik eşik ise gerçek alan adlarını siliyordu: `edu.tr` (6),
+ * `site.ai` (7), `vk.com` (6). Bu bir yanlış negatifti.
  */
 export function findUrls(text: string): Array<{ start: number; end: number; url: string }> {
   const out: Array<{ start: number; end: number; url: string }> = []
@@ -130,7 +176,6 @@ export function findUrls(text: string): Array<{ start: number; end: number; url:
     }
     const normalized = normalizeCandidate(raw)
     if (!normalized) continue
-    if (raw.length < 8 && !/^(?:https?:\/\/|mailto:)/i.test(raw) && !raw.includes('@')) continue
     out.push({ start: m.index, end, url: normalized })
   }
   return out
@@ -191,7 +236,7 @@ export function ClickableText({ text, className, preserveWhitespace = true }: Cl
           open(item.url)
         }}
         rel="noreferrer noopener"
-        className="text-[var(--jmc-primary)] underline underline-offset-2 hover:opacity-80 break-all"
+        className="text-[var(--jmc-link)] underline underline-offset-2 hover:opacity-80 break-all"
       >
         {item.url}
       </a>,

@@ -128,10 +128,20 @@ export function hexToRgba(hex: string, alpha: number): string {
  */
 export function ensureContrast(color: string, bg: string, target: number): string {
   if (contrastRatio(color, bg) >= target) return color
-  const away = relativeLuminance(color) >= relativeLuminance(bg) ? '#ffffff' : '#000000'
-  const other = away === '#ffffff' ? '#000000' : '#ffffff'
+  // Karisim yonu ZEMINE gore secilir: zeminin karsi ucu.
+  //
+  // HATANIN GELISMESI: onceki surum yonu `relativeLuminance(color) >=
+  // relativeLuminance(bg)` ile secmisti. Renk zeminden yalnizca biraz
+  // daha koyu/aydinlik oldugunda ayni tarafa denk geliyor ve karisim
+  // KENDI KENDINE yapiliyordu; renk hic kipirdamiyor, 64 adim sonra
+  // hedefi hic kacaramadan dongu tukeniyordu. Ornegin siyah bir token,
+  // `#0b0f16` gibi koyu bir zemine konuldugunda okunmaz kaliyor ve
+  // guvenlik agina duserken bile siyaha yakin bir renk donuyordu.
+  const primary =
+    contrastRatio('#ffffff', bg) >= contrastRatio('#000000', bg) ? '#ffffff' : '#000000'
+  const other = primary === '#ffffff' ? '#000000' : '#ffffff'
 
-  for (const towards of [away, other]) {
+  for (const towards of [primary, other]) {
     // 64 x %5 adim, zeminin karsi ucuna neredeyse tamamen yaklasir.
     let out = color
     for (let i = 0; i < 64; i++) {
@@ -143,6 +153,134 @@ export function ensureContrast(color: string, bg: string, target: number): strin
   }
   // Guvenlik agi: en yuksek kontrasti veren uc rengi dondur.
   return contrastRatio('#ffffff', bg) >= contrastRatio('#000000', bg) ? '#ffffff' : '#000000'
+}
+
+/* ------------------------------------------------------------------ */
+/* Baglanti renkleri                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Baglanti rengi icin gereken minimum kontrast orani.
+ *
+ * WCAG 2.2 AA, normal boy metin icin 4.5:1 ister. Baglantilar govde
+ * metniyle ayni boydadir; bu yuzden "buyuk metin" istisnasi (3:1)
+ * kullanilmaz. Kullanicinin bildirdigi sorun tam olarak bu: bazi
+ * temalarda link, arka planla ayni renge dustugu icin okunmuyordu.
+ */
+const LINK_MIN_CONTRAST = 4.5
+
+/** Uzerine gelindiginde hedeflenen biraz daha guclu kontrast. */
+const LINK_HOVER_CONTRAST = 6
+
+/** Baglanti renginin okunmasi gereken tum yuzeyler. */
+function linkBackgrounds(c: ThemeColors): string[] {
+  const bgs = [c.bg, c.bgElevated, c.bgSurface].filter(
+    (v): v is string => typeof v === 'string' && v.trim().length > 0,
+  )
+  return bgs.length ? bgs : ['#ffffff']
+}
+
+/**
+ * Bir rengi butun arka planlara gore degerlendirir ve en KOTU orani
+ * dondurur.
+ *
+ * NEDEN EN KOTU?
+ * --------------
+ * Sohbet balonlari `bgSurface`, kenar panelleri `bgElevated`, ana
+ * yuzey `bg` uzerinde durur. Yalnizca `bg`ye bakan bir denetim, linkin
+ * balon icinde okunmaz oldugu durumlari kaçirir. Kullanicinin gördugu
+ * sey cogu zaman balon icidir.
+ */
+function worstContrast(color: string, bgs: string[]): number {
+  return bgs.reduce((min, bg) => Math.min(min, contrastRatio(color, bg)), Infinity)
+}
+
+/** En kotu kontrasti hedefin uzerine cikaran renk. */
+function ensureContrastOnAll(color: string, bgs: string[], target: number): string {
+  let out = color
+  for (let i = 0; i < 64; i += 1) {
+    if (worstContrast(out, bgs) >= target) return out
+    // En kotu kontrasti veren arka plani referans al.
+    const ref = bgs.reduce((worst, bg) =>
+      contrastRatio(out, bg) < contrastRatio(out, worst) ? bg : worst,
+    )
+    // YON, ZEMINE GORE secilir: zeminin karsi ucu (beyaz ya da siyah).
+    //
+    // HATANIN GELISMESI: yon once `relativeLuminance(out) >=
+    // relativeLuminance(ref)` karsilastirmasiyla seciliyordu. Siyah gibi
+    // koyu bir renk, yalnizca biraz daha aydinlik bir koyu zemine
+    // konuldugunda (link: #000000, bg: #0b0f16) "koyu tarafta" sayiliyor
+    // ve karisim YINE SIYAHA yapiliyordu; renk hic kipirdamiyor, dongu
+    // 64 adim sonra hedefi hic kacaramadan tukeniyordu. Ayni hata projedeki
+    // `ensureContrast` icinde de vardi (kod vurgu renkleri ve ozel tema
+    // turetilmis alanlar ayni yon hatasiyla karsi karsiydi).
+    const towards =
+      contrastRatio('#ffffff', ref) >= contrastRatio('#000000', ref) ? '#ffffff' : '#000000'
+    out = mixHex(out, towards, 0.05)
+  }
+  return out
+}
+
+export interface LinkColors {
+  link: string
+  linkHover: string
+}
+
+/**
+ * Bir tema icin baglanti renklerini hesaplar.
+ *
+ * KULLANICI BILDIRIMI
+ * -------------------
+ * "Sohbette asistan falan linkler arka planla ayni renkte gozukuyor,
+ * zit belirgin olucak renkte gozukmuyor temalarda bu yuzden linkler
+ * okunmuyor."
+ *
+ * COZUM
+ * -----
+ * Once `accent` denenir, sonra `primary`. Daha oncede baglantilar
+ * dogrudan `--jmc-primary` kullaniyordu; `primary` cogu temada dugme
+ * ve kenar rengidir ve koyu bir zeminde soluk kalabiliyor.
+ *
+ * - Bir aday zaten butun yuzeylerde okunabiliyorsa OLDUGU GIBI
+ *   kullanilir; temanin rengi korunur.
+ * - hicbiri okunabilir degilse kontrast zorlanir. `ensureContrast`
+ *   benzeri bir guvenlik agi sayesinde bu DAIMA basarili bir renk
+ *   dondurur; yani hicbir temada okunmaz bir link uretilemez.
+ */
+export function deriveLinkColors(c: ThemeColors): LinkColors {
+  const bgs = linkBackgrounds(c)
+
+  // Tema gomulu bir link rengi tanimladiysa o esas alinir.
+  const explicit = (c as { link?: string }).link
+  if (explicit) {
+    const link = ensureContrastOnAll(explicit, bgs, LINK_MIN_CONTRAST)
+    return {
+      link,
+      linkHover: ensureContrastOnAll(link, bgs, LINK_HOVER_CONTRAST),
+    }
+  }
+
+  // Once zaten okunabilir bir aday varsa KENDISI kullanilir.
+  const candidates = [c.accent, c.primary, c.accentHover, c.primaryHover, c.text]
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    if (worstContrast(candidate, bgs) >= LINK_MIN_CONTRAST) {
+      return {
+        link: candidate,
+        linkHover: ensureContrastOnAll(candidate, bgs, LINK_HOVER_CONTRAST),
+      }
+    }
+  }
+
+  // Hicbiri okunabilir degil -> kontrast zorlanir. accent tercih edilir
+  // cunku kontrast zorlamasi rengi beyaza/karaya cekse de link gibi
+  // gorunmeye devam eder.
+  const base = c.accent || c.primary || c.text || '#ffffff'
+  const link = ensureContrastOnAll(base, bgs, LINK_MIN_CONTRAST)
+  return {
+    link,
+    linkHover: ensureContrastOnAll(base, bgs, LINK_HOVER_CONTRAST),
+  }
 }
 
 /* ------------------------------------------------------------------ */

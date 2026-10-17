@@ -263,7 +263,7 @@ function DocxParagraphText({ text, url }: { text: string; url?: string }): React
         void window.jmcAPI?.openExternalUrl(url)
       }}
       rel="noreferrer noopener"
-      className="text-[var(--jmc-primary)] underline underline-offset-2 hover:opacity-80 break-words"
+      className="text-[var(--jmc-link)] underline underline-offset-2 hover:opacity-80 break-words"
       title={url}
     >
       {text || url}
@@ -1757,7 +1757,7 @@ export function DocumentViewerModal({
                                   )
                                 }}
                                 rel="noreferrer noopener"
-                                className="max-w-[26rem] truncate rounded border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)] px-2 py-0.5 text-[11px] text-[var(--jmc-primary)] underline underline-offset-2 hover:opacity-80"
+                                className="max-w-[26rem] truncate rounded border border-[var(--jmc-border-subtle)] bg-[var(--jmc-bg-surface)] px-2 py-0.5 text-[11px] text-[var(--jmc-link)] underline underline-offset-2 hover:opacity-80"
                               >
                                 {url}
                               </a>
@@ -1952,7 +1952,7 @@ export function DocumentViewerModal({
                                                           void window.jmcAPI?.openExternalUrl(cellUrl)
                                                         }}
                                                         rel="noreferrer noopener"
-                                                        className="text-[var(--jmc-primary)] underline underline-offset-2 hover:opacity-80 break-all"
+                                                        className="text-[var(--jmc-link)] underline underline-offset-2 hover:opacity-80 break-all"
                                                       >
                                                         <ClickableText
                                                           text={cell || cellUrl}

@@ -33,6 +33,13 @@
   --jmc-primary-hover: #bd8af3;
   --jmc-accent: #c99bf5;
   --jmc-accent-hover: #a973ea;
+  /*
+   * Baglanti renkleri. Tema degisiminde ThemeContext bunlari kontrast
+   * zorlayarak HESAPLAR; buradaki degerler yalnizca JavaScript
+   * calismadan once (ilk boyama) gecerli guvenli varsayilandir.
+   */
+  --jmc-link: #7fc4ff;
+  --jmc-link-hover: #b3dcff;
   --jmc-warning: #e0a03a;
   --jmc-danger: #ef5f6b;
   --jmc-success: #3fb98a;
@@ -328,13 +335,26 @@ textarea,
   color: var(--jmc-text-muted);
 }
 .prose a {
-  color: var(--jmc-primary);
+  color: var(--jmc-link);
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
 }
 .prose a:hover {
-  color: var(--jmc-primary-hover);
+  color: var(--jmc-link-hover);
+}
+/*
+ * Diger baglanti yuzeyleri (belge onizleme, hata mesaji, gezinme).
+ * Bunlar da ayni kontrast zorlanmis rengi kullanmali; aksi halde bir
+ * baglanti okunurken digeri okunmaz kalirdi.
+ */
+a,
+.link-styled {
+  color: var(--jmc-link);
+}
+a:hover,
+.link-styled:hover {
+  color: var(--jmc-link-hover);
 }
 .prose hr {
   border: 0;

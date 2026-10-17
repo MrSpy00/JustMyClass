@@ -1259,7 +1259,7 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => void window.jmcAPI?.openExternalUrl(linkInfo.keyUrl)}
-                  className="inline-flex items-center gap-1.5 font-medium text-[var(--jmc-primary)] hover:underline shrink-0"
+                  className="inline-flex items-center gap-1.5 font-medium text-[var(--jmc-link)] hover:underline shrink-0"
                 >
                   <span>
                     {isLocal
@@ -1400,7 +1400,7 @@ const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-1.5 text-[12px] text-[var(--jmc-primary)] hover:underline"
+            className="inline-flex items-center gap-1.5 text-[12px] text-[var(--jmc-link)] hover:underline"
           >
             <Plus className="h-3.5 w-3.5" />
             Özel sağlayıcı ekle
@@ -1653,6 +1653,9 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
     { label: 'İkincil', report: audit.muted },
     { label: 'Soluk', report: audit.dim },
     { label: 'Vurgu', report: audit.primaryOnBg },
+    // Baglanti rozeti: kullanicinin "linkler arka planla ayni renkte"
+    // bildiriminin olculebilir karsiligi.
+    { label: 'Bağlantı', report: audit.linkOnBg },
   ]
 
   // Kullanicinin secimi zayif kontrastli mi? Kullanilabilir bir tema secilmediyse
@@ -1976,7 +1979,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
                         <button
                           type="button"
                           onClick={commitRename}
-                          className="text-[11px] text-[var(--jmc-primary)] hover:underline"
+                          className="text-[11px] text-[var(--jmc-link)] hover:underline"
                         >
                           {t('settings.appearance.customRenameSave')}
                         </button>
@@ -2017,7 +2020,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
                             setPreviewing(false)
                             custom.applyCustomTheme(entry.id)
                           }}
-                          className="text-[11px] text-[var(--jmc-primary)] hover:underline"
+                          className="text-[11px] text-[var(--jmc-link)] hover:underline"
                         >
                           {t('settings.appearance.customApply')}
                         </button>
@@ -2243,7 +2246,7 @@ const AccountPanel: React.FC<{
           <button
             type="button"
             onClick={() => void window.jmcAPI?.openExternalUrl('https://console.cloud.google.com/apis/credentials')}
-            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[var(--jmc-primary)] hover:underline"
+            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[var(--jmc-link)] hover:underline"
           >
             <span>{t('auth.cloudConsoleLink')}</span>
             <ExternalLink className="h-3 w-3" />
@@ -2847,7 +2850,7 @@ const ToolsPanel: React.FC<{
                     <button
                       type="button"
                       onClick={() => void window.jmcAPI?.openExternalUrl('https://app.tavily.com/home')}
-                      className="inline-flex items-center gap-1 text-[10.5px] font-medium text-[var(--jmc-primary)] hover:underline"
+                      className="inline-flex items-center gap-1 text-[10.5px] font-medium text-[var(--jmc-link)] hover:underline"
                     >
                       <span>{t('settings.tools.tavilyGuide')}</span>
                       <ExternalLink className="h-3 w-3" />
@@ -2926,7 +2929,7 @@ const ToolsPanel: React.FC<{
                     <button
                       type="button"
                       onClick={() => void window.jmcAPI?.openExternalUrl('https://brave.com/search/api/')}
-                      className="inline-flex items-center gap-1 text-[10.5px] font-medium text-[var(--jmc-primary)] hover:underline"
+                      className="inline-flex items-center gap-1 text-[10.5px] font-medium text-[var(--jmc-link)] hover:underline"
                     >
                       <span>Brave API Al</span>
                       <ExternalLink className="h-3 w-3" />
