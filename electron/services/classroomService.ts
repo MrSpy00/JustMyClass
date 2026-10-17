@@ -67,6 +67,12 @@ export class ClassroomService {
     const stableId = (prefix: string, key: string) => `${prefix}_${crypto.createHash('sha1').update(`${courseId}/${workId}/${key}`).digest('hex').slice(0, 16)}`
 
     for (const m of rawMaterials) {
+      // Bozuk/eksik veri DERSIN TUM SENKRONIZASYONUNU cokertmemeli.
+      // Google bazen materyal dizisinde `null` ya da primitives donduruyor;
+      // `m.driveFile` dogrudan okundugu anda servis cokuyor ve o dersin
+      // topic/odev/duyuru verisinin TAMAMI kayboluyordu. Ilgisiz ya da
+      // bozuk girdi sessizce atlanir.
+      if (!m || typeof m !== 'object') continue
       if (m.driveFile) {
         const df = m.driveFile.driveFile || m.driveFile
         if (!df?.id) continue
