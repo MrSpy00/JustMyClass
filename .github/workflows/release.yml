@@ -33,7 +33,7 @@ jobs:
       - name: pnpm kur
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10
 
       - name: Node kur
         uses: actions/setup-node@v4
